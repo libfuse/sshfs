@@ -1197,6 +1197,7 @@ int main(int argc, char *argv[])
 {
     char *host = NULL;
     char *port = NULL;
+    char *fsname;
     int res;
     int argctr;
     int direct = 0;
@@ -1219,7 +1220,7 @@ int main(int argc, char *argv[])
                     port = argv[++argctr];
                 else {
                     fprintf(stderr, "missing argument to %s option\n", arg);
-                    fprintf(stderr, "see '%s -h' for usage\n", argv[0]);
+                    fprintf(stderr, "see `%s -h' for usage\n", argv[0]);
                     exit(1);
                 }
                 break;
@@ -1238,10 +1239,11 @@ int main(int argc, char *argv[])
     }
     if (!host) {
         fprintf(stderr, "missing host\n");
-        fprintf(stderr, "see '%s -h' for usage\n", argv[0]);
+        fprintf(stderr, "see `%s -h' for usage\n", argv[0]);
         exit(1);
     }
 
+    fsname = g_strdup(host);
     base_path = strchr(host, ':');
     *base_path++ = '\0';
     if (base_path[0] && base_path[strlen(base_path)-1] != '/')
@@ -1266,6 +1268,8 @@ int main(int argc, char *argv[])
         exit(1);
 
     newargv[newargc++] = "-omax_read=65536";
+    newargv[newargc++] = g_strdup_printf("-ofsname=sshfs#%s", fsname);
+    g_free(fsname);
     newargv[newargc] = NULL;
     return fuse_main(newargc, newargv, &sshfs_oper);
 }
