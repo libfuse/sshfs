@@ -23,6 +23,8 @@
 #include <netinet/in.h>
 #include <glib.h>
 
+#include "cache.h"
+
 #define SSH_FXP_INIT                1
 #define SSH_FXP_VERSION             2
 #define SSH_FXP_OPEN                3
@@ -79,9 +81,6 @@
 #define MY_EOF 1
 
 #define MAX_REPLY_LEN (1 << 17)
-#define CACHE_TIMEOUT 20
-#define MAX_CACHE_SIZE 10000
-#define CACHE_CLEAN_INTERVAL 60
 
 static int infd;
 static int outfd;
@@ -110,18 +109,11 @@ struct openfile {
     struct buffer write_handle;
 };
 
-struct node_attr {
-    struct stat stat;
-    time_t updated;
-};
-
 struct sshfs_file {
     struct buffer handle;
 };
 
 static GHashTable *reqtab;
-static GHashTable *cache;
-static time_t last_cleaned;
 static pthread_mutex_t lock;
 static int processing_thread_started;
 
@@ -379,75 +371,8 @@ static int buf_get_attrs(struct buffer *buf, struct stat *stbuf)
     return 0;
 }
 
-static int cache_clean_entry(void *_key, struct node_attr *node, time_t *now)
-{
-    (void) _key;
-    if (*now > node->updated + CACHE_TIMEOUT)
-        return TRUE;
-    else
-        return FALSE;
-}
-
-static void cache_clean(void)
-{
-    time_t now = time(NULL);
-    if (g_hash_table_size(cache) > MAX_CACHE_SIZE ||
-        now > last_cleaned + CACHE_CLEAN_INTERVAL) {
-        g_hash_table_foreach_remove(cache, (GHRFunc) cache_clean_entry, &now);
-        last_cleaned = now;
-    }
-}
-
-static struct node_attr *cache_lookup(const char *path)
-{
-    return (struct node_attr *) g_hash_table_lookup(cache, path);    
-}
-
-static void cache_remove(const char *path)
-{
-    pthread_mutex_lock(&lock);
-    g_hash_table_remove(cache, path);
-    pthread_mutex_unlock(&lock);
-}
-
-static void cache_invalidate(const char *path)
-{
-    cache_remove(path);
-}
-
-static void cache_rename(const char *from, const char *to)
-{
-    cache_remove(from);
-    cache_remove(to);
-}
-
-static struct node_attr *cache_get(const char *path)
-{
-    struct node_attr *node = cache_lookup(path);
-    if (node == NULL) {
-        char *pathcopy = g_strdup(path);
-        node = g_new0(struct node_attr, 1);
-        g_hash_table_insert(cache, pathcopy, node);
-    }
-    return node;
-}
-
-static void cache_add_attr(const char *path, const struct stat *stbuf)
-{
-    struct node_attr *node;
-    time_t now;
-
-    pthread_mutex_lock(&lock);
-    node = cache_get(path);
-    now = time(NULL);
-    node->stat = *stbuf;
-    node->updated = time(NULL);
-    cache_clean();
-    pthread_mutex_unlock(&lock);
-}
-
-static int buf_get_entries(struct buffer *buf, fuse_dirh_t h,
-                           fuse_dirfil_t filler, const char *path)
+static int buf_get_entries(struct buffer *buf, fuse_cache_dirh_t h,
+                           fuse_cache_dirfil_t filler)
 {
     uint32_t count;
     unsigned i;
@@ -465,11 +390,7 @@ static int buf_get_entries(struct buffer *buf, fuse_dirh_t h,
         if (buf_get_string(buf, &longname) != -1) {
             free(longname);
             if (buf_get_attrs(buf, &stbuf) != -1) {
-                char *fullpath;
-                filler(h, name, stbuf.st_mode >> 12, 0);
-                fullpath = g_strdup_printf("%s/%s", !path[1] ? "" : path, name);
-                cache_add_attr(fullpath, &stbuf);
-                g_free(fullpath);
+                filler(h, name, &stbuf);
                 err = 0;
             }
         }
@@ -780,7 +701,7 @@ static int sftp_request(uint8_t type, const struct buffer *buf,
         
 }
 
-static int sshfs_send_getattr(const char *path, struct stat *stbuf)
+static int sshfs_getattr(const char *path, struct stat *stbuf)
 {
     int err;
     struct buffer buf;
@@ -794,27 +715,7 @@ static int sshfs_send_getattr(const char *path, struct stat *stbuf)
         buf_free(&outbuf);
     }
     buf_free(&buf);
-    if (!err)
-        cache_add_attr(path, stbuf);
     return err;
-}
-
-static int sshfs_getattr(const char *path, struct stat *stbuf)
-{
-    struct node_attr *node;
-
-    pthread_mutex_lock(&lock);
-    node = cache_lookup(path);
-    if (node != NULL) {
-        time_t now = time(NULL);
-        if (now - node->updated < CACHE_TIMEOUT) {
-            *stbuf = node->stat;
-            pthread_mutex_unlock(&lock);
-            return 0;
-        }
-    }
-    pthread_mutex_unlock(&lock);
-    return sshfs_send_getattr(path, stbuf);
 }
 
 static int sshfs_readlink(const char *path, char *linkbuf, size_t size)
@@ -842,7 +743,8 @@ static int sshfs_readlink(const char *path, char *linkbuf, size_t size)
     return err;
 }
 
-static int sshfs_getdir(const char *path, fuse_dirh_t h, fuse_dirfil_t filler)
+static int sshfs_getdir(const char *path, fuse_cache_dirh_t h,
+                        fuse_cache_dirfil_t filler)
 {
     int err;
     struct buffer buf;
@@ -857,7 +759,7 @@ static int sshfs_getdir(const char *path, fuse_dirh_t h, fuse_dirfil_t filler)
             struct buffer name;
             err = sftp_request(SSH_FXP_READDIR, &handle, SSH_FXP_NAME, &name);
             if (!err) {
-                if (buf_get_entries(&name, h, filler, path) == -1)
+                if (buf_get_entries(&name, h, filler) == -1)
                     err = -EPROTO;
                 buf_free(&name);
             }
@@ -935,8 +837,6 @@ static int sshfs_unlink(const char *path)
     buf_init(&buf, 0);
     buf_add_path(&buf, path);
     err = sftp_request(SSH_FXP_REMOVE, &buf, SSH_FXP_STATUS, NULL);
-    if (!err)
-        cache_remove(path);
     buf_free(&buf);
     return err;
 }
@@ -948,8 +848,6 @@ static int sshfs_rmdir(const char *path)
     buf_init(&buf, 0);
     buf_add_path(&buf, path);
     err = sftp_request(SSH_FXP_RMDIR, &buf, SSH_FXP_STATUS, NULL);
-    if (!err)
-        cache_remove(path);
     buf_free(&buf);
     return err;
 }
@@ -962,8 +860,6 @@ static int sshfs_rename(const char *from, const char *to)
     buf_add_path(&buf, from);
     buf_add_path(&buf, to);
     err = sftp_request(SSH_FXP_RENAME, &buf, SSH_FXP_STATUS, NULL);
-    if (!err)
-        cache_rename(from, to);
     buf_free(&buf);
     return err;
 }
@@ -977,8 +873,6 @@ static int sshfs_chmod(const char *path, mode_t mode)
     buf_add_uint32(&buf, SSH_FILEXFER_ATTR_PERMISSIONS);
     buf_add_uint32(&buf, mode);
     err = sftp_request(SSH_FXP_SETSTAT, &buf, SSH_FXP_STATUS, NULL);
-    if (!err)
-        cache_invalidate(path);
     buf_free(&buf);
     return err;
 }
@@ -1006,8 +900,6 @@ static int sshfs_truncate(const char *path, off_t size)
     buf_add_uint32(&buf, SSH_FILEXFER_ATTR_SIZE);
     buf_add_uint64(&buf, size);
     err = sftp_request(SSH_FXP_SETSTAT, &buf, SSH_FXP_STATUS, NULL);
-    if (!err)
-        cache_invalidate(path);
     buf_free(&buf);
     return err;
 }
@@ -1016,15 +908,12 @@ static int sshfs_utime(const char *path, struct utimbuf *ubuf)
 {
     int err;
     struct buffer buf;
-    cache_remove(path);
     buf_init(&buf, 0);
     buf_add_path(&buf, path);
     buf_add_uint32(&buf, SSH_FILEXFER_ATTR_ACMODTIME);
     buf_add_uint32(&buf, ubuf->actime);
     buf_add_uint32(&buf, ubuf->modtime);
     err = sftp_request(SSH_FXP_SETSTAT, &buf, SSH_FXP_STATUS, NULL);
-    if (!err)
-        cache_invalidate(path);
     buf_free(&buf);
     return err;
 }
@@ -1110,6 +999,7 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
     struct buffer data;
     struct sshfs_file *sf = (struct sshfs_file *) fi->fh;
     struct buffer *handle = &sf->handle;
+    (void) path;
     data.p = (uint8_t *) wbuf;
     data.len = size;
     buf_init(&buf, 0);
@@ -1117,8 +1007,6 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
     buf_add_uint64(&buf, offset);
     buf_add_data(&buf, &data);
     err = sftp_request(SSH_FXP_WRITE, &buf, SSH_FXP_STATUS, NULL);
-    if (!err)
-        cache_invalidate(path);
     buf_free(&buf);
     return err ? err : (int) size;
 }
@@ -1157,32 +1045,33 @@ static int processing_init(void)
 {
     pthread_mutex_init(&lock, NULL);
     reqtab = g_hash_table_new(NULL, NULL);
-    cache = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
-    if (!reqtab || !cache) {
-        fprintf(stderr, "failed to create hash tables\n");
+    if (!reqtab) {
+        fprintf(stderr, "failed to create hash table\n");
         return -1;
     }
     return 0;
 }
 
-static struct fuse_operations sshfs_oper = {
-    .getattr	= sshfs_getattr,
-    .readlink   = sshfs_readlink,
-    .getdir	= sshfs_getdir,
-    .mknod      = sshfs_mknod,
-    .mkdir      = sshfs_mkdir,
-    .symlink	= sshfs_symlink,
-    .unlink     = sshfs_unlink,
-    .rmdir      = sshfs_rmdir,
-    .rename     = sshfs_rename,
-    .chmod      = sshfs_chmod,
-    .chown	= sshfs_chown,
-    .truncate	= sshfs_truncate,
-    .utime      = sshfs_utime,
-    .open       = sshfs_open,
-    .release    = sshfs_release,
-    .read       = sshfs_read,
-    .write      = sshfs_write,
+static struct fuse_cache_operations sshfs_oper = {
+    .oper = {
+        .getattr    = sshfs_getattr,
+        .readlink   = sshfs_readlink,
+        .mknod      = sshfs_mknod,
+        .mkdir      = sshfs_mkdir,
+        .symlink    = sshfs_symlink,
+        .unlink     = sshfs_unlink,
+        .rmdir      = sshfs_rmdir,
+        .rename     = sshfs_rename,
+        .chmod      = sshfs_chmod,
+        .chown      = sshfs_chown,
+        .truncate   = sshfs_truncate,
+        .utime      = sshfs_utime,
+        .open       = sshfs_open,
+        .release    = sshfs_release,
+        .read       = sshfs_read,
+        .write      = sshfs_write,
+    },
+    .cache_getdir = sshfs_getdir,
 };
 
 static void usage(const char *progname)
@@ -1196,7 +1085,7 @@ static void usage(const char *progname)
             "    -p port             remote port\n"
             "    -c port             directly connect to port bypassing ssh\n"
             "\n", progname);
-    fuse_main(2, (char **) fusehelp, &sshfs_oper);
+    fuse_main(2, (char **) fusehelp, NULL);
     exit(1);
 }
 
@@ -1278,5 +1167,5 @@ int main(int argc, char *argv[])
     newargv[newargc++] = g_strdup_printf("-ofsname=sshfs#%s", fsname);
     g_free(fsname);
     newargv[newargc] = NULL;
-    return fuse_main(newargc, newargv, &sshfs_oper);
+    return fuse_main(newargc, newargv, cache_init(&sshfs_oper));
 }
