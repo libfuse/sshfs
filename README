@@ -44,7 +44,8 @@ First you need to download FUSE 2.2 or later from:
 
   http://fuse.sourceforge.net
 
-After installing FUSE, compile sshfs the usual way:
+You also need to install the devel package for glib2.0.  After
+installing FUSE, compile sshfs the usual way:
 
   ./configure
   make
