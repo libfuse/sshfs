@@ -382,7 +382,7 @@ static int buf_check_get(struct buffer *buf, size_t len)
         fprintf(stderr, "buffer too short\n");
         return -1;
     } else
-        return 0; 
+        return 0;
 }
 
 static inline int buf_get_mem(struct buffer *buf, void *data, size_t len)
@@ -468,7 +468,7 @@ static int buf_get_attrs(struct buffer *buf, struct stat *stbuf)
         if (buf_get_uint32(buf, &atime) == -1 ||
             buf_get_uint32(buf, &mtime) == -1)
             return -1;
-    } 
+    }
     if ((flags & SSH_FILEXFER_ATTR_EXTENDED)) {
         uint32_t extcount;
         unsigned i;
@@ -503,7 +503,7 @@ static int buf_get_entries(struct buffer *buf, fuse_cache_dirh_t h,
 
     if (buf_get_uint32(buf, &count) == -1)
         return -1;
-    
+
     for (i = 0; i < count; i++) {
         int err = -1;
         char *name;
@@ -829,7 +829,7 @@ static int sftp_request_common(uint8_t type, const struct buffer *buf,
     pthread_mutex_unlock(&lock);
     if (err)
         goto out;
-    
+
     err = -EIO;
     if (sftp_send(type, &buf2) == -1) {
         pthread_mutex_lock(&lock);
@@ -852,7 +852,7 @@ static int sftp_request_common(uint8_t type, const struct buffer *buf,
         uint32_t serr;
         if (buf_get_uint32(&req->reply, &serr) == -1)
             goto out;
-        
+
         switch (serr) {
         case SSH_FX_OK:
             if (expect_type == SSH_FXP_STATUS)
@@ -869,7 +869,7 @@ static int sftp_request_common(uint8_t type, const struct buffer *buf,
             break;
 
         case SSH_FX_NO_SUCH_FILE:      err = -ENOENT; break;
-        case SSH_FX_PERMISSION_DENIED: err = -EACCES; break;            
+        case SSH_FX_PERMISSION_DENIED: err = -EACCES; break;
         case SSH_FX_FAILURE:           err = -EPERM;  break;
         case SSH_FX_BAD_MESSAGE:
         default:                       err = -EPROTO; break;
@@ -885,7 +885,7 @@ static int sftp_request_common(uint8_t type, const struct buffer *buf,
         end_func(req);
     buf_free(&buf2);
     request_free(req);
-    return err;        
+    return err;
 }
 
 static int sftp_request(uint8_t type, const struct buffer *buf,
@@ -967,7 +967,7 @@ static int sshfs_getdir(const char *path, fuse_cache_dirh_t h,
         } while (!err);
         if (err == MY_EOF)
             err = 0;
-        
+
         err2 = sftp_request(SSH_FXP_CLOSE, &handle, 0, NULL);
         if (!err)
             err = err2;
@@ -1227,7 +1227,7 @@ static int sshfs_sync_read(struct sshfs_file *sf, char *rbuf, size_t size,
     } else if (err == MY_EOF)
         err = 0;
     buf_free(&buf);
-    return err;    
+    return err;
 }
 
 static void sshfs_read_end(struct request *req)
@@ -1282,7 +1282,7 @@ static int sshfs_send_async_read(struct sshfs_file *sf,
     err = sftp_request_async(SSH_FXP_READ, &buf, sshfs_read_begin,
                              sshfs_read_end, chunk);
     buf_free(&buf);
-    return err;    
+    return err;
 }
 
 static int submit_read(struct sshfs_file *sf, size_t size, off_t offset,
@@ -1305,7 +1305,7 @@ static int submit_read(struct sshfs_file *sf, size_t size, off_t offset,
     } else
         chunk_put(chunk);
 
-    return err;    
+    return err;
 }
 
 static int wait_chunk(struct read_chunk *chunk, char *buf, size_t size)
@@ -1438,7 +1438,7 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
     buf_add_uint64(&buf, offset);
     buf_add_data(&buf, &data);
     if (!sync_write && !sf->write_error)
-        err = sftp_request_async(SSH_FXP_WRITE, &buf, sshfs_write_begin, 
+        err = sftp_request_async(SSH_FXP_WRITE, &buf, sshfs_write_begin,
                                  sshfs_write_end, sf);
     else
         err = sftp_request(SSH_FXP_WRITE, &buf, SSH_FXP_STATUS, NULL);
@@ -1568,7 +1568,7 @@ int main(int argc, char *argv[])
             help:
                 usage(argv[0]);
                 break;
-                
+
             case 'C':
                 if (!arg[2])
                     arg = "-oCompression=yes";
@@ -1618,7 +1618,7 @@ int main(int argc, char *argv[])
         unsigned val;
         if (opt_get_unsigned(&sshfs_opts[SOPT_MAX_READ], &val) == -1)
             exit(1);
-        
+
         if (val < max_read)
             max_read = val;
     }

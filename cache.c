@@ -77,12 +77,12 @@ static void cache_clean(void)
 
 static struct node *cache_lookup(const char *path)
 {
-    return (struct node *) g_hash_table_lookup(cache, path);    
+    return (struct node *) g_hash_table_lookup(cache, path);
 }
 
 static void cache_purge(const char *path)
 {
-    g_hash_table_remove(cache, path);    
+    g_hash_table_remove(cache, path);
 }
 
 static void cache_purge_parent(const char *path)
@@ -196,7 +196,7 @@ static int cache_getattr(const char *path, struct stat *stbuf)
 {
     struct node *node;
     int err;
-    
+
     pthread_mutex_lock(&cache_lock);
     node = cache_lookup(path);
     if (node != NULL) {
@@ -219,7 +219,7 @@ static int cache_readlink(const char *path, char *buf, size_t size)
 {
     struct node *node;
     int err;
-    
+
     pthread_mutex_lock(&cache_lock);
     node = cache_lookup(path);
     if (node != NULL) {
@@ -236,7 +236,7 @@ static int cache_readlink(const char *path, char *buf, size_t size)
     if (!err)
         cache_add_link(path, buf, size);
 
-    return err;    
+    return err;
 }
 
 static int cache_dirfill(fuse_cache_dirh_t ch, const char *name,
@@ -272,7 +272,7 @@ static int cache_getdir(const char *path, fuse_dirh_t h, fuse_dirfil_t filler)
         }
     }
     pthread_mutex_unlock(&cache_lock);
- 
+
     ch.path = path;
     ch.h = h;
     ch.filler = filler;
@@ -501,7 +501,7 @@ int cache_parse_options(int *argcp, char *argv[])
     process_options(argcp, argv, cache_opts, 1);
     if (cache_opts[COPT_CACHE].present) {
         char *val = cache_opts[COPT_CACHE].value;
-        if (!val || !val[0] || 
+        if (!val || !val[0] ||
             (strcmp(val, "yes") != 0 && strcmp(val, "no") != 0)) {
             fprintf(stderr, "Invalid or missing value for 'cache' option\n");
             return -1;
