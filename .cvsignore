@@ -1,0 +1,15 @@
+.deps
+COPYING
+INSTALL
+Makefile
+Makefile.in
+aclocal.m4
+*.cache
+config.*
+configure
+depcomp
+install-sh
+missing
+sshfs
+stamp*
+.deps

@@ -1,3 +1,4 @@
+#define FUSE_USE_VERSION 22
 #include <fuse.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1092,7 +1093,6 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
     struct buffer buf;
     struct buffer data;
     struct buffer *handle = (struct buffer *) fi->fh;
-    (void) path;
     data.p = (uint8_t *) wbuf;
     data.len = size;
     buf_init(&buf, 0);
@@ -1100,6 +1100,8 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
     buf_add_uint64(&buf, offset);
     buf_add_data(&buf, &data);
     err = sftp_request(SSH_FXP_WRITE, &buf, SSH_FXP_STATUS, NULL);
+    if (!err)
+        cache_invalidate(path);
     buf_free(&buf);
     return err ? err : (int) size;
 }
