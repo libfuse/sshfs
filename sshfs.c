@@ -6,6 +6,8 @@
     See the file COPYING.
 */
 
+#include "config.h"
+
 #include <fuse.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1164,6 +1166,7 @@ static void usage(const char *progname)
             "usage: %s [user@]host:[dir]] mountpoint [options]\n"
             "\n"
             "SSHFS Options:\n"
+            "    -V                  show version information\n"
             "    -p PORT             equivalent to '-o port=PORT'\n"
             "    -C                  equivalent to '-o compression=yes'\n"
             "    -o ssh_command=CMD  execute CMD instead of 'ssh'\n"
@@ -1188,6 +1191,11 @@ int main(int argc, char *argv[])
         char *arg = argv[argctr];
         if (arg[0] == '-') {
             switch (arg[1]) {
+            case 'V':
+                fprintf(stderr, "SSHFS version %s\n", PACKAGE_VERSION);
+                exit(0);
+                break;
+
             case 'h':
                 usage(argv[0]);
                 break;
