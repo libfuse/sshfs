@@ -9,6 +9,7 @@
 #include "opts.h"
 #include <string.h>
 #include <stdlib.h>
+#include <glib.h>
 
 static int process_option(char *arg, struct opt opts[], int case_sensitive)
 {
@@ -32,8 +33,8 @@ static int process_option(char *arg, struct opt opts[], int case_sensitive)
     opts[i].present = 1;
     if (eq) {
         if (opts[i].value)
-            free(opts[i].value);
-        opts[i].value = strdup(eq+1);
+            g_free(opts[i].value);
+        opts[i].value = g_strdup(eq+1);
     }
     return 1;
 }
@@ -84,7 +85,7 @@ void process_options(int *argcp, char *argv[], struct opt opts[],
                     arg = argv[argctr];
                     removed = process_option_group(arg, opts, case_sensitive);
                     if (removed)
-                        free(argv[argctr-1]);
+                        g_free(argv[argctr-1]);
                     else if (argctr != newargctr)
                         argv[newargctr++] = argv[argctr-1];
                     
@@ -92,7 +93,7 @@ void process_options(int *argcp, char *argv[], struct opt opts[],
             }
         }
         if (removed)
-            free(arg);
+            g_free(arg);
         else {
             if(argctr != newargctr)
                 argv[newargctr] = arg;
