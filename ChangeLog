@@ -1,3 +1,10 @@
+2005-03-03  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Slightly optimize readahead.  Still not clever enough to always
+	keep the pipe filled.
+
+	* Add 'sshfs_debug' option
+
 2005-02-17  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Parse 'max_read' mount option and if smaller than 65536 forward

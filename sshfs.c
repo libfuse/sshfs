@@ -188,6 +188,7 @@ enum {
     SOPT_SYNC_WRITE,
     SOPT_SYNC_READ,
     SOPT_MAX_READ,
+    SOPT_DEBUG,
     SOPT_LAST /* Last entry in this list! */
 };
 
@@ -197,6 +198,7 @@ static struct opt sshfs_opts[] = {
     [SOPT_SYNC_WRITE] = { .optname = "sshfs_sync" },
     [SOPT_SYNC_READ]  = { .optname = "no_readahead" },
     [SOPT_MAX_READ]   = { .optname = "max_read" },
+    [SOPT_DEBUG]      = { .optname = "sshfs_debug" },
     [SOPT_LAST]       = { .optname = NULL }
 };
 
@@ -722,6 +724,13 @@ static void chunk_put(struct read_chunk *chunk)
     }
 }
 
+static void chunk_put_locked(struct read_chunk *chunk)
+{
+    pthread_mutex_lock(&lock);
+    chunk_put(chunk);
+    pthread_mutex_unlock(&lock);
+}
+
 static void *process_requests(void *_data)
 {
     (void) _data;
@@ -1181,7 +1190,7 @@ static int sshfs_release(const char *path, struct fuse_file_info *fi)
     sshfs_flush(path, fi);
     sftp_request(SSH_FXP_CLOSE, handle, 0, NULL);
     buf_free(handle);
-    chunk_put(sf->readahead);
+    chunk_put_locked(sf->readahead);
     g_free(sf);
     return 0;
 }
@@ -1245,9 +1254,7 @@ static void sshfs_read_end(struct request *req)
         chunk->res = -EIO;
 
     sem_post(&chunk->ready);
-    pthread_mutex_lock(&lock);
-    chunk_put(chunk);
-    pthread_mutex_unlock(&lock);
+    chunk_put_locked(chunk);
 }
 static void sshfs_read_begin(struct request *req)
 {
@@ -1257,7 +1264,8 @@ static void sshfs_read_begin(struct request *req)
     pthread_mutex_unlock(&lock);
 }
 
-static int sshfs_async_read(struct sshfs_file *sf, struct read_chunk *chunk)
+static int sshfs_send_async_read(struct sshfs_file *sf,
+                                 struct read_chunk *chunk)
 {
     int err;
     struct buffer buf;
@@ -1283,7 +1291,7 @@ static int submit_read(struct sshfs_file *sf, size_t size, off_t offset,
     chunk->offset = offset;
     chunk->size = size;
     chunk->refs = 1;
-    err = sshfs_async_read(sf, chunk);
+    err = sshfs_send_async_read(sf, chunk);
     if (!err) {
         pthread_mutex_lock(&lock);
         chunk_put(*chunkp);
@@ -1295,51 +1303,88 @@ static int submit_read(struct sshfs_file *sf, size_t size, off_t offset,
     return err;    
 }
 
-static int wait_chunk(struct read_chunk *chunk, char *buf)
+static int wait_chunk(struct read_chunk *chunk, char *buf, size_t size)
 {
     int res;
     sem_wait(&chunk->ready);
     res = chunk->res;
-    if (res > 0)
+    if (res > 0) {
+        if ((size_t) res > size)
+            res = size;
         buf_get_mem(&chunk->data, buf, res);
-    chunk_put(chunk);
+        chunk->offset += res;
+        chunk->size -= res;
+        chunk->res -= res;
+    }
+    sem_post(&chunk->ready);
+    chunk_put_locked(chunk);
     return res;
 }
 
-static struct read_chunk *search_read_chunk(struct sshfs_file *sf, size_t size,
-                                            off_t offset)
+static struct read_chunk *search_read_chunk(struct sshfs_file *sf, off_t offset)
 {
     struct read_chunk *ch = sf->readahead;
-    if (ch && ch->offset == offset && ch->size == size) {
+    if (ch && ch->offset == offset) {
         ch->refs++;
         return ch;
     } else
         return NULL;
 }
 
+static int sshfs_async_read(struct sshfs_file *sf, char *rbuf, size_t size,
+                            off_t offset)
+{
+    int res = 0;
+    size_t total = 0;
+    struct read_chunk *chunk;
+    struct read_chunk *chunk_prev = NULL;
+    size_t origsize = size;
+        
+    pthread_mutex_lock(&lock);
+    chunk = search_read_chunk(sf, offset);
+    pthread_mutex_unlock(&lock);
+
+    if (chunk && chunk->size < size) {
+        chunk_prev = chunk;
+        size -= chunk->size;
+        offset += chunk->size;
+        chunk = NULL;
+    }
+
+    if (!chunk)
+        res = submit_read(sf, size, offset, &chunk);
+
+    if (chunk && chunk->size <= size)
+        submit_read(sf, origsize, offset + size, &sf->readahead);
+
+    if (chunk_prev) {
+        size_t prev_size = chunk_prev->size;
+        res = wait_chunk(chunk_prev, rbuf, prev_size);
+        if (res < (int) prev_size) {
+            chunk_put_locked(chunk);
+            return res;
+        }
+        rbuf += res;
+        total += res;
+    }
+    res = wait_chunk(chunk, rbuf, size);
+    if (res > 0)
+        total += res;
+    if (res < 0)
+        return res;
+
+    return total;
+}
+
 static int sshfs_read(const char *path, char *rbuf, size_t size, off_t offset,
                       struct fuse_file_info *fi)
 {
-    int res = 0;
     struct sshfs_file *sf = (struct sshfs_file *) fi->fh;
+    (void) path;
     if (sync_read)
-        res = sshfs_sync_read(sf, rbuf, size, offset);
-    else {
-        struct read_chunk *chunk;
-        (void) path;
-        
-        pthread_mutex_lock(&lock);
-        chunk = search_read_chunk(sf, size, offset);
-        pthread_mutex_unlock(&lock);
-        if (!chunk)
-            res = submit_read(sf, size, offset, &chunk);
-        if (!res)
-            submit_read(sf, size, offset + size, &sf->readahead);
-        if (!res)
-            res = wait_chunk(chunk, rbuf);
-    }
-
-    return res;
+        return sshfs_sync_read(sf, rbuf, size, offset);
+    else
+        return sshfs_async_read(sf, rbuf, size, offset);
 }
 
 static void sshfs_write_begin(struct request *req)
@@ -1470,6 +1515,7 @@ static void usage(const char *progname)
 "    -C                     equivalent to '-o compression=yes'\n"
 "    -o sshfs_sync          synchronous writes\n"
 "    -o no_readahead        synchronous reads (no speculative readahead)\n"
+"    -o sshfs_debug         print some debugging information\n"
 "    -o cache=YESNO         enable caching {yes,no} (default: yes)\n"
 "    -o cache_timeout=N     sets timeout for caches in seconds (default: 20)\n"
 "    -o cache_X_timeout=N   sets timeout for {stat,dir,link} cache\n"
@@ -1548,6 +1594,8 @@ int main(int argc, char *argv[])
         sync_write = 1;
     if (sshfs_opts[SOPT_SYNC_READ].present)
         sync_read = 1;
+    if (sshfs_opts[SOPT_DEBUG].present)
+        debug = 1;
     if (sshfs_opts[SOPT_MAX_READ].present) {
         unsigned val;
         if (opt_get_unsigned(&sshfs_opts[SOPT_MAX_READ], &val) == -1)
