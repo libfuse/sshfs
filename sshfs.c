@@ -23,6 +23,7 @@
 #include <glib.h>
 
 #include "cache.h"
+#include "opts.h"
 
 #define SSH_FXP_INIT                1
 #define SSH_FXP_VERSION             2
@@ -115,6 +116,60 @@ struct sshfs_file {
 static GHashTable *reqtab;
 static pthread_mutex_t lock;
 static int processing_thread_started;
+
+static struct opt ssh_opts[] = {
+    { .optname = "AddressFamily"                    },
+    { .optname = "BatchMode"                        },
+    { .optname = "BindAddress"                      },
+    { .optname = "ChallengeResponseAuthentication"  },
+    { .optname = "CheckHostIP"                      },
+    { .optname = "Cipher"                           },
+    { .optname = "Ciphers"                          },
+    { .optname = "Compression"                      },
+    { .optname = "CompressionLevel"                 },
+    { .optname = "ConnectionAttempts"               },
+    { .optname = "ConnectionTimeout"                },
+    { .optname = "GlobalKnownHostsFile"             },
+    { .optname = "GSSAPIAuthentication"             },
+    { .optname = "GSSAPIDelegateCredentials"        },
+    { .optname = "HostbasedAuthentication"          },
+    { .optname = "HostKeyAlgorithms"                },
+    { .optname = "HostKeyAlias"                     },
+    { .optname = "HostName"                         },
+    { .optname = "IdentityFile"                     },
+    { .optname = "IdentitiesOnly"                   },
+    { .optname = "LogLevel"                         },
+    { .optname = "MACs"                             },
+    { .optname = "NoHostAuthenticationForLocalhost" },
+    { .optname = "NumberOfPasswordPrompts"          },
+    { .optname = "PasswordAuthentication"           },
+    { .optname = "Port"                             },
+    { .optname = "PreferredAuthentications"         },
+    { .optname = "Protocol"                         },
+    { .optname = "ProxyCommand"                     },
+    { .optname = "PubkeyAuthentication"             },
+    { .optname = "RhostsRSAAuthentication"          },
+    { .optname = "RSAAuthentication"                },
+    { .optname = "ServerAliveInterval"              },
+    { .optname = "ServerAliveCountMax"              },
+    { .optname = "SmartcardDevice"                  },
+    { .optname = "StrictHostKeyChecking"            },
+    { .optname = "TCPKeepAlive"                     },
+    { .optname = "UsePrivilegedPort"                },
+    { .optname = "UserKnownHostsFile"               },
+    { .optname = "VerifyHostKeyDNS"                 },
+    { .optname = NULL                               }
+};
+
+enum {
+    SOPT_DIRECTPORT,
+    SOPT_LAST /* Last entry in this list! */
+};
+
+static struct opt sshfs_opts[] = {
+    [SOPT_DIRECTPORT] = { .optname = "directport" },
+    [SOPT_LAST]       = { .optname = NULL }
+};
 
 #define DEBUG(format, args...) \
 	do { if (debug) fprintf(stderr, format, args); } while(0)
@@ -400,10 +455,11 @@ static int buf_get_entries(struct buffer *buf, fuse_cache_dirh_t h,
     return 0;
 }
 
-static int start_ssh(const char *host, const char *port)
+static int start_ssh(char *host)
 {
     int inpipe[2];
     int outpipe[2];
+    int i;
     int pid;
 
     if (pipe(inpipe) == -1 || pipe(outpipe) == -1) {
@@ -418,6 +474,9 @@ static int start_ssh(const char *host, const char *port)
         perror("failed to fork");
         return -1;
     } else if (pid == 0) {
+        int argctr = 0;
+        char *ssh_args[sizeof(ssh_opts)/sizeof(struct opt) + 32];
+
         if (dup2(outpipe[0], 0) == -1 || dup2(inpipe[1], 1) == -1) {
             perror("failed to redirect input/output");
             exit(1);
@@ -426,8 +485,26 @@ static int start_ssh(const char *host, const char *port)
         close(inpipe[1]);
         close(outpipe[0]);
         close(outpipe[1]);
-        execlp("ssh", "ssh", "-2", "-x", "-a", "-oClearAllForwardings=yes",
-               host, "-s", "sftp", port ? "-p" : NULL, port, NULL);
+
+        ssh_args[argctr++] = "ssh";
+        ssh_args[argctr++] = "-2";
+        ssh_args[argctr++] = "-x";
+        ssh_args[argctr++] = "-a";
+        ssh_args[argctr++] = "-oClearAllForwardings=yes";
+        for (i = 0; ssh_opts[i].optname != NULL; i++) {
+            if (ssh_opts[i].present) {
+                char *val = ssh_opts[i].value;
+                char *sopt = g_strdup_printf("-o%s=%s", ssh_opts[i].optname,
+                                             val ? val : "");
+                ssh_args[argctr++] = sopt;
+            }
+        }
+        ssh_args[argctr++] = host;
+        ssh_args[argctr++] = "-s";
+        ssh_args[argctr++] = "sftp";
+        ssh_args[argctr++] = NULL;
+
+        execvp("ssh", ssh_args);
         exit(1);
     }
     close(inpipe[1]);
@@ -1080,22 +1157,20 @@ static void usage(const char *progname)
     fprintf(stderr,
             "usage: %s [user@]host:[dir]] mountpoint [options]\n"
             "\n"
-            "SSH Options:\n"
-            "    -p port             remote port\n"
-            "    -c port             directly connect to port bypassing ssh\n"
+            "SSHFS Options:\n"
+            "    -o directport=PORT  directly connect to port bypassing ssh\n"
+            "    -o SSHOPT=VAL       ssh options (see man ssh_config(5))\n"
             "\n", progname);
-    fuse_main(2, (char **) fusehelp, NULL);
+    fuse_main(2, (char **) fusehelp, &sshfs_oper.oper);
     exit(1);
 }
 
 int main(int argc, char *argv[])
 {
     char *host = NULL;
-    char *port = NULL;
     char *fsname;
     int res;
     int argctr;
-    int direct = 0;
     int newargc = 0;
     char **newargv = (char **) malloc((argc + 10) * sizeof(char *));
     newargv[newargc++] = argv[0];
@@ -1104,22 +1179,6 @@ int main(int argc, char *argv[])
         char *arg = argv[argctr];
         if (arg[0] == '-') {
             switch (arg[1]) {
-            case 'c':
-                direct = 1;
-                /* fallthrough */
-
-            case 'p':
-                if (arg[2])
-                    port = &arg[2];
-                else if (argctr + 1 < argc)
-                    port = argv[++argctr];
-                else {
-                    fprintf(stderr, "missing argument to %s option\n", arg);
-                    fprintf(stderr, "see `%s -h' for usage\n", argv[0]);
-                    exit(1);
-                }
-                break;
-
             case 'h':
                 usage(argv[0]);
                 break;
@@ -1146,10 +1205,13 @@ int main(int argc, char *argv[])
     else
         base_path = g_strdup(base_path);
 
-    if (!direct)
-        res = start_ssh(host, port);
-    else
-        res = connect_to(host, port);
+    process_options(&newargc, newargv, sshfs_opts, 1);
+    if (sshfs_opts[SOPT_DIRECTPORT].present)
+        res = connect_to(host, sshfs_opts[SOPT_DIRECTPORT].value);
+    else {
+        process_options(&newargc, newargv, ssh_opts, 0);
+        res = start_ssh(host);
+    }
     if (res == -1)
         exit(1);
 

@@ -1,6 +1,11 @@
 2005-02-08  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Add caching of symlinks
+	
+	* Add support for many ssh options to be passed to ssh
+
+	* Port number can now actually be specified with "-o port=PORT",
+	bug spotted by Nadia Maksymiw
 
 2005-02-07  Miklos Szeredi <miklos@szeredi.hu>
 

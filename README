@@ -36,6 +36,10 @@ for it (actually it just runs ssh which ask for the password if
 needed).  You can also specify a directory after the ":".  The default
 is the home directory.
 
+Also many ssh options can be specified (see the manual pages for
+sftp(1) and ssh_config(5)), including the remote port number
+('-oport=PORT')
+
 
 Installing
 ==========
