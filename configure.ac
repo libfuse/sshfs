@@ -3,7 +3,7 @@ AM_INIT_AUTOMAKE
 AM_CONFIG_HEADER(config.h)
 
 AC_PROG_CC
-export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
+export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
 PKG_CHECK_MODULES(SSHFS, [fuse >= 2.2 glib-2.0])
 CFLAGS="$CFLAGS -Wall -W -D_REENTRANT $SSHFS_CFLAGS"
 LIBS="$SSHFS_LIBS"

@@ -1,3 +1,8 @@
+2005-02-03  Miklos Szeredi <miklos@szeredi.hu>
+
+	Fix PKG_CONFIG_PATH setting in configure.ac (reported by Alpar
+	Juttner)
+	
 2005-01-09  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Released 1.0
