@@ -51,7 +51,7 @@ static int process_option_group(char *arg, struct opt opts[],
         remove_one = process_option(arg, opts, case_sensitive);
         if (remove_one) {
             if (comma)
-                memmove(arg, comma + 1, strlen(comma + 1));
+                memmove(arg, comma + 1, strlen(comma + 1) + 1);
         } else {
             remove = 0;
             if (comma)

@@ -773,8 +773,7 @@ static int sftp_request(uint8_t type, const struct buffer *buf,
     buf_free(&req->reply);
     sem_destroy(&req->ready);
     free(req);
-    return err;
-        
+    return err;        
 }
 
 static int sshfs_getattr(const char *path, struct stat *stbuf)
@@ -1184,12 +1183,12 @@ int main(int argc, char *argv[])
                 break;
                 
             default:
-                newargv[newargc++] = arg;
+                newargv[newargc++] = strdup(arg);
             }
         } else if (!host && strchr(arg, ':'))
             host = g_strdup(arg);
         else
-            newargv[newargc++] = arg;
+            newargv[newargc++] = strdup(arg);
     }
     if (!host) {
         fprintf(stderr, "missing host\n");
