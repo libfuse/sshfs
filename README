@@ -26,7 +26,7 @@ How to mount a filesystem
 
 Once sshfs is installed (see next section) running it is very simple:
 
-  sshfs hostname: /mountpoint
+  sshfs hostname: mountpoint
 
 Note, that it's recommended to run it as user, not as root.  For this
 to work the mountpoint must be owned by the user.  If the username is
@@ -39,6 +39,10 @@ is the home directory.
 Also many ssh options can be specified (see the manual pages for
 sftp(1) and ssh_config(5)), including the remote port number
 ('-oport=PORT')
+
+To unmount the filesystem:
+
+  fusermount -u moutpoint
 
 
 Installing
