@@ -1,3 +1,8 @@
+2005-02-17  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Parse 'max_read' mount option and if smaller than 65536 forward
+	to FUSE
+
 2005-02-16  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Added simple readahead (big performance gain in case of

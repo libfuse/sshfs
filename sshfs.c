@@ -187,6 +187,7 @@ enum {
     SOPT_SSHCMD,
     SOPT_SYNC_WRITE,
     SOPT_SYNC_READ,
+    SOPT_MAX_READ,
     SOPT_LAST /* Last entry in this list! */
 };
 
@@ -195,6 +196,7 @@ static struct opt sshfs_opts[] = {
     [SOPT_SSHCMD]     = { .optname = "ssh_command" },
     [SOPT_SYNC_WRITE] = { .optname = "sshfs_sync" },
     [SOPT_SYNC_READ]  = { .optname = "no_readahead" },
+    [SOPT_MAX_READ]   = { .optname = "max_read" },
     [SOPT_LAST]       = { .optname = NULL }
 };
 
@@ -1308,8 +1310,8 @@ static struct read_chunk *search_read_chunk(struct sshfs_file *sf, size_t size,
                                             off_t offset)
 {
     struct read_chunk *ch = sf->readahead;
-    if (ch && ch->size == size && ch->offset == offset) {
-        sf->readahead = NULL;
+    if (ch && ch->offset == offset && ch->size == size) {
+        ch->refs++;
         return ch;
     } else
         return NULL;
@@ -1485,6 +1487,7 @@ int main(int argc, char *argv[])
     char *fsname;
     int res;
     int argctr;
+    unsigned max_read = 65536;
     int newargc = 0;
     char **newargv = (char **) malloc((argc + 10) * sizeof(char *));
     newargv[newargc++] = argv[0];
@@ -1545,6 +1548,14 @@ int main(int argc, char *argv[])
         sync_write = 1;
     if (sshfs_opts[SOPT_SYNC_READ].present)
         sync_read = 1;
+    if (sshfs_opts[SOPT_MAX_READ].present) {
+        unsigned val;
+        if (opt_get_unsigned(&sshfs_opts[SOPT_MAX_READ], &val) == -1)
+            exit(1);
+        
+        if (val < max_read)
+            max_read = val;
+    }
     if (sshfs_opts[SOPT_DIRECTPORT].present)
         res = connect_to(host, sshfs_opts[SOPT_DIRECTPORT].value);
     else {
@@ -1567,7 +1578,7 @@ int main(int argc, char *argv[])
     if (res == -1)
         exit(1);
 
-    newargv[newargc++] = "-omax_read=65536";
+    newargv[newargc++] = g_strdup_printf("-omax_read=%u", max_read);
     newargv[newargc++] = g_strdup_printf("-ofsname=sshfs#%s", fsname);
     g_free(fsname);
     newargv[newargc] = NULL;

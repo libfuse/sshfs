@@ -7,6 +7,7 @@
 */
 
 #include "opts.h"
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <glib.h>
@@ -101,4 +102,21 @@ void process_options(int *argcp, char *argv[], struct opt opts[],
         }
     }
     *argcp = newargctr;
+}
+
+int opt_get_unsigned(const struct opt *o, unsigned *valp)
+{
+    char *end;
+    unsigned val;
+    if (!o->value || !o->value[0]) {
+        fprintf(stderr, "Missing value for '%s' option\n", o->optname);
+        return -1;
+    }
+    val = strtoul(o->value, &end, 0);
+    if (end[0]) {
+        fprintf(stderr, "Invalid value for '%s' option\n", o->optname);
+        return -1;
+    }
+    *valp = val;
+    return 0;
 }

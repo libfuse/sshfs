@@ -486,21 +486,11 @@ static struct opt cache_opts[] = {
 
 static int get_timeout(int sel, unsigned *timeoutp)
 {
-    char *end;
     struct opt *o = &cache_opts[sel];
-    unsigned val;
     if (!o->present)
         return 0;
-    if (!o->value || !o->value[0]) {
-        fprintf(stderr, "Missing value for '%s' option\n", o->optname);
+    if (opt_get_unsigned(o, timeoutp) == -1)
         return -1;
-    }
-    val = strtoul(o->value, &end, 10);
-    if (end[0]) {
-        fprintf(stderr, "Invalid value for '%s' option\n", o->optname);
-        return -1;
-    }
-    *timeoutp = val;
     return 1;
 }
 
