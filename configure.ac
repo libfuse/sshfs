@@ -1,4 +1,4 @@
-AC_INIT(sshfs-fuse, 1.1-pre1)
+AC_INIT(sshfs-fuse, 1.1)
 AM_INIT_AUTOMAKE
 AM_CONFIG_HEADER(config.h)
 

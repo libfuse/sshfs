@@ -132,6 +132,8 @@ struct sshfs_file {
     pthread_cond_t write_finished;
     int write_error;
     struct read_chunk *readahead;
+    off_t next_pos;
+    int is_seq;
 };
 
 static GHashTable *reqtab;
@@ -1136,6 +1138,9 @@ static int sshfs_open(const char *path, struct fuse_file_info *fi)
     sf = g_new0(struct sshfs_file, 1);
     list_init(&sf->write_reqs);
     pthread_cond_init(&sf->write_finished, NULL);
+    /* Assume random read after open */
+    sf->is_seq = 0;
+    sf->next_pos = 0;
     buf_init(&buf, 0);
     buf_add_path(&buf, path);
     buf_add_uint32(&buf, pflags);
@@ -1339,8 +1344,12 @@ static int sshfs_async_read(struct sshfs_file *sf, char *rbuf, size_t size,
     struct read_chunk *chunk;
     struct read_chunk *chunk_prev = NULL;
     size_t origsize = size;
-        
+    int curr_is_seq;
+
     pthread_mutex_lock(&lock);
+    curr_is_seq = sf->is_seq;
+    sf->is_seq = (sf->next_pos == offset);
+    sf->next_pos = offset + size;
     chunk = search_read_chunk(sf, offset);
     pthread_mutex_unlock(&lock);
 
@@ -1354,7 +1363,7 @@ static int sshfs_async_read(struct sshfs_file *sf, char *rbuf, size_t size,
     if (!chunk)
         res = submit_read(sf, size, offset, &chunk);
 
-    if (chunk && chunk->size <= size)
+    if (curr_is_seq && chunk && chunk->size <= size)
         submit_read(sf, origsize, offset + size, &sf->readahead);
 
     if (chunk_prev) {
@@ -1542,12 +1551,21 @@ int main(int argc, char *argv[])
         char *arg = argv[argctr];
         if (arg[0] == '-') {
             switch (arg[1]) {
+            case '-':
+                if (strcmp(arg+2, "help") == 0)
+                    goto help;
+                else if (strcmp(arg+2, "version") == 0)
+                    goto version;
+                break;
+
             case 'V':
+            version:
                 fprintf(stderr, "SSHFS version %s\n", PACKAGE_VERSION);
                 exit(0);
                 break;
 
             case 'h':
+            help:
                 usage(argv[0]);
                 break;
                 
