@@ -5,7 +5,7 @@ AM_CONFIG_HEADER(config.h)
 AC_PROG_CC
 export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
 PKG_CHECK_MODULES(SSHFS, [fuse >= 2.2 glib-2.0])
-CFLAGS="-Wall -W -g  -D_REENTRANT $SSHFS_CFLAGS"
+CFLAGS="$CFLAGS -Wall -W -D_REENTRANT $SSHFS_CFLAGS"
 LIBS="$SSHFS_LIBS"
 
 AC_CONFIG_FILES([Makefile])
