@@ -110,9 +110,13 @@ struct openfile {
     struct buffer write_handle;
 };
 
-struct node {
+struct node_attr {
     struct stat stat;
     time_t updated;
+};
+
+struct sshfs_file {
+    struct buffer handle;
 };
 
 static GHashTable *reqtab;
@@ -375,7 +379,7 @@ static int buf_get_attrs(struct buffer *buf, struct stat *stbuf)
     return 0;
 }
 
-static int cache_clean_entry(void *_key, struct node *node, time_t *now)
+static int cache_clean_entry(void *_key, struct node_attr *node, time_t *now)
 {
     (void) _key;
     if (*now > node->updated + CACHE_TIMEOUT)
@@ -394,9 +398,9 @@ static void cache_clean(void)
     }
 }
 
-static struct node *cache_lookup(const char *path)
+static struct node_attr *cache_lookup(const char *path)
 {
-    return (struct node *) g_hash_table_lookup(cache, path);    
+    return (struct node_attr *) g_hash_table_lookup(cache, path);    
 }
 
 static void cache_remove(const char *path)
@@ -417,12 +421,12 @@ static void cache_rename(const char *from, const char *to)
     cache_remove(to);
 }
 
-static struct node *cache_get(const char *path)
+static struct node_attr *cache_get(const char *path)
 {
-    struct node *node = cache_lookup(path);
+    struct node_attr *node = cache_lookup(path);
     if (node == NULL) {
         char *pathcopy = g_strdup(path);
-        node = g_new0(struct node, 1);
+        node = g_new0(struct node_attr, 1);
         g_hash_table_insert(cache, pathcopy, node);
     }
     return node;
@@ -430,7 +434,7 @@ static struct node *cache_get(const char *path)
 
 static void cache_add_attr(const char *path, const struct stat *stbuf)
 {
-    struct node *node;
+    struct node_attr *node;
     time_t now;
 
     pthread_mutex_lock(&lock);
@@ -797,7 +801,7 @@ static int sshfs_send_getattr(const char *path, struct stat *stbuf)
 
 static int sshfs_getattr(const char *path, struct stat *stbuf)
 {
-    struct node *node;
+    struct node_attr *node;
 
     pthread_mutex_lock(&lock);
     node = cache_lookup(path);
@@ -1029,7 +1033,7 @@ static int sshfs_open(const char *path, struct fuse_file_info *fi)
 {
     int err;
     struct buffer buf;
-    struct buffer *handle;
+    struct sshfs_file *sf;
     uint32_t pflags = 0;
     if ((fi->flags & O_ACCMODE) == O_RDONLY)
         pflags = SSH_FXF_READ;
@@ -1040,28 +1044,29 @@ static int sshfs_open(const char *path, struct fuse_file_info *fi)
     else
         return -EINVAL;
 
-    handle = g_new0(struct buffer, 1);
+    sf = g_new0(struct sshfs_file, 1);
     buf_init(&buf, 0);
     buf_add_path(&buf, path);
     buf_add_uint32(&buf, pflags);
     buf_add_uint32(&buf, 0);
-    err = sftp_request(SSH_FXP_OPEN, &buf, SSH_FXP_HANDLE, handle);
+    err = sftp_request(SSH_FXP_OPEN, &buf, SSH_FXP_HANDLE, &sf->handle);
     if (!err) {
-        buf_finish(handle);
-        fi->fh = (unsigned long) handle;
+        buf_finish(&sf->handle);
+        fi->fh = (unsigned long) sf;
     } else
-        g_free(handle);
+        g_free(sf);
     buf_free(&buf);
     return err;
 }
 
 static int sshfs_release(const char *path, struct fuse_file_info *fi)
 {
-    struct buffer *handle = (struct buffer *) fi->fh;
+    struct sshfs_file *sf = (struct sshfs_file *) fi->fh;
+    struct buffer *handle = &sf->handle;
     (void) path;
     sftp_request(SSH_FXP_CLOSE, handle, 0, NULL);
     buf_free(handle);
-    g_free(handle);
+    g_free(sf);
     return 0;
 }
 
@@ -1071,7 +1076,8 @@ static int sshfs_read(const char *path, char *rbuf, size_t size, off_t offset,
     int err;
     struct buffer buf;
     struct buffer data;
-    struct buffer *handle = (struct buffer *) fi->fh;
+    struct sshfs_file *sf = (struct sshfs_file *) fi->fh;
+    struct buffer *handle = &sf->handle;
     (void) path;
     buf_init(&buf, 0);
     buf_add_buf(&buf, handle);
@@ -1102,7 +1108,8 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
     int err;
     struct buffer buf;
     struct buffer data;
-    struct buffer *handle = (struct buffer *) fi->fh;
+    struct sshfs_file *sf = (struct sshfs_file *) fi->fh;
+    struct buffer *handle = &sf->handle;
     data.p = (uint8_t *) wbuf;
     data.len = size;
     buf_init(&buf, 0);
