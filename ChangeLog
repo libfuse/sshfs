@@ -1,3 +1,8 @@
+2005-02-14  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Added asynchronous writeback (big performance gain) and made
+	this the default.  Can be disabled with '-o sshfs_sync'
+ 
 2005-02-09  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Added option to start arbitary command instead of 'ssh'
