@@ -1,6 +1,12 @@
+2005-02-08  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Add caching of symlinks
+
 2005-02-07  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Separate attribute caching to a separate layer
+
+	* Add caching of directory contents
 
 2005-02-03  Miklos Szeredi <miklos@szeredi.hu>
 

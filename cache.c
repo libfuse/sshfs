@@ -8,12 +8,14 @@
 
 #include "cache.h"
 #include <stdio.h>
+#include <string.h>
 #include <errno.h>
 #include <glib.h>
 #include <pthread.h>
 
 #define CACHE_TIMEOUT 20
 #define MAX_CACHE_SIZE 10000
+#define MIN_CACHE_CLEAN_INTERVAL 5
 #define CACHE_CLEAN_INTERVAL 60
 
 struct node {
@@ -21,6 +23,8 @@ struct node {
     time_t stat_valid;
     char **dir;
     time_t dir_valid;
+    char *link;
+    time_t link_valid;
     time_t valid;
 };
 
@@ -55,8 +59,9 @@ static int cache_clean_entry(void *key_, struct node *node, time_t *now)
 static void cache_clean(void)
 {
     time_t now = time(NULL);
-    if (g_hash_table_size(cache) > MAX_CACHE_SIZE ||
-        now > last_cleaned + CACHE_CLEAN_INTERVAL) {
+    if (now > last_cleaned + MIN_CACHE_CLEAN_INTERVAL &&
+         (g_hash_table_size(cache) > MAX_CACHE_SIZE ||
+          now > last_cleaned + CACHE_CLEAN_INTERVAL)) {
         g_hash_table_foreach_remove(cache, (GHRFunc) cache_clean_entry, &now);
         last_cleaned = now;
     }
@@ -67,22 +72,48 @@ static struct node *cache_lookup(const char *path)
     return (struct node *) g_hash_table_lookup(cache, path);    
 }
 
-static void cache_remove(const char *path)
+static void cache_purge(const char *path)
 {
-    pthread_mutex_lock(&cache_lock);
-    g_hash_table_remove(cache, path);
-    pthread_mutex_unlock(&cache_lock);
+    g_hash_table_remove(cache, path);    
+}
+
+static void cache_purge_parent(const char *path)
+{
+    const char *s = strrchr(path, '/');
+    if (s) {
+        if (s == path)
+            g_hash_table_remove(cache, "/");
+        else {
+            char *parent = g_strndup(path, s - path);
+            cache_purge(parent);
+            g_free(parent);
+        }
+    }
 }
 
 static void cache_invalidate(const char *path)
 {
-    cache_remove(path);
+    pthread_mutex_lock(&cache_lock);
+    cache_purge(path);
+    pthread_mutex_unlock(&cache_lock);
+}
+
+static void cache_invalidate_dir(const char *path)
+{
+    pthread_mutex_lock(&cache_lock);
+    cache_purge(path);
+    cache_purge_parent(path);
+    pthread_mutex_unlock(&cache_lock);
 }
 
 static void cache_do_rename(const char *from, const char *to)
 {
-    cache_remove(from);
-    cache_remove(to);
+    pthread_mutex_lock(&cache_lock);
+    cache_purge(from);
+    cache_purge(to);
+    cache_purge_parent(from);
+    cache_purge_parent(to);
+    pthread_mutex_unlock(&cache_lock);
 }
 
 static struct node *cache_get(const char *path)
@@ -129,6 +160,30 @@ static void cache_add_dir(const char *path, char **dir)
     pthread_mutex_unlock(&cache_lock);
 }
 
+static size_t my_strnlen(const char *s, size_t maxsize)
+{
+    const char *p;
+    for (p = s; maxsize && *p; maxsize--, p++);
+    return p - s;
+}
+
+static void cache_add_link(const char *path, const char *link, size_t size)
+{
+    struct node *node;
+    time_t now;
+
+    pthread_mutex_lock(&cache_lock);
+    node = cache_get(path);
+    now = time(NULL);
+    g_free(node->link);
+    node->link = g_strndup(link, my_strnlen(link, size-1));
+    node->link_valid = time(NULL) + CACHE_TIMEOUT;
+    if (node->link_valid > node->valid)
+        node->valid = node->link_valid;
+    cache_clean();
+    pthread_mutex_unlock(&cache_lock);
+}
+
 static int cache_getattr(const char *path, struct stat *stbuf)
 {
     struct node *node;
@@ -150,6 +205,30 @@ static int cache_getattr(const char *path, struct stat *stbuf)
         cache_add_attr(path, stbuf);
 
     return err;
+}
+
+static int cache_readlink(const char *path, char *buf, size_t size)
+{
+    struct node *node;
+    int err;
+    
+    pthread_mutex_lock(&cache_lock);
+    node = cache_lookup(path);
+    if (node != NULL) {
+        time_t now = time(NULL);
+        if (node->link_valid - now >= 0) {
+            strncpy(buf, node->link, size-1);
+            buf[size-1] = '\0';
+            pthread_mutex_unlock(&cache_lock);
+            return 0;
+        }
+    }
+    pthread_mutex_unlock(&cache_lock);
+    err = next_oper->oper.readlink(path, buf, size);
+    if (!err)
+        cache_add_link(path, buf, size);
+
+    return err;    
 }
 
 static int cache_dirfill(fuse_cache_dirh_t ch, const char *name,
@@ -201,11 +280,27 @@ static int cache_getdir(const char *path, fuse_dirh_t h, fuse_dirfil_t filler)
     return err;
 }
 
+static int cache_mknod(const char *path, mode_t mode, dev_t rdev)
+{
+    int err = next_oper->oper.mknod(path, mode, rdev);
+    if (!err)
+        cache_invalidate_dir(path);
+    return err;
+}
+
+static int cache_mkdir(const char *path, mode_t mode)
+{
+    int err = next_oper->oper.mkdir(path, mode);
+    if (!err)
+        cache_invalidate_dir(path);
+    return err;
+}
+
 static int cache_unlink(const char *path)
 {
     int err = next_oper->oper.unlink(path);
     if (!err)
-        cache_remove(path);
+        cache_invalidate_dir(path);
     return err;
 }
 
@@ -213,7 +308,15 @@ static int cache_rmdir(const char *path)
 {
     int err = next_oper->oper.rmdir(path);
     if (!err)
-        cache_remove(path);
+        cache_invalidate_dir(path);
+    return err;
+}
+
+static int cache_symlink(const char *from, const char *to)
+{
+    int err = next_oper->oper.symlink(from, to);
+    if (!err)
+        cache_invalidate_dir(to);
     return err;
 }
 
@@ -222,6 +325,16 @@ static int cache_rename(const char *from, const char *to)
     int err = next_oper->oper.rename(from, to);
     if (!err)
         cache_do_rename(from, to);
+    return err;
+}
+
+static int cache_link(const char *from, const char *to)
+{
+    int err = next_oper->oper.link(from, to);
+    if (!err) {
+        cache_invalidate(from);
+        cache_invalidate_dir(to);
+    }
     return err;
 }
 
@@ -257,6 +370,14 @@ static int cache_utime(const char *path, struct utimbuf *buf)
     return err;
 }
 
+static int cache_write(const char *path, const char *buf, size_t size,
+                       off_t offset, struct fuse_file_info *fi)
+{
+    int res = next_oper->oper.write(path, buf, size, offset, fi);
+    if (res >= 0)
+        cache_invalidate(path);
+    return res;
+}
 
 struct fuse_operations *cache_init(struct fuse_cache_operations *oper)
 {
@@ -264,22 +385,22 @@ struct fuse_operations *cache_init(struct fuse_cache_operations *oper)
     next_oper = oper;
 
     cache_oper.getattr  = oper->oper.getattr ? cache_getattr : NULL;
-    cache_oper.readlink = oper->oper.readlink;
+    cache_oper.readlink = oper->oper.readlink ? cache_readlink : NULL;
     cache_oper.getdir   = oper->cache_getdir ? cache_getdir : oper->oper.getdir;
-    cache_oper.mknod    = oper->oper.mknod;
-    cache_oper.mkdir    = oper->oper.mkdir;
-    cache_oper.symlink  = oper->oper.symlink;
+    cache_oper.mknod    = oper->oper.mknod ? cache_mknod : NULL;
+    cache_oper.mkdir    = oper->oper.mkdir ? cache_mkdir : NULL;
+    cache_oper.symlink  = oper->oper.symlink ? cache_symlink : NULL;
     cache_oper.unlink   = oper->oper.unlink ? cache_unlink : NULL;
     cache_oper.rmdir    = oper->oper.rmdir ? cache_rmdir : NULL;
     cache_oper.rename   = oper->oper.rename ? cache_rename : NULL;
-    cache_oper.link     = oper->oper.link;
+    cache_oper.link     = oper->oper.link ? cache_link : NULL;
     cache_oper.chmod    = oper->oper.chmod ? cache_chmod : NULL;
     cache_oper.chown    = oper->oper.chown ? cache_chown : NULL;
     cache_oper.truncate = oper->oper.truncate ? cache_truncate : NULL;
     cache_oper.utime    = oper->oper.utime ? cache_utime : NULL;
     cache_oper.open     = oper->oper.open;
     cache_oper.read     = oper->oper.read;
-    cache_oper.write    = oper->oper.write;
+    cache_oper.write    = oper->oper.write ? cache_write : NULL;
     cache_oper.statfs   = oper->oper.statfs;
     cache_oper.release  = oper->oper.release;
     cache_oper.fsync    = oper->oper.fsync;
