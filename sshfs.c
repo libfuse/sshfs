@@ -1163,16 +1163,19 @@ static void usage(const char *progname)
     const char *fusehelp[] = { progname, "-ho", NULL };
 
     fprintf(stderr,
-            "usage: %s [user@]host:[dir]] mountpoint [options]\n"
-            "\n"
-            "SSHFS Options:\n"
-            "    -V                  show version information\n"
-            "    -p PORT             equivalent to '-o port=PORT'\n"
-            "    -C                  equivalent to '-o compression=yes'\n"
-            "    -o ssh_command=CMD  execute CMD instead of 'ssh'\n"
-            "    -o directport=PORT  directly connect to port bypassing ssh\n"
-            "    -o SSHOPT=VAL       ssh options (see man ssh_config)\n"
-            "\n", progname);
+"usage: %s [user@]host:[dir]] mountpoint [options]\n"
+"\n"
+"SSHFS Options:\n"
+"    -V                     show version information\n"
+"    -p PORT                equivalent to '-o port=PORT'\n"
+"    -C                     equivalent to '-o compression=yes'\n"
+"    -o cache=YESNO         Enable caching {yes,no} (default: yes)\n"
+"    -o cache_timeout=N     sets timeout for caches in seconds (default: 20)\n"
+"    -o cache_X_timeout=N   sets timeout for {stat,dir,link} cache\n"
+"    -o ssh_command=CMD     execute CMD instead of 'ssh'\n"
+"    -o directport=PORT     directly connect to PORT bypassing ssh\n"
+"    -o SSHOPT=VAL          ssh options (see man ssh_config)\n"
+"\n", progname);
     fuse_main(2, (char **) fusehelp, &sshfs_oper.oper);
     exit(1);
 }
@@ -1254,6 +1257,10 @@ int main(int argc, char *argv[])
         exit(1);
 
     res = processing_init();
+    if (res == -1)
+        exit(1);
+
+    res = cache_parse_options(&newargc, newargv);
     if (res == -1)
         exit(1);
 

@@ -8,15 +8,23 @@
 
 #include "cache.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <glib.h>
 #include <pthread.h>
 
-#define CACHE_TIMEOUT 20
+#include "opts.h"
+
+#define DEFAULT_CACHE_TIMEOUT 20
 #define MAX_CACHE_SIZE 10000
 #define MIN_CACHE_CLEAN_INTERVAL 5
 #define CACHE_CLEAN_INTERVAL 60
+
+static int cache_on = 1;
+static unsigned cache_stat_timeout = DEFAULT_CACHE_TIMEOUT;
+static unsigned cache_dir_timeout = DEFAULT_CACHE_TIMEOUT;
+static unsigned cache_link_timeout = DEFAULT_CACHE_TIMEOUT;
 
 struct node {
     struct stat stat;
@@ -136,7 +144,7 @@ static void cache_add_attr(const char *path, const struct stat *stbuf)
     node = cache_get(path);
     now = time(NULL);
     node->stat = *stbuf;
-    node->stat_valid = time(NULL) + CACHE_TIMEOUT;
+    node->stat_valid = time(NULL) + cache_stat_timeout;
     if (node->stat_valid > node->valid)
         node->valid = node->stat_valid;
     cache_clean();
@@ -153,7 +161,7 @@ static void cache_add_dir(const char *path, char **dir)
     now = time(NULL);
     g_strfreev(node->dir);
     node->dir = dir;
-    node->dir_valid = time(NULL) + CACHE_TIMEOUT;
+    node->dir_valid = time(NULL) + cache_dir_timeout;
     if (node->dir_valid > node->valid)
         node->valid = node->dir_valid;
     cache_clean();
@@ -177,7 +185,7 @@ static void cache_add_link(const char *path, const char *link, size_t size)
     now = time(NULL);
     g_free(node->link);
     node->link = g_strndup(link, my_strnlen(link, size-1));
-    node->link_valid = time(NULL) + CACHE_TIMEOUT;
+    node->link_valid = time(NULL) + cache_link_timeout;
     if (node->link_valid > node->valid)
         node->valid = node->link_valid;
     cache_clean();
@@ -280,6 +288,22 @@ static int cache_getdir(const char *path, fuse_dirh_t h, fuse_dirfil_t filler)
     return err;
 }
 
+static int cache_unity_dirfill(fuse_cache_dirh_t ch, const char *name,
+                               const struct stat *stbuf)
+{
+    (void) stbuf;
+    return ch->filler(ch->h, name, 0, 0);
+}
+
+static int cache_unity_getdir(const char *path, fuse_dirh_t h,
+                              fuse_dirfil_t filler)
+{
+    struct fuse_cache_dirhandle ch;
+    ch.h = h;
+    ch.filler = filler;
+    return next_oper->cache_getdir(path, &ch, cache_unity_dirfill);
+}
+
 static int cache_mknod(const char *path, mode_t mode, dev_t rdev)
 {
     int err = next_oper->oper.mknod(path, mode, rdev);
@@ -379,40 +403,134 @@ static int cache_write(const char *path, const char *buf, size_t size,
     return res;
 }
 
+static void cache_unity_fill(struct fuse_cache_operations *oper,
+                             struct fuse_operations *cache_oper)
+{
+    cache_oper->getattr     = oper->oper.getattr;
+    cache_oper->readlink    = oper->oper.readlink;
+    cache_oper->getdir      = cache_unity_getdir;
+    cache_oper->mknod       = oper->oper.mknod;
+    cache_oper->mkdir       = oper->oper.mkdir;
+    cache_oper->symlink     = oper->oper.symlink;
+    cache_oper->unlink      = oper->oper.unlink;
+    cache_oper->rmdir       = oper->oper.rmdir;
+    cache_oper->rename      = oper->oper.rename;
+    cache_oper->link        = oper->oper.link;
+    cache_oper->chmod       = oper->oper.chmod;
+    cache_oper->chown       = oper->oper.chown;
+    cache_oper->truncate    = oper->oper.truncate;
+    cache_oper->utime       = oper->oper.utime;
+    cache_oper->open        = oper->oper.open;
+    cache_oper->read        = oper->oper.read;
+    cache_oper->write       = oper->oper.write;
+    cache_oper->flush       = oper->oper.flush;
+    cache_oper->release     = oper->oper.release;
+    cache_oper->fsync       = oper->oper.fsync;
+    cache_oper->statfs      = oper->oper.statfs;
+    cache_oper->setxattr    = oper->oper.setxattr;
+    cache_oper->getxattr    = oper->oper.getxattr;
+    cache_oper->listxattr   = oper->oper.listxattr;
+    cache_oper->removexattr = oper->oper.removexattr;
+}
+
 struct fuse_operations *cache_init(struct fuse_cache_operations *oper)
 {
     static struct fuse_operations cache_oper;
     next_oper = oper;
 
-    cache_oper.getattr  = oper->oper.getattr ? cache_getattr : NULL;
-    cache_oper.readlink = oper->oper.readlink ? cache_readlink : NULL;
-    cache_oper.getdir   = oper->cache_getdir ? cache_getdir : oper->oper.getdir;
-    cache_oper.mknod    = oper->oper.mknod ? cache_mknod : NULL;
-    cache_oper.mkdir    = oper->oper.mkdir ? cache_mkdir : NULL;
-    cache_oper.symlink  = oper->oper.symlink ? cache_symlink : NULL;
-    cache_oper.unlink   = oper->oper.unlink ? cache_unlink : NULL;
-    cache_oper.rmdir    = oper->oper.rmdir ? cache_rmdir : NULL;
-    cache_oper.rename   = oper->oper.rename ? cache_rename : NULL;
-    cache_oper.link     = oper->oper.link ? cache_link : NULL;
-    cache_oper.chmod    = oper->oper.chmod ? cache_chmod : NULL;
-    cache_oper.chown    = oper->oper.chown ? cache_chown : NULL;
-    cache_oper.truncate = oper->oper.truncate ? cache_truncate : NULL;
-    cache_oper.utime    = oper->oper.utime ? cache_utime : NULL;
-    cache_oper.open     = oper->oper.open;
-    cache_oper.read     = oper->oper.read;
-    cache_oper.write    = oper->oper.write ? cache_write : NULL;
-    cache_oper.statfs   = oper->oper.statfs;
-    cache_oper.release  = oper->oper.release;
-    cache_oper.fsync    = oper->oper.fsync;
-    cache_oper.setxattr = oper->oper.setxattr;
-    cache_oper.getxattr = oper->oper.getxattr;
-    cache_oper.listxattr = oper->oper.listxattr;
-    cache_oper.removexattr = oper->oper.removexattr;
-    pthread_mutex_init(&cache_lock, NULL);
-    cache = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, free_node);
-    if (cache == NULL) {
-        fprintf(stderr, "failed to create cache\n");
-        return NULL;
+    cache_unity_fill(oper, &cache_oper);
+    if (cache_on) {
+        cache_oper.getattr  = oper->oper.getattr ? cache_getattr : NULL;
+        cache_oper.readlink = oper->oper.readlink ? cache_readlink : NULL;
+        cache_oper.getdir   = oper->cache_getdir ? cache_getdir : NULL;
+        cache_oper.mknod    = oper->oper.mknod ? cache_mknod : NULL;
+        cache_oper.mkdir    = oper->oper.mkdir ? cache_mkdir : NULL;
+        cache_oper.symlink  = oper->oper.symlink ? cache_symlink : NULL;
+        cache_oper.unlink   = oper->oper.unlink ? cache_unlink : NULL;
+        cache_oper.rmdir    = oper->oper.rmdir ? cache_rmdir : NULL;
+        cache_oper.rename   = oper->oper.rename ? cache_rename : NULL;
+        cache_oper.link     = oper->oper.link ? cache_link : NULL;
+        cache_oper.chmod    = oper->oper.chmod ? cache_chmod : NULL;
+        cache_oper.chown    = oper->oper.chown ? cache_chown : NULL;
+        cache_oper.truncate = oper->oper.truncate ? cache_truncate : NULL;
+        cache_oper.utime    = oper->oper.utime ? cache_utime : NULL;
+        cache_oper.write    = oper->oper.write ? cache_write : NULL;
+        pthread_mutex_init(&cache_lock, NULL);
+        cache = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
+                                      free_node);
+        if (cache == NULL) {
+            fprintf(stderr, "failed to create cache\n");
+            return NULL;
+        }
     }
     return &cache_oper;
+}
+
+enum {
+    COPT_CACHE,
+    COPT_TIMEOUT,
+    COPT_STAT_TIMEOUT,
+    COPT_DIR_TIMEOUT,
+    COPT_LINK_TIMEOUT,
+    COPT_LAST /* Last entry in this list! */
+};
+
+static struct opt cache_opts[] = {
+    [COPT_CACHE] =        { .optname = "cache" },
+    [COPT_TIMEOUT] =      { .optname = "cache_timeout" },
+    [COPT_STAT_TIMEOUT] = { .optname = "cache_stat_timeout" },
+    [COPT_DIR_TIMEOUT]  = { .optname = "cache_dir_timeout" },
+    [COPT_LINK_TIMEOUT] = { .optname = "cache_link_timeout" },
+    [COPT_LAST] =         { .optname = NULL }
+};
+
+static int get_timeout(int sel, unsigned *timeoutp)
+{
+    char *end;
+    struct opt *o = &cache_opts[sel];
+    unsigned val;
+    if (!o->present)
+        return 0;
+    if (!o->value || !o->value[0]) {
+        fprintf(stderr, "Missing value for '%s' option\n", o->optname);
+        return -1;
+    }
+    val = strtoul(o->value, &end, 10);
+    if (end[0]) {
+        fprintf(stderr, "Invalid value for '%s' option\n", o->optname);
+        return -1;
+    }
+    *timeoutp = val;
+    return 1;
+}
+
+int cache_parse_options(int *argcp, char *argv[])
+{
+    unsigned timeout;
+    int res;
+    process_options(argcp, argv, cache_opts, 1);
+    if (cache_opts[COPT_CACHE].present) {
+        char *val = cache_opts[COPT_CACHE].value;
+        if (!val || !val[0] || 
+            (strcmp(val, "yes") != 0 && strcmp(val, "no") != 0)) {
+            fprintf(stderr, "Invalid or missing value for 'cache' option\n");
+            return -1;
+        }
+        if (strcmp(val, "yes") == 0)
+            cache_on = 1;
+        else
+            cache_on = 0;
+    }
+    if ((res = get_timeout(COPT_TIMEOUT, &timeout)) == -1)
+        return -1;
+    if (res == 1) {
+        cache_stat_timeout = timeout;
+        cache_dir_timeout = timeout;
+        cache_link_timeout = timeout;
+    }
+    if(get_timeout(COPT_STAT_TIMEOUT, &cache_stat_timeout) == -1 ||
+       get_timeout(COPT_DIR_TIMEOUT, &cache_dir_timeout) == -1 ||
+       get_timeout(COPT_LINK_TIMEOUT, &cache_link_timeout) == -1)
+        return -1;
+    return 0;
 }
