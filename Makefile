@@ -4,16 +4,12 @@ CFLAGS := -Wall -W -g
 LDLIBS := -lpthread -ldl -rdynamic
 
 PKGCONFIG := env PKG_CONFIG_PATH=/usr/local/lib/pkgconfig pkg-config
-FUSEVER := $(shell $(PKGCONFIG) --modversion fuse 2> /dev/null)
-ifeq ($(FUSEVER),)
-	LDLIBS += -lfuse
-else
-	CFLAGS += $(shell $(PKGCONFIG) --cflags fuse)
-	LDLIBS += $(shell $(PKGCONFIG) --libs fuse)
-endif
+CFLAGS += $(shell $(PKGCONFIG) --cflags fuse)
+LDLIBS += $(shell $(PKGCONFIG) --libs fuse)
+CFLAGS += $(shell $(PKGCONFIG) --cflags glib-2.0)
+LDLIBS += $(shell $(PKGCONFIG) --libs glib-2.0)
 
-CPPFLAGS := -D_FILE_OFFSET_BITS=64
-#CPPFLAGS += -DDEBUG
+CPPFLAGS := -D_FILE_OFFSET_BITS=64 -D_REENTRANT
 
 sshfs: sshfs.o 
 
