@@ -17,9 +17,11 @@
 #define MAX_CACHE_SIZE 10000
 #define CACHE_CLEAN_INTERVAL 60
 
-struct node_attr {
+struct node {
     struct stat stat;
     time_t stat_valid;
+    char **dir;
+    time_t dir_valid;
     time_t valid;
 };
 
@@ -27,6 +29,7 @@ struct fuse_cache_dirhandle {
     const char *path;
     fuse_dirh_t h;
     fuse_dirfil_t filler;
+    GPtrArray *dir;
 };
 
 static struct fuse_cache_operations *next_oper;
@@ -34,9 +37,16 @@ static GHashTable *cache;
 static pthread_mutex_t cache_lock;
 static time_t last_cleaned;
 
-static int cache_clean_entry(void *_key, struct node_attr *node, time_t *now)
+static void free_node(gpointer node_)
 {
-    (void) _key;
+    struct node *node = (struct node *) node_;
+    g_strfreev(node->dir);
+    g_free(node);
+}
+
+static int cache_clean_entry(void *key_, struct node *node, time_t *now)
+{
+    (void) key_;
     if (*now > node->valid)
         return TRUE;
     else
@@ -53,9 +63,9 @@ static void cache_clean(void)
     }
 }
 
-static struct node_attr *cache_lookup(const char *path)
+static struct node *cache_lookup(const char *path)
 {
-    return (struct node_attr *) g_hash_table_lookup(cache, path);    
+    return (struct node *) g_hash_table_lookup(cache, path);    
 }
 
 static void cache_remove(const char *path)
@@ -76,12 +86,12 @@ static void cache_do_rename(const char *from, const char *to)
     cache_remove(to);
 }
 
-static struct node_attr *cache_get(const char *path)
+static struct node *cache_get(const char *path)
 {
-    struct node_attr *node = cache_lookup(path);
+    struct node *node = cache_lookup(path);
     if (node == NULL) {
         char *pathcopy = g_strdup(path);
-        node = g_new0(struct node_attr, 1);
+        node = g_new0(struct node, 1);
         g_hash_table_insert(cache, pathcopy, node);
     }
     return node;
@@ -89,7 +99,7 @@ static struct node_attr *cache_get(const char *path)
 
 static void cache_add_attr(const char *path, const struct stat *stbuf)
 {
-    struct node_attr *node;
+    struct node *node;
     time_t now;
 
     pthread_mutex_lock(&cache_lock);
@@ -103,16 +113,33 @@ static void cache_add_attr(const char *path, const struct stat *stbuf)
     pthread_mutex_unlock(&cache_lock);
 }
 
+static void cache_add_dir(const char *path, char **dir)
+{
+    struct node *node;
+    time_t now;
+
+    pthread_mutex_lock(&cache_lock);
+    node = cache_get(path);
+    now = time(NULL);
+    g_strfreev(node->dir);
+    node->dir = dir;
+    node->dir_valid = time(NULL) + CACHE_TIMEOUT;
+    if (node->dir_valid > node->valid)
+        node->valid = node->dir_valid;
+    cache_clean();
+    pthread_mutex_unlock(&cache_lock);
+}
+
 static int cache_getattr(const char *path, struct stat *stbuf)
 {
-    struct node_attr *node;
+    struct node *node;
     int err;
     
     pthread_mutex_lock(&cache_lock);
     node = cache_lookup(path);
     if (node != NULL) {
         time_t now = time(NULL);
-        if (node->valid - now >= 0) {
+        if (node->stat_valid - now >= 0) {
             *stbuf = node->stat;
             pthread_mutex_unlock(&cache_lock);
             return 0;
@@ -131,6 +158,7 @@ static int cache_dirfill(fuse_cache_dirh_t ch, const char *name,
 {
     int err = ch->filler(ch->h, name, 0, 0);
     if (!err) {
+        g_ptr_array_add(ch->dir, g_strdup(name));
         char *fullpath = g_strdup_printf("%s/%s",
                                          !ch->path[1] ? "" : ch->path, name);
         cache_add_attr(fullpath, stbuf);
@@ -142,10 +170,36 @@ static int cache_dirfill(fuse_cache_dirh_t ch, const char *name,
 static int cache_getdir(const char *path, fuse_dirh_t h, fuse_dirfil_t filler)
 {
     struct fuse_cache_dirhandle ch;
+    int err;
+    char **dir;
+    struct node *node;
+
+    pthread_mutex_lock(&cache_lock);
+    node = cache_lookup(path);
+    if (node != NULL && node->dir != NULL) {
+        time_t now = time(NULL);
+        if (node->dir_valid - now >= 0) {
+            for(dir = node->dir; *dir != NULL; dir++)
+                filler(h, *dir, 0, 0);
+            pthread_mutex_unlock(&cache_lock);
+            return 0;
+        }
+    }
+    pthread_mutex_unlock(&cache_lock);
+ 
     ch.path = path;
     ch.h = h;
     ch.filler = filler;
-    return next_oper->cache_getdir(path, &ch, cache_dirfill);
+    ch.dir = g_ptr_array_new();
+    err = next_oper->cache_getdir(path, &ch, cache_dirfill);
+    g_ptr_array_add(ch.dir, NULL);
+    dir = (char **) ch.dir->pdata;
+    if (!err)
+        cache_add_dir(path, dir);
+    else
+        g_strfreev(dir);
+    g_ptr_array_free(ch.dir, FALSE);
+    return err;
 }
 
 static int cache_unlink(const char *path)
@@ -235,7 +289,7 @@ struct fuse_operations *cache_init(struct fuse_cache_operations *oper)
     cache_oper.listxattr = oper->oper.listxattr;
     cache_oper.removexattr = oper->oper.removexattr;
     pthread_mutex_init(&cache_lock, NULL);
-    cache = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    cache = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, free_node);
     if (cache == NULL) {
         fprintf(stderr, "failed to create cache\n");
         return NULL;
