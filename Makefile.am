@@ -2,3 +2,4 @@
 
 bin_PROGRAMS = sshfs
 sshfs_SOURCES = sshfs.c cache.c
+sshfs_CPPFLAGS = -DFUSE_USE_VERSION=22

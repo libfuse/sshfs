@@ -6,7 +6,6 @@
     See the file COPYING.
 */
 
-#define FUSE_USE_VERSION 22
 #include <fuse.h>
 #include <stdio.h>
 #include <stdlib.h>

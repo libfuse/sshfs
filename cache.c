@@ -6,7 +6,6 @@
     See the file COPYING.
 */
 
-#define FUSE_USE_VERSION 22
 #include "cache.h"
 #include <stdio.h>
 #include <errno.h>
