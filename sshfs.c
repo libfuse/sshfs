@@ -76,7 +76,7 @@
 
 static int infd;
 static int outfd;
-static int debug = 1;
+static int debug = 0;
 
 struct buffer {
     uint8_t *p;
@@ -850,7 +850,6 @@ static int sshfs_getdir(const char *path, fuse_dirh_t h, fuse_dirfil_t filler)
         if (err == MY_EOF)
             err = 0;
         
-        
         err2 = sftp_request(SSH_FXP_CLOSE, &handle, 0, NULL);
         if (!err)
             err = err2;
@@ -1080,7 +1079,8 @@ static int sshfs_read(const char *path, char *rbuf, size_t size, off_t offset,
             }
         }
         buf_free(&data);
-    }
+    } else if (err == MY_EOF)
+        err = 0;
     buf_free(&buf);
     return err;    
 }
