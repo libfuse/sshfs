@@ -83,12 +83,17 @@ void process_options(int *argcp, char *argv[], struct opt opts[],
                     argctr++;
                     arg = argv[argctr];
                     removed = process_option_group(arg, opts, case_sensitive);
-                    if (!removed && argctr != newargctr)
+                    if (removed)
+                        free(argv[argctr-1]);
+                    else if (argctr != newargctr)
                         argv[newargctr++] = argv[argctr-1];
+                    
                 }
             }
         }
-        if (!removed) {
+        if (removed)
+            free(arg);
+        else {
             if(argctr != newargctr)
                 argv[newargctr] = arg;
             newargctr++;
@@ -96,4 +101,3 @@ void process_options(int *argcp, char *argv[], struct opt opts[],
     }
     *argcp = newargctr;
 }
-

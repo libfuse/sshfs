@@ -163,11 +163,13 @@ static struct opt ssh_opts[] = {
 
 enum {
     SOPT_DIRECTPORT,
+    SOPT_SSHCMD,
     SOPT_LAST /* Last entry in this list! */
 };
 
 static struct opt sshfs_opts[] = {
     [SOPT_DIRECTPORT] = { .optname = "directport" },
+    [SOPT_SSHCMD]     = { .optname = "ssh_command" },
     [SOPT_LAST]       = { .optname = NULL }
 };
 
@@ -476,6 +478,11 @@ static int start_ssh(char *host)
     } else if (pid == 0) {
         int argctr = 0;
         char *ssh_args[sizeof(ssh_opts)/sizeof(struct opt) + 32];
+        char *ssh_cmd;
+        if (sshfs_opts[SOPT_SSHCMD].present)
+            ssh_cmd = sshfs_opts[SOPT_SSHCMD].value;
+        else
+            ssh_cmd = "ssh";
 
         if (dup2(outpipe[0], 0) == -1 || dup2(inpipe[1], 1) == -1) {
             perror("failed to redirect input/output");
@@ -486,7 +493,7 @@ static int start_ssh(char *host)
         close(outpipe[0]);
         close(outpipe[1]);
 
-        ssh_args[argctr++] = "ssh";
+        ssh_args[argctr++] = ssh_cmd;
         ssh_args[argctr++] = "-2";
         ssh_args[argctr++] = "-x";
         ssh_args[argctr++] = "-a";
@@ -504,7 +511,7 @@ static int start_ssh(char *host)
         ssh_args[argctr++] = "sftp";
         ssh_args[argctr++] = NULL;
 
-        execvp("ssh", ssh_args);
+        execvp(ssh_cmd, ssh_args);
         exit(1);
     }
     close(inpipe[1]);
@@ -1157,6 +1164,9 @@ static void usage(const char *progname)
             "usage: %s [user@]host:[dir]] mountpoint [options]\n"
             "\n"
             "SSHFS Options:\n"
+            "    -p PORT             equivalent to '-o port=PORT'\n"
+            "    -C                  equivalent to '-o compression=yes'\n"
+            "    -o ssh_command=CMD  execute CMD instead of 'ssh'\n"
             "    -o directport=PORT  directly connect to port bypassing ssh\n"
             "    -o SSHOPT=VAL       ssh options (see man ssh_config)\n"
             "\n", progname);
@@ -1182,9 +1192,25 @@ int main(int argc, char *argv[])
                 usage(argv[0]);
                 break;
                 
-            default:
-                newargv[newargc++] = strdup(arg);
+            case 'C':
+                if (!arg[2])
+                    arg = "-oCompression=yes";
+                break;
+
+            case 'p':
+                if (arg[2] || argctr + 1 < argc) {
+                    char *newarg;
+                    if (arg[2])
+                        arg = arg + 2;
+                    else
+                        arg = argv[++argctr];
+                    newarg = malloc(strlen(arg)+32);
+                    sprintf(newarg, "-oPort=%s", arg);
+                    arg = newarg;
+                }
+                break;
             }
+            newargv[newargc++] = strdup(arg);
         } else if (!host && strchr(arg, ':'))
             host = g_strdup(arg);
         else

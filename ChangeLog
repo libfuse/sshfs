@@ -1,3 +1,10 @@
+2005-02-09  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Added option to start arbitary command instead of 'ssh'
+
+	* Re-added '-p PORT' as a convenience option, also '-C' works as
+	in ssh.
+
 2005-02-08  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Add caching of symlinks
