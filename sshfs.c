@@ -1159,7 +1159,7 @@ static void usage(const char *progname)
             "\n"
             "SSHFS Options:\n"
             "    -o directport=PORT  directly connect to port bypassing ssh\n"
-            "    -o SSHOPT=VAL       ssh options (see man ssh_config(5))\n"
+            "    -o SSHOPT=VAL       ssh options (see man ssh_config)\n"
             "\n", progname);
     fuse_main(2, (char **) fusehelp, &sshfs_oper.oper);
     exit(1);
