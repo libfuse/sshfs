@@ -1,3 +1,11 @@
+/*
+    SSH file system
+    Copyright (C) 2004  Miklos Szeredi <miklos@szeredi.hu>
+
+    This program can be distributed under the terms of the GNU GPL.
+    See the file COPYING.
+*/
+
 #define FUSE_USE_VERSION 22
 #include <fuse.h>
 #include <stdio.h>
@@ -78,6 +86,7 @@
 static int infd;
 static int outfd;
 static int debug = 0;
+static char *base_path;
 
 struct buffer {
     uint8_t *p;
@@ -152,7 +161,7 @@ static const char *type_name(uint8_t type)
 static inline void buf_init(struct buffer *buf, size_t size)
 {
     if (size) {
-        buf->p = malloc(size);
+        buf->p = (uint8_t *) malloc(size);
         if (!buf->p)
             exit(1);
     } else
@@ -238,6 +247,13 @@ static inline void buf_add_string(struct buffer *buf, const char *str)
     data.p = (uint8_t *) str;
     data.len = strlen(str);
     buf_add_data(buf, &data);
+}
+
+static inline void buf_add_path(struct buffer *buf, const char *path)
+{
+    char *realpath = g_strdup_printf("%s%s", base_path, path[1] ? path+1 : ".");
+    buf_add_string(buf, realpath);
+    g_free(realpath);
 }
 
 static int buf_check_get(struct buffer *buf, size_t len)
@@ -380,7 +396,7 @@ static void cache_clean(void)
 
 static struct node *cache_lookup(const char *path)
 {
-    return g_hash_table_lookup(cache, path);    
+    return (struct node *) g_hash_table_lookup(cache, path);    
 }
 
 static void cache_remove(const char *path)
@@ -447,7 +463,7 @@ static int buf_get_entries(struct buffer *buf, fuse_dirh_t h,
             if (buf_get_attrs(buf, &stbuf) != -1) {
                 char *fullpath;
                 filler(h, name, stbuf.st_mode >> 12, 0);
-                fullpath = g_strdup_printf("%s/%s", path, name);
+                fullpath = g_strdup_printf("%s/%s", !path[1] ? "" : path, name);
                 cache_add_attr(fullpath, &stbuf);
                 g_free(fullpath);
                 err = 0;
@@ -460,7 +476,7 @@ static int buf_get_entries(struct buffer *buf, fuse_dirh_t h,
     return 0;
 }
 
-static int start_ssh(const char *host)
+static int start_ssh(const char *host, const char *port)
 {
     int inpipe[2];
     int outpipe[2];
@@ -487,7 +503,7 @@ static int start_ssh(const char *host)
         close(outpipe[0]);
         close(outpipe[1]);
         execlp("ssh", "ssh", "-2", "-x", "-a", "-oClearAllForwardings=yes",
-               host, "-s", "sftp", NULL);
+               host, "-s", "sftp", port ? "-p" : NULL, port, NULL);
         exit(1);
     }
     close(inpipe[1]);
@@ -495,18 +511,12 @@ static int start_ssh(const char *host)
     return 0;
 }
 
-static int connect_to(char *host)
+static int connect_to(char *host, char *port)
 {
     int err;
     int sock;
     struct addrinfo *ai;
     struct addrinfo hint;
-    char *port = strchr(host, ':');
-    if (port == NULL) {
-        fprintf(stderr, "destination format must be: `.host:port'\n");
-        return -1;
-    }
-    *port++ = '\0';
 
     memset(&hint, 0, sizeof(hint));
     hint.ai_family = PF_INET;
@@ -636,7 +646,7 @@ static void *process_requests(void *_data)
             break;
 
         pthread_mutex_lock(&lock);
-        req = g_hash_table_lookup(reqtab, (gpointer) id);
+        req = (struct request *) g_hash_table_lookup(reqtab, (gpointer) id);
         if (req == NULL)
             fprintf(stderr, "request %i not found\n", id);
         else
@@ -772,7 +782,7 @@ static int sshfs_send_getattr(const char *path, struct stat *stbuf)
     struct buffer buf;
     struct buffer outbuf;
     buf_init(&buf, 0);
-    buf_add_string(&buf, path);
+    buf_add_path(&buf, path);
     err = sftp_request(SSH_FXP_LSTAT, &buf, SSH_FXP_ATTRS, &outbuf);
     if (!err) {
         if (buf_get_attrs(&outbuf, stbuf) == -1)
@@ -809,7 +819,7 @@ static int sshfs_readlink(const char *path, char *linkbuf, size_t size)
     struct buffer buf;
     struct buffer name;
     buf_init(&buf, 0);
-    buf_add_string(&buf, path);
+    buf_add_path(&buf, path);
     err = sftp_request(SSH_FXP_READLINK, &buf, SSH_FXP_NAME, &name);
     if (!err) {
         uint32_t count;
@@ -834,7 +844,7 @@ static int sshfs_getdir(const char *path, fuse_dirh_t h, fuse_dirfil_t filler)
     struct buffer buf;
     struct buffer handle;
     buf_init(&buf, 0);
-    buf_add_string(&buf, path);
+    buf_add_path(&buf, path);
     err = sftp_request(SSH_FXP_OPENDIR, &buf, SSH_FXP_HANDLE, &handle);
     if (!err) {
         int err2;
@@ -865,7 +875,7 @@ static int sshfs_mkdir(const char *path, mode_t mode)
     int err;
     struct buffer buf;
     buf_init(&buf, 0);
-    buf_add_string(&buf, path);
+    buf_add_path(&buf, path);
     buf_add_uint32(&buf, SSH_FILEXFER_ATTR_PERMISSIONS);
     buf_add_uint32(&buf, mode);
     err = sftp_request(SSH_FXP_MKDIR, &buf, SSH_FXP_STATUS, NULL);
@@ -883,7 +893,7 @@ static int sshfs_mknod(const char *path, mode_t mode, dev_t rdev)
         return -EPERM;
 
     buf_init(&buf, 0);
-    buf_add_string(&buf, path);
+    buf_add_path(&buf, path);
     buf_add_uint32(&buf, SSH_FXF_WRITE | SSH_FXF_CREAT | SSH_FXF_EXCL);
     buf_add_uint32(&buf, SSH_FILEXFER_ATTR_PERMISSIONS);
     buf_add_uint32(&buf, mode);
@@ -908,7 +918,7 @@ static int sshfs_symlink(const char *from, const char *to)
        link name are mixed up, so we must also be non-standard :( */
     buf_init(&buf, 0);
     buf_add_string(&buf, from);
-    buf_add_string(&buf, to);
+    buf_add_path(&buf, to);
     err = sftp_request(SSH_FXP_SYMLINK, &buf, SSH_FXP_STATUS, NULL);
     buf_free(&buf);
     return err;
@@ -919,7 +929,7 @@ static int sshfs_unlink(const char *path)
     int err;
     struct buffer buf;
     buf_init(&buf, 0);
-    buf_add_string(&buf, path);
+    buf_add_path(&buf, path);
     err = sftp_request(SSH_FXP_REMOVE, &buf, SSH_FXP_STATUS, NULL);
     if (!err)
         cache_remove(path);
@@ -932,7 +942,7 @@ static int sshfs_rmdir(const char *path)
     int err;
     struct buffer buf;
     buf_init(&buf, 0);
-    buf_add_string(&buf, path);
+    buf_add_path(&buf, path);
     err = sftp_request(SSH_FXP_RMDIR, &buf, SSH_FXP_STATUS, NULL);
     if (!err)
         cache_remove(path);
@@ -945,8 +955,8 @@ static int sshfs_rename(const char *from, const char *to)
     int err;
     struct buffer buf;
     buf_init(&buf, 0);
-    buf_add_string(&buf, from);
-    buf_add_string(&buf, to);
+    buf_add_path(&buf, from);
+    buf_add_path(&buf, to);
     err = sftp_request(SSH_FXP_RENAME, &buf, SSH_FXP_STATUS, NULL);
     if (!err)
         cache_rename(from, to);
@@ -959,7 +969,7 @@ static int sshfs_chmod(const char *path, mode_t mode)
     int err;
     struct buffer buf;
     buf_init(&buf, 0);
-    buf_add_string(&buf, path);
+    buf_add_path(&buf, path);
     buf_add_uint32(&buf, SSH_FILEXFER_ATTR_PERMISSIONS);
     buf_add_uint32(&buf, mode);
     err = sftp_request(SSH_FXP_SETSTAT, &buf, SSH_FXP_STATUS, NULL);
@@ -974,7 +984,7 @@ static int sshfs_chown(const char *path, uid_t uid, gid_t gid)
     int err;
     struct buffer buf;
     buf_init(&buf, 0);
-    buf_add_string(&buf, path);
+    buf_add_path(&buf, path);
     buf_add_uint32(&buf, SSH_FILEXFER_ATTR_UIDGID);
     buf_add_uint32(&buf, uid);
     buf_add_uint32(&buf, gid);
@@ -988,7 +998,7 @@ static int sshfs_truncate(const char *path, off_t size)
     int err;
     struct buffer buf;
     buf_init(&buf, 0);
-    buf_add_string(&buf, path);
+    buf_add_path(&buf, path);
     buf_add_uint32(&buf, SSH_FILEXFER_ATTR_SIZE);
     buf_add_uint64(&buf, size);
     err = sftp_request(SSH_FXP_SETSTAT, &buf, SSH_FXP_STATUS, NULL);
@@ -1004,7 +1014,7 @@ static int sshfs_utime(const char *path, struct utimbuf *ubuf)
     struct buffer buf;
     cache_remove(path);
     buf_init(&buf, 0);
-    buf_add_string(&buf, path);
+    buf_add_path(&buf, path);
     buf_add_uint32(&buf, SSH_FILEXFER_ATTR_ACMODTIME);
     buf_add_uint32(&buf, ubuf->actime);
     buf_add_uint32(&buf, ubuf->modtime);
@@ -1032,7 +1042,7 @@ static int sshfs_open(const char *path, struct fuse_file_info *fi)
 
     handle = g_new0(struct buffer, 1);
     buf_init(&buf, 0);
-    buf_add_string(&buf, path);
+    buf_add_path(&buf, path);
     buf_add_uint32(&buf, pflags);
     buf_add_uint32(&buf, 0);
     err = sftp_request(SSH_FXP_OPEN, &buf, SSH_FXP_HANDLE, handle);
@@ -1168,27 +1178,85 @@ static struct fuse_operations sshfs_oper = {
     .write      = sshfs_write,
 };
 
+static void usage(const char *progname)
+{
+    const char *fusehelp[] = { progname, "-ho", NULL };
+
+    fprintf(stderr,
+            "usage: %s [user@]host:[dir]] mountpoint [options]\n"
+            "\n"
+            "SSH Options:\n"
+            "    -p port             remote port\n"
+            "    -c port             directly connect to port bypassing ssh\n"
+            "\n", progname);
+    fuse_main(2, (char **) fusehelp, &sshfs_oper);
+    exit(1);
+}
+
 int main(int argc, char *argv[])
 {
-    char *host;
+    char *host = NULL;
+    char *port = NULL;
     int res;
     int argctr;
-    char **newargv;
+    int direct = 0;
+    int newargc = 0;
+    char **newargv = (char **) malloc((argc + 10) * sizeof(char *));
+    newargv[newargc++] = argv[0];
 
-    if (argc < 3) {
-        fprintf(stderr, "usage: %s [+][user@]host[:port] mountpoint [mount options]\n",
-                argv[0]);
+    for (argctr = 1; argctr < argc; argctr++) {
+        char *arg = argv[argctr];
+        if (arg[0] == '-') {
+            switch (arg[1]) {
+            case 'c':
+                direct = 1;
+                /* fallthrough */
+
+            case 'p':
+                if (arg[2])
+                    port = &arg[2];
+                else if (argctr + 1 < argc)
+                    port = argv[++argctr];
+                else {
+                    fprintf(stderr, "missing argument to %s option\n", arg);
+                    fprintf(stderr, "see '%s -h' for usage\n", argv[0]);
+                    exit(1);
+                }
+                break;
+
+            case 'h':
+                usage(argv[0]);
+                break;
+                
+            default:
+                newargv[newargc++] = arg;
+            }
+        } else if (!host && strchr(arg, ':'))
+            host = g_strdup(arg);
+        else
+            newargv[newargc++] = arg;
+    }
+    if (!host) {
+        fprintf(stderr, "missing host\n");
+        fprintf(stderr, "see '%s -h' for usage\n", argv[0]);
         exit(1);
     }
 
-    host = argv[1];
-    if (host[0] == '+')
-        res = connect_to(host+1);
+    base_path = strchr(host, ':');
+    *base_path++ = '\0';
+    if (base_path[0] && base_path[strlen(base_path)-1] != '/')
+        base_path = g_strdup_printf("%s/", base_path);
     else
-        res = start_ssh(host);
+        base_path = g_strdup(base_path);
+
+    if (!direct)
+        res = start_ssh(host, port);
+    else
+        res = connect_to(host, port);
     if (res == -1)
         exit(1);
-    
+
+    g_free(host);
     res = sftp_init();
     if (res == -1)
         exit(1);
@@ -1197,11 +1265,7 @@ int main(int argc, char *argv[])
     if (res == -1)
         exit(1);
 
-    newargv = (char **) malloc((argc + 10) * sizeof(char *));
-    newargv[0] = argv[0];
-    for (argctr = 1; argctr < argc - 1; argctr++)
-        newargv[argctr] = argv[argctr + 1];
-    newargv[argctr++] = "-omax_read=65536";
-    newargv[argctr] = NULL;
-    return fuse_main(argctr, newargv, &sshfs_oper);
+    newargv[newargc++] = "-omax_read=65536";
+    newargv[newargc] = NULL;
+    return fuse_main(newargc, newargv, &sshfs_oper);
 }
