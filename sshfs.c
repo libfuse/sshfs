@@ -86,6 +86,7 @@
 
 static int infd;
 static int outfd;
+static int server_version;
 static int debug = 0;
 static int sync_write = 0;
 static int sync_read = 0;
@@ -924,6 +925,10 @@ static int sshfs_readlink(const char *path, char *linkbuf, size_t size)
     int err;
     struct buffer buf;
     struct buffer name;
+
+    if (server_version < 3)
+        return -EPERM;
+
     buf_init(&buf, 0);
     buf_add_path(&buf, path);
     err = sftp_request(SSH_FXP_READLINK, &buf, SSH_FXP_NAME, &name);
@@ -1022,6 +1027,10 @@ static int sshfs_symlink(const char *from, const char *to)
 {
     int err;
     struct buffer buf;
+
+    if (server_version < 3)
+        return -EPERM;
+
     /* openssh sftp server doesn't follow standard: link target and
        link name are mixed up, so we must also be non-standard :( */
     buf_init(&buf, 0);
@@ -1465,12 +1474,14 @@ static int sftp_init()
     }
     if (buf_get_uint32(&buf, &version) == -1)
         goto out;
-    if (version != PROTO_VERSION) {
-        fprintf(stderr, "server version: %i, we need: %i\n",
+
+    server_version = version;
+    DEBUG("Server version: %i\n", server_version);
+    if (version > PROTO_VERSION)
+        fprintf(stderr, "Warning: server uses version: %i, we support: %i\n",
                 version, PROTO_VERSION);
-        goto out;
-    }
     res = 0;
+
  out:
     buf_free(&buf);
     return res;

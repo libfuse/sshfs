@@ -1,3 +1,12 @@
+2005-03-08  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Make it work on server version 2 (e.g. Sun_SSH_1.0.1).  Report
+	and testing by Pieter J. Kersten
+
+2005-03-04  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Released 1.1
+
 2005-03-03  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Slightly optimize readahead.  Still not clever enough to always
