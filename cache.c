@@ -244,9 +244,9 @@ static int cache_dirfill(fuse_cache_dirh_t ch, const char *name,
 {
     int err = ch->filler(ch->h, name, 0, 0);
     if (!err) {
+        char *fullpath;
         g_ptr_array_add(ch->dir, g_strdup(name));
-        char *fullpath = g_strdup_printf("%s/%s",
-                                         !ch->path[1] ? "" : ch->path, name);
+        fullpath = g_strdup_printf("%s/%s", !ch->path[1] ? "" : ch->path, name);
         cache_add_attr(fullpath, stbuf);
         g_free(fullpath);
     }

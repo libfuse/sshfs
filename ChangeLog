@@ -1,3 +1,7 @@
+2005-04-13  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Fix compilation with gcc-2.95.  Reported by David A. Gershman
+
 2005-03-08  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Make it work on server version 2 (e.g. Sun_SSH_1.0.1).  Report
