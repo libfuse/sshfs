@@ -1124,8 +1124,6 @@ static int sshfs_truncate(const char *path, off_t size)
             buf_free(&handle);
         }
     } else {
-        buf_init(&buf, 0);
-        buf_add_path(&buf, path);
         buf_add_uint32(&buf, SSH_FILEXFER_ATTR_SIZE);
         buf_add_uint64(&buf, size);
         err = sftp_request(SSH_FXP_SETSTAT, &buf, SSH_FXP_STATUS, NULL);
