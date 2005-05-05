@@ -1108,9 +1108,28 @@ static int sshfs_truncate(const char *path, off_t size)
     struct buffer buf;
     buf_init(&buf, 0);
     buf_add_path(&buf, path);
-    buf_add_uint32(&buf, SSH_FILEXFER_ATTR_SIZE);
-    buf_add_uint64(&buf, size);
-    err = sftp_request(SSH_FXP_SETSTAT, &buf, SSH_FXP_STATUS, NULL);
+    if (size == 0) {
+        /* If size is zero, use open(..., O_TRUNC), to work around
+           broken sftp servers */
+        struct buffer handle;
+        buf_add_uint32(&buf, SSH_FXF_WRITE | SSH_FXF_TRUNC);
+        buf_add_uint32(&buf, 0);
+        err = sftp_request(SSH_FXP_OPEN, &buf, SSH_FXP_HANDLE, &handle);
+        if (!err) {
+            int err2;
+            buf_finish(&handle);
+            err2 = sftp_request(SSH_FXP_CLOSE, &handle, 0, NULL);
+            if (!err)
+                err = err2;
+            buf_free(&handle);
+        }
+    } else {
+        buf_init(&buf, 0);
+        buf_add_path(&buf, path);
+        buf_add_uint32(&buf, SSH_FILEXFER_ATTR_SIZE);
+        buf_add_uint64(&buf, size);
+        err = sftp_request(SSH_FXP_SETSTAT, &buf, SSH_FXP_STATUS, NULL);
+    }
     buf_free(&buf);
     return err;
 }
