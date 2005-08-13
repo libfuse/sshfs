@@ -21,6 +21,7 @@
 #include <netdb.h>
 #include <signal.h>
 #include <sys/time.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
 #include <glib.h>
 
@@ -86,11 +87,14 @@
 
 static int infd;
 static int outfd;
+static int connver;
 static int server_version;
 static int debug = 0;
+static int reconnect = 0;
 static int sync_write = 0;
 static int sync_read = 0;
 static char *base_path;
+static char *host;
 
 struct buffer {
     uint8_t *p;
@@ -111,6 +115,7 @@ struct request {
     sem_t ready;
     uint8_t reply_type;
     int replied;
+    int error;
     struct buffer reply;
     struct timeval start;
     void *data;
@@ -135,6 +140,7 @@ struct sshfs_file {
     struct read_chunk *readahead;
     off_t next_pos;
     int is_seq;
+    int connver;
 };
 
 static GHashTable *reqtab;
@@ -192,6 +198,7 @@ enum {
     SOPT_SYNC_READ,
     SOPT_MAX_READ,
     SOPT_DEBUG,
+    SOPT_RECONNECT,
     SOPT_LAST /* Last entry in this list! */
 };
 
@@ -202,6 +209,7 @@ static struct opt sshfs_opts[] = {
     [SOPT_SYNC_READ]  = { .optname = "no_readahead" },
     [SOPT_MAX_READ]   = { .optname = "max_read" },
     [SOPT_DEBUG]      = { .optname = "sshfs_debug" },
+    [SOPT_RECONNECT]  = { .optname = "reconnect" },
     [SOPT_LAST]       = { .optname = NULL }
 };
 
@@ -545,9 +553,13 @@ static int start_ssh(char *host)
         perror("failed to fork");
         return -1;
     } else if (pid == 0) {
+        int devnull;
         int argctr = 0;
         char *ssh_args[sizeof(ssh_opts)/sizeof(struct opt) + 32];
         char *ssh_cmd;
+
+        devnull = open("/dev/null", O_WRONLY);
+
         if (sshfs_opts[SOPT_SSHCMD].present)
             ssh_cmd = sshfs_opts[SOPT_SSHCMD].value;
         else
@@ -555,12 +567,26 @@ static int start_ssh(char *host)
 
         if (dup2(outpipe[0], 0) == -1 || dup2(inpipe[1], 1) == -1) {
             perror("failed to redirect input/output");
-            exit(1);
+            _exit(1);
         }
+        if (devnull != -1)
+            dup2(devnull, 2);
+
         close(inpipe[0]);
         close(inpipe[1]);
         close(outpipe[0]);
         close(outpipe[1]);
+
+        switch (fork()) {
+        case -1:
+            perror("failed to fork");
+            _exit(1);
+        case 0:
+            break;
+        default:
+            _exit(0);
+        }
+        chdir("/");
 
         ssh_args[argctr++] = ssh_cmd;
         ssh_args[argctr++] = "-2";
@@ -581,8 +607,9 @@ static int start_ssh(char *host)
         ssh_args[argctr++] = NULL;
 
         execvp(ssh_cmd, ssh_args);
-        exit(1);
+        _exit(1);
     }
+    waitpid(pid, NULL, 0);
     close(inpipe[1]);
     close(outpipe[0]);
     return 0;
@@ -654,11 +681,9 @@ static int sftp_send(uint8_t type, struct buffer *buf)
     buf_init(&buf2, 5);
     buf_add_uint32(&buf2, buf->len + 1);
     buf_add_uint8(&buf2, type);
-    pthread_mutex_lock(&lock);
     res = do_write(&buf2);
     if (res != -1)
         res = do_write(buf);
-    pthread_mutex_unlock(&lock);
     buf_free(&buf2);
     return res;
 }
@@ -674,7 +699,7 @@ static int do_read(struct buffer *buf)
             perror("read");
             return -1;
         } else if (res == 0) {
-            fprintf(stderr, "end of file read\n");
+            fprintf(stderr, "remote host has disconnected\n");
             return -1;
         }
         size -= res;
@@ -734,12 +759,27 @@ static void chunk_put_locked(struct read_chunk *chunk)
     pthread_mutex_unlock(&lock);
 }
 
-static void *process_requests(void *_data)
+static int clean_req(void *key_, struct request *req)
 {
-    (void) _data;
+    (void) key_;
+
+    req->error = -EIO;
+    if (req->want_reply)
+        sem_post(&req->ready);
+    else {
+        if (req->end_func)
+            req->end_func(req);
+        request_free(req);
+    }
+    return TRUE;
+}
+
+static void *process_requests(void *data_)
+{
+    int res;
+    (void) data_;
 
     while (1) {
-        int res;
         struct buffer buf;
         uint8_t type;
         struct request *req;
@@ -773,15 +813,78 @@ static void *process_requests(void *_data)
             if (req->want_reply)
                 sem_post(&req->ready);
             else {
-                if (req->end_func)
+                if (req->end_func) {
+                    pthread_mutex_lock(&lock);
                     req->end_func(req);
+                    pthread_mutex_unlock(&lock);
+                }
                 request_free(req);
             }
         } else
             buf_free(&buf);
     }
-    kill(getpid(), SIGTERM);
+    if (!reconnect) {
+        /* harakiri */
+        kill(getpid(), SIGTERM);
+    } else {
+        pthread_mutex_lock(&lock);
+        processing_thread_started = 0;
+        close(infd);
+        infd = -1;
+        close(outfd);
+        outfd = -1;
+        g_hash_table_foreach_remove(reqtab, (GHRFunc) clean_req, NULL);
+        connver ++;
+        pthread_mutex_unlock(&lock);
+            
+    }
     return NULL;
+}
+
+static int sftp_init()
+{
+    int res = -1;
+    uint8_t type;
+    uint32_t version;
+    struct buffer buf;
+    buf_init(&buf, 4);
+    buf_add_uint32(&buf, PROTO_VERSION);
+    if (sftp_send(SSH_FXP_INIT, &buf) == -1)
+        goto out;
+    buf_clear(&buf);
+    if (sftp_read(&type, &buf) == -1)
+        goto out;
+    if (type != SSH_FXP_VERSION) {
+        fprintf(stderr, "protocol error\n");
+        goto out;
+    }
+    if (buf_get_uint32(&buf, &version) == -1)
+        goto out;
+
+    server_version = version;
+    DEBUG("Server version: %i\n", server_version);
+    if (version > PROTO_VERSION)
+        fprintf(stderr, "Warning: server uses version: %i, we support: %i\n",
+                version, PROTO_VERSION);
+    res = 0;
+
+ out:
+    buf_free(&buf);
+    return res;
+}
+
+static int connect_remote(void)
+{
+    int err;
+
+    if (sshfs_opts[SOPT_DIRECTPORT].present)
+        err = connect_to(host, sshfs_opts[SOPT_DIRECTPORT].value);
+    else
+        err = start_ssh(host);
+    if (!err)
+        err = sftp_init();
+
+    return err;
 }
 
 static int start_processing_thread(void)
@@ -791,15 +894,29 @@ static int start_processing_thread(void)
     if (processing_thread_started)
         return 0;
 
+    if (outfd == -1) {
+        err = connect_remote();
+        if (err)
+            return -EIO;
+    }
+
     err = pthread_create(&thread_id, NULL, process_requests, NULL);
     if (err) {
         fprintf(stderr, "failed to create thread: %s\n", strerror(err));
-        return -EPERM;
+        return -EIO;
     }
     pthread_detach(thread_id);
     processing_thread_started = 1;
     return 0;
 }
+
+#if FUSE_VERSION >= 23
+static void *sshfs_init(void)
+{
+    start_processing_thread();
+    return NULL;
+}
+#endif
 
 static int sftp_request_common(uint8_t type, const struct buffer *buf,
                                uint8_t expect_type, struct buffer *outbuf,
@@ -824,26 +941,32 @@ static int sftp_request_common(uint8_t type, const struct buffer *buf,
         begin_func(req);
     pthread_mutex_lock(&lock);
     err = start_processing_thread();
+    if (err) {
+        pthread_mutex_unlock(&lock);
+        goto out;
+    }
     g_hash_table_insert(reqtab, (gpointer) id, req);
     gettimeofday(&req->start, NULL);
     DEBUG("[%05i] %s\n", id, type_name(type));
-    pthread_mutex_unlock(&lock);
-    if (err)
-        goto out;
 
     err = -EIO;
     if (sftp_send(type, &buf2) == -1) {
-        pthread_mutex_lock(&lock);
         g_hash_table_remove(reqtab, (gpointer) id);
         pthread_mutex_unlock(&lock);
         goto out;
     }
+    pthread_mutex_unlock(&lock);
+
     if (expect_type == 0) {
         buf_free(&buf2);
         return 0;
     }
 
     sem_wait(&req->ready);
+    if (req->error) {
+        err = req->error;
+        goto out;
+    }
     err = -EPROTO;
     if (req->reply_type != expect_type && req->reply_type != SSH_FXP_STATUS) {
         fprintf(stderr, "protocol error\n");
@@ -1146,6 +1269,11 @@ static int sshfs_utime(const char *path, struct utimbuf *ubuf)
     return err;
 }
 
+static inline int sshfs_file_is_conn(struct sshfs_file *sf)
+{
+    return sf->connver == connver;
+}
+
 static int sshfs_open(const char *path, struct fuse_file_info *fi)
 {
     int err;
@@ -1167,6 +1295,7 @@ static int sshfs_open(const char *path, struct fuse_file_info *fi)
     /* Assume random read after open */
     sf->is_seq = 0;
     sf->next_pos = 0;
+    sf->connver = connver;
     buf_init(&buf, 0);
     buf_add_path(&buf, path);
     buf_add_uint32(&buf, pflags);
@@ -1187,6 +1316,9 @@ static int sshfs_flush(const char *path, struct fuse_file_info *fi)
     struct sshfs_file *sf = (struct sshfs_file *) fi->fh;
     struct list_head write_reqs;
     struct list_head *curr_list;
+
+    if (!sshfs_file_is_conn(sf))
+        return -EIO;
 
     if (sync_write)
         return 0;
@@ -1218,8 +1350,10 @@ static int sshfs_release(const char *path, struct fuse_file_info *fi)
 {
     struct sshfs_file *sf = (struct sshfs_file *) fi->fh;
     struct buffer *handle = &sf->handle;
-    sshfs_flush(path, fi);
-    sftp_request(SSH_FXP_CLOSE, handle, 0, NULL);
+    if (sshfs_file_is_conn(sf)) {
+        sshfs_flush(path, fi);
+        sftp_request(SSH_FXP_CLOSE, handle, 0, NULL);
+    }
     buf_free(handle);
     chunk_put_locked(sf->readahead);
     g_free(sf);
@@ -1259,7 +1393,9 @@ static int sshfs_sync_read(struct sshfs_file *sf, char *rbuf, size_t size,
 static void sshfs_read_end(struct request *req)
 {
     struct read_chunk *chunk = (struct read_chunk *) req->data;
-    if (req->replied) {
+    if (req->error)
+        chunk->res = req->error;
+    else if (req->replied) {
         chunk->res = -EPROTO;
 
         if (req->reply_type == SSH_FXP_STATUS) {
@@ -1285,8 +1421,9 @@ static void sshfs_read_end(struct request *req)
         chunk->res = -EIO;
 
     sem_post(&chunk->ready);
-    chunk_put_locked(chunk);
+    chunk_put(chunk);
 }
+
 static void sshfs_read_begin(struct request *req)
 {
     struct read_chunk *chunk = (struct read_chunk *) req->data;
@@ -1416,6 +1553,10 @@ static int sshfs_read(const char *path, char *rbuf, size_t size, off_t offset,
 {
     struct sshfs_file *sf = (struct sshfs_file *) fi->fh;
     (void) path;
+    
+    if (!sshfs_file_is_conn(sf))
+        return -EIO;
+    
     if (sync_read)
         return sshfs_sync_read(sf, rbuf, size, offset);
     else
@@ -1435,8 +1576,9 @@ static void sshfs_write_end(struct request *req)
     uint32_t serr;
     struct sshfs_file *sf = (struct sshfs_file *) req->data;
 
-    pthread_mutex_lock(&lock);
-    if (req->replied) {
+    if (req->error)
+        sf->write_error = req->error;
+    else if (req->replied) {
         if (req->reply_type != SSH_FXP_STATUS)
             fprintf(stderr, "protocol error\n");
         else if (buf_get_uint32(&req->reply, &serr) != -1 && serr != SSH_FX_OK)
@@ -1444,7 +1586,6 @@ static void sshfs_write_end(struct request *req)
     }
     list_del(&req->list);
     pthread_cond_broadcast(&sf->write_finished);
-    pthread_mutex_unlock(&lock);
 }
 
 static int sshfs_write(const char *path, const char *wbuf, size_t size,
@@ -1457,6 +1598,10 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
     struct buffer *handle = &sf->handle;
 
     (void) path;
+    
+    if (!sshfs_file_is_conn(sf))
+        return -EIO;
+
     data.p = (uint8_t *) wbuf;
     data.len = size;
     buf_init(&buf, 0);
@@ -1472,38 +1617,6 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
     return err ? err : (int) size;
 }
 
-static int sftp_init()
-{
-    int res = -1;
-    uint8_t type;
-    uint32_t version;
-    struct buffer buf;
-    buf_init(&buf, 4);
-    buf_add_uint32(&buf, PROTO_VERSION);
-    if (sftp_send(SSH_FXP_INIT, &buf) == -1)
-        goto out;
-    buf_clear(&buf);
-    if (sftp_read(&type, &buf) == -1)
-        goto out;
-    if (type != SSH_FXP_VERSION) {
-        fprintf(stderr, "protocol error\n");
-        goto out;
-    }
-    if (buf_get_uint32(&buf, &version) == -1)
-        goto out;
-
-    server_version = version;
-    DEBUG("Server version: %i\n", server_version);
-    if (version > PROTO_VERSION)
-        fprintf(stderr, "Warning: server uses version: %i, we support: %i\n",
-                version, PROTO_VERSION);
-    res = 0;
-
- out:
-    buf_free(&buf);
-    return res;
-}
-
 static int processing_init(void)
 {
     pthread_mutex_init(&lock, NULL);
@@ -1517,6 +1630,9 @@ static int processing_init(void)
 
 static struct fuse_cache_operations sshfs_oper = {
     .oper = {
+#if FUSE_VERSION >= 23
+        .init       = sshfs_init,
+#endif
         .getattr    = sshfs_getattr,
         .readlink   = sshfs_readlink,
         .mknod      = sshfs_mknod,
@@ -1550,6 +1666,7 @@ static void usage(const char *progname)
 "    -V                     show version information\n"
 "    -p PORT                equivalent to '-o port=PORT'\n"
 "    -C                     equivalent to '-o compression=yes'\n"
+"    -o reconnect           reconnect to server"
 "    -o sshfs_sync          synchronous writes\n"
 "    -o no_readahead        synchronous reads (no speculative readahead)\n"
 "    -o sshfs_debug         print some debugging information\n"
@@ -1566,7 +1683,6 @@ static void usage(const char *progname)
 
 int main(int argc, char *argv[])
 {
-    char *host = NULL;
     char *fsname;
     int res;
     int argctr;
@@ -1642,6 +1758,8 @@ int main(int argc, char *argv[])
         sync_read = 1;
     if (sshfs_opts[SOPT_DEBUG].present)
         debug = 1;
+    if (sshfs_opts[SOPT_RECONNECT].present)
+        reconnect = 1;
     if (sshfs_opts[SOPT_MAX_READ].present) {
         unsigned val;
         if (opt_get_unsigned(&sshfs_opts[SOPT_MAX_READ], &val) == -1)
@@ -1659,7 +1777,6 @@ int main(int argc, char *argv[])
     if (res == -1)
         exit(1);
 
-    g_free(host);
     res = sftp_init();
     if (res == -1)
         exit(1);

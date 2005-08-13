@@ -1,3 +1,11 @@
+2005-08-13  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Add 'reconnect' option, which tries to reconnect to the server
+	when the connection is broken.  If a password is required for
+	connection, it is recommended that you install ssh-askpass, and
+	set the SSH_ASKPASS environment variable (see 'man ssh' for more
+	details).
+
 2005-05-05  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Work around missing truncate() support in some older sftp

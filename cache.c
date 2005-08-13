@@ -406,6 +406,9 @@ static int cache_write(const char *path, const char *buf, size_t size,
 static void cache_unity_fill(struct fuse_cache_operations *oper,
                              struct fuse_operations *cache_oper)
 {
+#if FUSE_VERSION >= 23
+    cache_oper->init        = oper->oper.init;
+#endif
     cache_oper->getattr     = oper->oper.getattr;
     cache_oper->readlink    = oper->oper.readlink;
     cache_oper->getdir      = cache_unity_getdir;
