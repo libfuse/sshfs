@@ -569,9 +569,10 @@ static int start_ssh(char *host)
             perror("failed to redirect input/output");
             _exit(1);
         }
-        if (devnull != -1)
+        if (!debug && devnull != -1)
             dup2(devnull, 2);
 
+        close(devnull);
         close(inpipe[0]);
         close(inpipe[1]);
         close(outpipe[0]);
