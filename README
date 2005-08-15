@@ -20,6 +20,8 @@ codebase, so I rewrote it.  Features of this implementation are:
 
   - Caching directory contents
 
+  - Reconnect on failure
+
 
 How to mount a filesystem
 =========================

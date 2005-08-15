@@ -1,3 +1,10 @@
+What is new in 1.2
+------------------
+
+* Better compatibility with different sftp servers
+
+* Automatic reconnect (optional)
+
 What is new in 1.1
 ------------------
 

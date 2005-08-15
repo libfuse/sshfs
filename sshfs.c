@@ -717,12 +717,14 @@ static int sftp_read(uint8_t *type, struct buffer *buf)
     buf_init(&buf2, 5);
     res = do_read(&buf2);
     if (res != -1) {
-        buf_get_uint32(&buf2, &len);
+        if (buf_get_uint32(&buf2, &len) == -1)
+            return -1;
         if (len > MAX_REPLY_LEN) {
             fprintf(stderr, "reply len too large: %u\n", len);
             return -1;
         }
-        buf_get_uint8(&buf2, type);
+        if (buf_get_uint8(&buf2, type) == -1)
+            return -1;
         buf_init(buf, len - 1);
         res = do_read(buf);
     }

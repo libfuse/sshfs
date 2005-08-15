@@ -1,3 +1,7 @@
+2005-08-15  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Released 1.2
+
 2005-08-13  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Add 'reconnect' option, which tries to reconnect to the server
