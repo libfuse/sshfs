@@ -65,7 +65,7 @@
 	* Add support for many ssh options to be passed to ssh
 
 	* Port number can now actually be specified with "-o port=PORT",
-	bug spotted by Nadia Maksymiw
+	bug spotted by Andrew Ukrainec
 
 2005-02-07  Miklos Szeredi <miklos@szeredi.hu>
 
