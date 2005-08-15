@@ -1669,7 +1669,7 @@ static void usage(const char *progname)
 "    -V                     show version information\n"
 "    -p PORT                equivalent to '-o port=PORT'\n"
 "    -C                     equivalent to '-o compression=yes'\n"
-"    -o reconnect           reconnect to server"
+"    -o reconnect           reconnect to server\n"
 "    -o sshfs_sync          synchronous writes\n"
 "    -o no_readahead        synchronous reads (no speculative readahead)\n"
 "    -o sshfs_debug         print some debugging information\n"
