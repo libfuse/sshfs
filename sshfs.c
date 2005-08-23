@@ -95,6 +95,7 @@ static int sync_write = 0;
 static int sync_read = 0;
 static char *base_path;
 static char *host;
+static unsigned blksize = 4096;
 
 struct buffer {
     uint8_t *p;
@@ -497,6 +498,10 @@ static int buf_get_attrs(struct buffer *buf, struct stat *stbuf)
     stbuf->st_mode = mode;
     stbuf->st_nlink = 1;
     stbuf->st_size = size;
+    if (blksize) {
+        stbuf->st_blksize = blksize;
+        stbuf->st_blocks = ((size + blksize - 1) & ~(blksize - 1)) >> 9;
+    }
     stbuf->st_uid = uid;
     stbuf->st_gid = gid;
     stbuf->st_atime = atime;
