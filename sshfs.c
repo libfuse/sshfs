@@ -1282,7 +1282,8 @@ static inline int sshfs_file_is_conn(struct sshfs_file *sf)
     return sf->connver == connver;
 }
 
-static int sshfs_open(const char *path, struct fuse_file_info *fi)
+static int sshfs_open_common(const char *path, mode_t mode,
+                             struct fuse_file_info *fi)
 {
     int err;
     struct buffer buf;
@@ -1297,6 +1298,12 @@ static int sshfs_open(const char *path, struct fuse_file_info *fi)
     else
         return -EINVAL;
 
+    if (fi->flags & O_CREAT)
+        pflags |= SSH_FXF_CREAT;
+
+    if (fi->flags & O_EXCL)
+        pflags |= SSH_FXF_EXCL;
+
     sf = g_new0(struct sshfs_file, 1);
     list_init(&sf->write_reqs);
     pthread_cond_init(&sf->write_finished, NULL);
@@ -1307,7 +1314,8 @@ static int sshfs_open(const char *path, struct fuse_file_info *fi)
     buf_init(&buf, 0);
     buf_add_path(&buf, path);
     buf_add_uint32(&buf, pflags);
-    buf_add_uint32(&buf, 0);
+    buf_add_uint32(&buf, SSH_FILEXFER_ATTR_PERMISSIONS);
+    buf_add_uint32(&buf, mode);
     err = sftp_request(SSH_FXP_OPEN, &buf, SSH_FXP_HANDLE, &sf->handle);
     if (!err) {
         buf_finish(&sf->handle);
@@ -1316,6 +1324,19 @@ static int sshfs_open(const char *path, struct fuse_file_info *fi)
         g_free(sf);
     buf_free(&buf);
     return err;
+}
+
+#if FUSE_VERSION >= 24
+static int sshfs_create(const char *path, mode_t mode,
+                        struct fuse_file_info *fi)
+{
+    return sshfs_open_common(path, mode, fi);
+}
+#endif
+
+static int sshfs_open(const char *path, struct fuse_file_info *fi)
+{
+    return sshfs_open_common(path, 0, fi);
 }
 
 static int sshfs_flush(const char *path, struct fuse_file_info *fi)
@@ -1653,6 +1674,9 @@ static struct fuse_cache_operations sshfs_oper = {
         .chown      = sshfs_chown,
         .truncate   = sshfs_truncate,
         .utime      = sshfs_utime,
+#if FUSE_VERSION >= 24
+        .create     = sshfs_create,
+#endif
         .open       = sshfs_open,
         .flush      = sshfs_flush,
         .fsync      = sshfs_fsync,
