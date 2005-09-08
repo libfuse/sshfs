@@ -1326,14 +1326,6 @@ static int sshfs_open_common(const char *path, mode_t mode,
     return err;
 }
 
-#if FUSE_VERSION >= 24
-static int sshfs_create(const char *path, mode_t mode,
-                        struct fuse_file_info *fi)
-{
-    return sshfs_open_common(path, mode, fi);
-}
-#endif
-
 static int sshfs_open(const char *path, struct fuse_file_info *fi)
 {
     return sshfs_open_common(path, 0, fi);
@@ -1674,9 +1666,6 @@ static struct fuse_cache_operations sshfs_oper = {
         .chown      = sshfs_chown,
         .truncate   = sshfs_truncate,
         .utime      = sshfs_utime,
-#if FUSE_VERSION >= 24
-        .create     = sshfs_create,
-#endif
         .open       = sshfs_open,
         .flush      = sshfs_flush,
         .fsync      = sshfs_fsync,

@@ -423,7 +423,6 @@ static void cache_unity_fill(struct fuse_cache_operations *oper,
     cache_oper->chown       = oper->oper.chown;
     cache_oper->truncate    = oper->oper.truncate;
     cache_oper->utime       = oper->oper.utime;
-    cache_oper->create      = oper->oper.create;
     cache_oper->open        = oper->oper.open;
     cache_oper->read        = oper->oper.read;
     cache_oper->write       = oper->oper.write;
