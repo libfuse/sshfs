@@ -933,12 +933,8 @@ static int sftp_request_common(uint8_t type, const struct buffer *buf,
 {
     int err;
     struct buffer buf2;
-    uint32_t id = sftp_get_id();
+    uint32_t id;
     struct request *req = g_new0(struct request, 1);
-
-    buf_init(&buf2, buf->len + 4);
-    buf_add_uint32(&buf2, id);
-    buf_add_mem(&buf2, buf->p, buf->len);
 
     req->want_reply = expect_type != 0 ? 1 : 0;
     req->end_func = end_func;
@@ -947,7 +943,11 @@ static int sftp_request_common(uint8_t type, const struct buffer *buf,
     buf_init(&req->reply, 0);
     if (begin_func)
         begin_func(req);
+    buf_init(&buf2, buf->len + 4);
     pthread_mutex_lock(&lock);
+    id = sftp_get_id();
+    buf_add_uint32(&buf2, id);
+    buf_add_mem(&buf2, buf->p, buf->len);
     err = start_processing_thread();
     if (err) {
         pthread_mutex_unlock(&lock);
