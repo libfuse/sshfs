@@ -2,6 +2,9 @@
 
 	* Add one more missing lock.
 
+	* Add workaround for failure to rename to an existing file.  Based
+	on patch by Michael Best
+
 2005-10-15  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Protect request ID allocation with mutex.  Bug report by Tvrtko

@@ -85,6 +85,10 @@
 
 #define MAX_REPLY_LEN (1 << 17)
 
+#define RENAME_TEMP_CHARS 8
+
+static unsigned int randseed;
+
 static int infd;
 static int outfd;
 static int connver;
@@ -93,6 +97,7 @@ static int debug = 0;
 static int reconnect = 0;
 static int sync_write = 0;
 static int sync_read = 0;
+static int rename_workaround = 0;
 static char *base_path;
 static char *host;
 static unsigned blksize = 4096;
@@ -200,6 +205,7 @@ enum {
     SOPT_MAX_READ,
     SOPT_DEBUG,
     SOPT_RECONNECT,
+    SOPT_RENAME_FIX,
     SOPT_LAST /* Last entry in this list! */
 };
 
@@ -211,6 +217,7 @@ static struct opt sshfs_opts[] = {
     [SOPT_MAX_READ]   = { .optname = "max_read" },
     [SOPT_DEBUG]      = { .optname = "sshfs_debug" },
     [SOPT_RECONNECT]  = { .optname = "reconnect" },
+    [SOPT_RENAME_FIX] = { .optname = "rename_workaround" },
     [SOPT_LAST]       = { .optname = NULL }
 };
 
@@ -1196,7 +1203,7 @@ static int sshfs_rmdir(const char *path)
     return err;
 }
 
-static int sshfs_rename(const char *from, const char *to)
+static int sshfs_do_rename(const char *from, const char *to)
 {
     int err;
     struct buffer buf;
@@ -1205,6 +1212,38 @@ static int sshfs_rename(const char *from, const char *to)
     buf_add_path(&buf, to);
     err = sftp_request(SSH_FXP_RENAME, &buf, SSH_FXP_STATUS, NULL);
     buf_free(&buf);
+    return err;
+}
+
+static void random_string(char *str, int length)
+{
+    int i;
+    for (i = 0; i < length; i++)
+        *str++ = (char)('0' + rand_r(&randseed) % 10);
+    *str = '\0';
+}
+
+static int sshfs_rename(const char *from, const char *to)
+{
+    int err;
+    err = sshfs_do_rename(from, to);
+    if (err == -EPERM && rename_workaround) {
+        size_t tolen = strlen(to);
+        if (tolen + RENAME_TEMP_CHARS < PATH_MAX) {
+            int tmperr;
+            char totmp[PATH_MAX];
+            strcpy(totmp, to);
+            random_string(totmp + tolen, RENAME_TEMP_CHARS);
+            tmperr = sshfs_do_rename(to, totmp);
+            if (!tmperr) {
+                err = sshfs_do_rename(from, to);
+                if (!err)
+                    err = sshfs_unlink(totmp);
+                else
+                    sshfs_do_rename(totmp, to);
+            }
+        }
+    }
     return err;
 }
 
@@ -1692,6 +1731,7 @@ static void usage(const char *progname)
 "    -o cache=YESNO         enable caching {yes,no} (default: yes)\n"
 "    -o cache_timeout=N     sets timeout for caches in seconds (default: 20)\n"
 "    -o cache_X_timeout=N   sets timeout for {stat,dir,link} cache\n"
+"    -o rename_workaround   work around problem renaming to existing file"
 "    -o ssh_command=CMD     execute CMD instead of 'ssh'\n"
 "    -o directport=PORT     directly connect to PORT bypassing ssh\n"
 "    -o SSHOPT=VAL          ssh options (see man ssh_config)\n"
@@ -1777,6 +1817,8 @@ int main(int argc, char *argv[])
         sync_read = 1;
     if (sshfs_opts[SOPT_DEBUG].present)
         debug = 1;
+    if (sshfs_opts[SOPT_RENAME_FIX].present)
+        rename_workaround = 1;
     if (sshfs_opts[SOPT_RECONNECT].present)
         reconnect = 1;
     if (sshfs_opts[SOPT_MAX_READ].present) {
@@ -1807,6 +1849,8 @@ int main(int argc, char *argv[])
     res = cache_parse_options(&newargc, newargv);
     if (res == -1)
         exit(1);
+
+    randseed = time(0);
 
     newargv[newargc++] = g_strdup_printf("-omax_read=%u", max_read);
     newargv[newargc++] = g_strdup_printf("-ofsname=sshfs#%s", fsname);
