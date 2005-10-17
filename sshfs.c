@@ -844,7 +844,6 @@ static void *process_requests(void *data_)
         g_hash_table_foreach_remove(reqtab, (GHRFunc) clean_req, NULL);
         connver ++;
         pthread_mutex_unlock(&lock);
-            
     }
     return NULL;
 }
@@ -1574,10 +1573,10 @@ static int sshfs_read(const char *path, char *rbuf, size_t size, off_t offset,
 {
     struct sshfs_file *sf = (struct sshfs_file *) fi->fh;
     (void) path;
-    
+
     if (!sshfs_file_is_conn(sf))
         return -EIO;
-    
+
     if (sync_read)
         return sshfs_sync_read(sf, rbuf, size, offset);
     else
@@ -1619,7 +1618,7 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
     struct buffer *handle = &sf->handle;
 
     (void) path;
-    
+
     if (!sshfs_file_is_conn(sf))
         return -EIO;
 
