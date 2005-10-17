@@ -1,3 +1,7 @@
+2005-10-17  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Add one more missing lock.
+
 2005-10-15  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Protect request ID allocation with mutex.  Bug report by Tvrtko

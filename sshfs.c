@@ -940,10 +940,10 @@ static int sftp_request_common(uint8_t type, const struct buffer *buf,
     req->data = data;
     sem_init(&req->ready, 0, 0);
     buf_init(&req->reply, 0);
-    if (begin_func)
-        begin_func(req);
     buf_init(&buf2, buf->len + 4);
     pthread_mutex_lock(&lock);
+    if (begin_func)
+        begin_func(req);
     id = sftp_get_id();
     buf_add_uint32(&buf2, id);
     buf_add_mem(&buf2, buf->p, buf->len);
@@ -1012,8 +1012,11 @@ static int sftp_request_common(uint8_t type, const struct buffer *buf,
     }
 
  out:
-    if (end_func)
+    if (end_func) {
+        pthread_mutex_lock(&lock);
         end_func(req);
+        pthread_mutex_unlock(&lock);
+    }
     buf_free(&buf2);
     request_free(req);
     return err;
@@ -1447,9 +1450,7 @@ static void sshfs_read_end(struct request *req)
 static void sshfs_read_begin(struct request *req)
 {
     struct read_chunk *chunk = (struct read_chunk *) req->data;
-    pthread_mutex_lock(&lock);
     chunk->refs++;
-    pthread_mutex_unlock(&lock);
 }
 
 static int sshfs_send_async_read(struct sshfs_file *sf,
@@ -1586,9 +1587,7 @@ static int sshfs_read(const char *path, char *rbuf, size_t size, off_t offset,
 static void sshfs_write_begin(struct request *req)
 {
     struct sshfs_file *sf = (struct sshfs_file *) req->data;
-    pthread_mutex_lock(&lock);
     list_add(&req->list, &sf->write_reqs);
-    pthread_mutex_unlock(&lock);
 }
 
 static void sshfs_write_end(struct request *req)
