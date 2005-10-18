@@ -28,6 +28,10 @@
 #include "cache.h"
 #include "opts.h"
 
+#if FUSE_VERSION >= 23
+#define SSHFS_USE_INIT
+#endif
+
 #define SSH_FXP_INIT                1
 #define SSH_FXP_VERSION             2
 #define SSH_FXP_OPEN                3
@@ -98,6 +102,10 @@ static int reconnect = 0;
 static int sync_write = 0;
 static int sync_read = 0;
 static int rename_workaround = 0;
+static int detect_uid = 0;
+static unsigned remote_uid;
+static unsigned local_uid;
+static int remote_uid_detected = 0;
 static char *base_path;
 static char *host;
 static unsigned blksize = 4096;
@@ -153,6 +161,7 @@ static GHashTable *reqtab;
 static pthread_mutex_t lock;
 static int processing_thread_started;
 
+
 static struct opt ssh_opts[] = {
     { .optname = "AddressFamily"                    },
     { .optname = "BatchMode"                        },
@@ -206,6 +215,7 @@ enum {
     SOPT_DEBUG,
     SOPT_RECONNECT,
     SOPT_RENAME_FIX,
+    SOPT_DETECT_UID,
     SOPT_LAST /* Last entry in this list! */
 };
 
@@ -218,6 +228,7 @@ static struct opt sshfs_opts[] = {
     [SOPT_DEBUG]      = { .optname = "sshfs_debug" },
     [SOPT_RECONNECT]  = { .optname = "reconnect" },
     [SOPT_RENAME_FIX] = { .optname = "rename_workaround" },
+    [SOPT_DETECT_UID] = { .optname = "detect_uid" },
     [SOPT_LAST]       = { .optname = NULL }
 };
 
@@ -459,7 +470,7 @@ static inline int buf_get_string(struct buffer *buf, char **str)
     return 0;
 }
 
-static int buf_get_attrs(struct buffer *buf, struct stat *stbuf)
+static int buf_get_attrs(struct buffer *buf, struct stat *stbuf, int *flagsp)
 {
     uint32_t flags;
     uint64_t size = 0;
@@ -471,6 +482,8 @@ static int buf_get_attrs(struct buffer *buf, struct stat *stbuf)
 
     if (buf_get_uint32(buf, &flags) == -1)
         return -1;
+    if (flagsp)
+        *flagsp = flags;
     if ((flags & SSH_FILEXFER_ATTR_SIZE) &&
         buf_get_uint64(buf, &size) == -1)
         return -1;
@@ -501,6 +514,10 @@ static int buf_get_attrs(struct buffer *buf, struct stat *stbuf)
             buf_free(&tmp);
         }
     }
+
+    if (remote_uid_detected && uid == remote_uid)
+        uid = local_uid;
+
     memset(stbuf, 0, sizeof(struct stat));
     stbuf->st_mode = mode;
     stbuf->st_nlink = 1;
@@ -534,7 +551,7 @@ static int buf_get_entries(struct buffer *buf, fuse_cache_dirh_t h,
             return -1;
         if (buf_get_string(buf, &longname) != -1) {
             free(longname);
-            if (buf_get_attrs(buf, &stbuf) != -1) {
+            if (buf_get_attrs(buf, &stbuf, NULL) != -1) {
                 filler(h, name, &stbuf);
                 err = 0;
             }
@@ -887,6 +904,59 @@ static int sftp_init()
     return res;
 }
 
+static void sftp_detect_uid()
+{
+    int flags;
+    int id = sftp_get_id();
+    int replid;
+    uint8_t type;
+    struct buffer buf;
+    struct stat stbuf;
+
+    buf_init(&buf, 9);
+    buf_add_uint32(&buf, id);
+    buf_add_string(&buf, ".");
+    if (sftp_send(SSH_FXP_STAT, &buf) == -1)
+        goto out;
+    buf_clear(&buf);
+    if (sftp_read(&type, &buf) == -1)
+        goto out;
+    if (type != SSH_FXP_ATTRS && type != SSH_FXP_STATUS) {
+        fprintf(stderr, "protocol error\n");
+        goto out;
+    }
+    if (buf_get_uint32(&buf, &replid) == -1)
+        goto out;
+    if (replid != id) {
+        fprintf(stderr, "bad reply ID\n");
+        goto out;
+    }
+    if (type == SSH_FXP_STATUS) {
+        uint32_t serr;
+        if (buf_get_uint32(&buf, &serr) == -1)
+            goto out;
+
+        fprintf(stderr, "failed to stat home directory (%i)\n", serr);
+        goto out;
+    }
+    if (buf_get_attrs(&buf, &stbuf, &flags) == -1)
+        goto out;
+
+    if (!(flags & SSH_FILEXFER_ATTR_UIDGID))
+        goto out;
+
+    remote_uid = stbuf.st_uid;
+    local_uid = getuid();
+    remote_uid_detected = 1;
+    DEBUG("remote_uid = %i\n", remote_uid);
+
+ out:
+    if (!remote_uid_detected)
+        fprintf(stderr, "failed to detect remote user ID\n");
+
+    buf_free(&buf);
+}
+
 static int connect_remote(void)
 {
     int err;
@@ -924,9 +994,12 @@ static int start_processing_thread(void)
     return 0;
 }
 
-#if FUSE_VERSION >= 23
+#ifdef SSHFS_USE_INIT
 static void *sshfs_init(void)
 {
+    if (detect_uid)
+        sftp_detect_uid();
+
     start_processing_thread();
     return NULL;
 }
@@ -1052,7 +1125,7 @@ static int sshfs_getattr(const char *path, struct stat *stbuf)
     buf_add_path(&buf, path);
     err = sftp_request(SSH_FXP_LSTAT, &buf, SSH_FXP_ATTRS, &outbuf);
     if (!err) {
-        if (buf_get_attrs(&outbuf, stbuf) == -1)
+        if (buf_get_attrs(&outbuf, stbuf, NULL) == -1)
             err = -EPROTO;
         buf_free(&outbuf);
     }
@@ -1688,7 +1761,7 @@ static int processing_init(void)
 
 static struct fuse_cache_operations sshfs_oper = {
     .oper = {
-#if FUSE_VERSION >= 23
+#ifdef SSHFS_USE_INIT
         .init       = sshfs_init,
 #endif
         .getattr    = sshfs_getattr,
@@ -1732,6 +1805,7 @@ static void usage(const char *progname)
 "    -o cache_timeout=N     sets timeout for caches in seconds (default: 20)\n"
 "    -o cache_X_timeout=N   sets timeout for {stat,dir,link} cache\n"
 "    -o rename_workaround   work around problem renaming to existing file"
+"    -o detect_uid          detect remote user ID and translate to local"
 "    -o ssh_command=CMD     execute CMD instead of 'ssh'\n"
 "    -o directport=PORT     directly connect to PORT bypassing ssh\n"
 "    -o SSHOPT=VAL          ssh options (see man ssh_config)\n"
@@ -1819,6 +1893,8 @@ int main(int argc, char *argv[])
         debug = 1;
     if (sshfs_opts[SOPT_RENAME_FIX].present)
         rename_workaround = 1;
+    if (sshfs_opts[SOPT_DETECT_UID].present)
+        detect_uid = 1;
     if (sshfs_opts[SOPT_RECONNECT].present)
         reconnect = 1;
     if (sshfs_opts[SOPT_MAX_READ].present) {
@@ -1841,6 +1917,11 @@ int main(int argc, char *argv[])
     res = sftp_init();
     if (res == -1)
         exit(1);
+
+#ifndef SSHFS_USE_INIT
+    if (detect_uid)
+        sftp_detect_uid();
+#endif
 
     res = processing_init();
     if (res == -1)

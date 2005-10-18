@@ -1,3 +1,8 @@
+2005-10-18  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Add remote uid detection and translation.  Idea and
+	implementation details worked out by Jean-Marc Valin
+
 2005-10-17  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Add one more missing lock.
