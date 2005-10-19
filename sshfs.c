@@ -215,7 +215,7 @@ enum {
     SOPT_DEBUG,
     SOPT_RECONNECT,
     SOPT_RENAME_FIX,
-    SOPT_DETECT_UID,
+    SOPT_IDMAP,
     SOPT_LAST /* Last entry in this list! */
 };
 
@@ -228,7 +228,7 @@ static struct opt sshfs_opts[] = {
     [SOPT_DEBUG]      = { .optname = "sshfs_debug" },
     [SOPT_RECONNECT]  = { .optname = "reconnect" },
     [SOPT_RENAME_FIX] = { .optname = "rename_workaround" },
-    [SOPT_DETECT_UID] = { .optname = "detect_uid" },
+    [SOPT_IDMAP] =      { .optname = "idmap" },
     [SOPT_LAST]       = { .optname = NULL }
 };
 
@@ -1804,8 +1804,10 @@ static void usage(const char *progname)
 "    -o cache=YESNO         enable caching {yes,no} (default: yes)\n"
 "    -o cache_timeout=N     sets timeout for caches in seconds (default: 20)\n"
 "    -o cache_X_timeout=N   sets timeout for {stat,dir,link} cache\n"
-"    -o rename_workaround   work around problem renaming to existing file"
-"    -o detect_uid          detect remote user ID and translate to local"
+"    -o rename_workaround   work around problem renaming to existing file\n"
+"    -o idmap=TYPE          user/group ID mapping, possible types are:\n"
+"             none             no translation of the ID space (default)\n"
+"             user             detect remote user ID and translate to local\n"
 "    -o ssh_command=CMD     execute CMD instead of 'ssh'\n"
 "    -o directport=PORT     directly connect to PORT bypassing ssh\n"
 "    -o SSHOPT=VAL          ssh options (see man ssh_config)\n"
@@ -1893,8 +1895,21 @@ int main(int argc, char *argv[])
         debug = 1;
     if (sshfs_opts[SOPT_RENAME_FIX].present)
         rename_workaround = 1;
-    if (sshfs_opts[SOPT_DETECT_UID].present)
-        detect_uid = 1;
+    if (sshfs_opts[SOPT_IDMAP].present) {
+        struct opt *o = &sshfs_opts[SOPT_IDMAP];
+        if (!o->value) {
+            fprintf(stderr, "Missing value for '%s' option\n", o->optname);
+            exit(1);
+        }
+        if (strcmp(o->value, "none") == 0)
+            detect_uid = 0;
+        else if (strcmp(o->value, "user") == 0)
+            detect_uid = 1;
+        else {
+            fprintf(stderr, "Invalid value for '%s' option\n", o->optname);
+            exit(1);
+        }
+    }
     if (sshfs_opts[SOPT_RECONNECT].present)
         reconnect = 1;
     if (sshfs_opts[SOPT_MAX_READ].present) {
