@@ -1807,7 +1807,7 @@ static void usage(const char *progname)
 "    -o rename_workaround   work around problem renaming to existing file\n"
 "    -o idmap=TYPE          user/group ID mapping, possible types are:\n"
 "             none             no translation of the ID space (default)\n"
-"             user             detect remote user ID and translate to local\n"
+"             user             only translate ID of connecting user\n"
 "    -o ssh_command=CMD     execute CMD instead of 'ssh'\n"
 "    -o directport=PORT     directly connect to PORT bypassing ssh\n"
 "    -o SSHOPT=VAL          ssh options (see man ssh_config)\n"
