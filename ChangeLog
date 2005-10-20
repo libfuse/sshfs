@@ -1,3 +1,10 @@
+2005-10-19  Miklos Szeredi <miklos@szeredi.hu>
+
+	* GNOME Nautilus fails to copy file to sshfs filesystem, because
+	FUSE returns zero free space.  So instead return huge (999999999
+	kbytes) amount of free space, yet it should be obvious that the
+	number is artificial.  Bug report by Peter Kronheimer
+
 2005-10-18  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Add remote uid detection and translation ('idmap=user' option).
