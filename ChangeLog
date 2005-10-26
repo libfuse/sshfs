@@ -1,3 +1,8 @@
+2005-10-26  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Fix typo (ConnectTimeout -> ConnectionTimeout) in ssh options.
+	Bug reported by Miklos Bagi Jr.
+
 2005-10-19  Miklos Szeredi <miklos@szeredi.hu>
 
 	* GNOME Nautilus fails to copy file to sshfs filesystem, because
