@@ -16,3 +16,5 @@ void process_options(int *argcp, char *argv[], struct opt opts[],
                      int case_sensitive);
 
 int opt_get_unsigned(const struct opt *o, unsigned *valp);
+
+char *opt_get_string(const struct opt *o);

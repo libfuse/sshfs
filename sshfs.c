@@ -91,12 +91,16 @@
 
 #define RENAME_TEMP_CHARS 8
 
+#define SFTP_SERVER_PATH "/usr/lib/sftp-server"
+
 static unsigned int randseed;
 
 static int infd;
 static int outfd;
 static int connver;
 static int server_version;
+static unsigned ssh_ver = 2;
+static char *sftp_server = NULL;
 static int debug = 0;
 static int reconnect = 0;
 static int sync_write = 0;
@@ -190,7 +194,6 @@ static struct opt ssh_opts[] = {
     { .optname = "PasswordAuthentication"           },
     { .optname = "Port"                             },
     { .optname = "PreferredAuthentications"         },
-    { .optname = "Protocol"                         },
     { .optname = "ProxyCommand"                     },
     { .optname = "PubkeyAuthentication"             },
     { .optname = "RhostsRSAAuthentication"          },
@@ -216,6 +219,8 @@ enum {
     SOPT_RECONNECT,
     SOPT_RENAME_FIX,
     SOPT_IDMAP,
+    SOPT_PROTOCOL,
+    SOPT_SFTPSERVER,
     SOPT_LAST /* Last entry in this list! */
 };
 
@@ -228,7 +233,9 @@ static struct opt sshfs_opts[] = {
     [SOPT_DEBUG]      = { .optname = "sshfs_debug" },
     [SOPT_RECONNECT]  = { .optname = "reconnect" },
     [SOPT_RENAME_FIX] = { .optname = "rename_workaround" },
-    [SOPT_IDMAP] =      { .optname = "idmap" },
+    [SOPT_IDMAP]      = { .optname = "idmap" },
+    [SOPT_PROTOCOL]   = { .optname = "ssh_protocol" },
+    [SOPT_SFTPSERVER] = { .optname = "sftp_server" },
     [SOPT_LAST]       = { .optname = NULL }
 };
 
@@ -586,6 +593,7 @@ static int start_ssh(char *host)
         int argctr = 0;
         char *ssh_args[sizeof(ssh_opts)/sizeof(struct opt) + 32];
         char *ssh_cmd;
+        char veropt[64];
 
         devnull = open("/dev/null", O_WRONLY);
 
@@ -619,7 +627,8 @@ static int start_ssh(char *host)
         chdir("/");
 
         ssh_args[argctr++] = ssh_cmd;
-        ssh_args[argctr++] = "-2";
+        sprintf(veropt, "-%i", ssh_ver);
+        ssh_args[argctr++] = veropt;
         ssh_args[argctr++] = "-x";
         ssh_args[argctr++] = "-a";
         ssh_args[argctr++] = "-oClearAllForwardings=yes";
@@ -632,8 +641,15 @@ static int start_ssh(char *host)
             }
         }
         ssh_args[argctr++] = host;
-        ssh_args[argctr++] = "-s";
-        ssh_args[argctr++] = "sftp";
+        if (!sftp_server) {
+            if (ssh_ver == 1)
+                sftp_server = SFTP_SERVER_PATH;
+            else
+                sftp_server = "sftp";
+        }
+        if (ssh_ver != 1 && strchr(sftp_server, '/') == NULL)
+            ssh_args[argctr++] = "-s";
+        ssh_args[argctr++] = sftp_server;
         ssh_args[argctr++] = NULL;
 
         execvp(ssh_cmd, ssh_args);
@@ -1812,6 +1828,7 @@ static void usage(const char *progname)
 "    -V                     show version information\n"
 "    -p PORT                equivalent to '-o port=PORT'\n"
 "    -C                     equivalent to '-o compression=yes'\n"
+"    -1                     equivalent to '-o ssh_protocol=1'\n"
 "    -o reconnect           reconnect to server\n"
 "    -o sshfs_sync          synchronous writes\n"
 "    -o no_readahead        synchronous reads (no speculative readahead)\n"
@@ -1824,6 +1841,8 @@ static void usage(const char *progname)
 "             none             no translation of the ID space (default)\n"
 "             user             only translate UID of connecting user\n"
 "    -o ssh_command=CMD     execute CMD instead of 'ssh'\n"
+"    -o ssh_protocol=N      ssh protocol to use (default: 2)\n"
+"    -o sftp_server=SERV    path to sftp server or subsystem (default: sftp)\n"
 "    -o directport=PORT     directly connect to PORT bypassing ssh\n"
 "    -o SSHOPT=VAL          ssh options (see man ssh_config)\n"
 "\n", progname);
@@ -1866,6 +1885,11 @@ int main(int argc, char *argv[])
             case 'C':
                 if (!arg[2])
                     arg = "-oCompression=yes";
+                break;
+
+            case '1':
+                if (!arg[2])
+                    arg = "-ossh_protocol=1";
                 break;
 
             case 'p':
@@ -1912,13 +1936,13 @@ int main(int argc, char *argv[])
         rename_workaround = 1;
     if (sshfs_opts[SOPT_IDMAP].present) {
         struct opt *o = &sshfs_opts[SOPT_IDMAP];
-        if (!o->value) {
-            fprintf(stderr, "Missing value for '%s' option\n", o->optname);
+        char *idmap = opt_get_string(o);
+        if (!idmap)
             exit(1);
-        }
-        if (strcmp(o->value, "none") == 0)
+
+        if (strcmp(idmap, "none") == 0)
             detect_uid = 0;
-        else if (strcmp(o->value, "user") == 0)
+        else if (strcmp(idmap, "user") == 0)
             detect_uid = 1;
         else {
             fprintf(stderr, "Invalid value for '%s' option\n", o->optname);
@@ -1934,6 +1958,15 @@ int main(int argc, char *argv[])
 
         if (val < max_read)
             max_read = val;
+    }
+    if (sshfs_opts[SOPT_PROTOCOL].present) {
+        if (opt_get_unsigned(&sshfs_opts[SOPT_PROTOCOL], &ssh_ver) == -1)
+            exit(1);
+    }
+    if (sshfs_opts[SOPT_SFTPSERVER].present) {
+        sftp_server = opt_get_string(&sshfs_opts[SOPT_SFTPSERVER]);
+        if (!sftp_server)
+            exit(1);
     }
     if (sshfs_opts[SOPT_DIRECTPORT].present)
         res = connect_to(host, sshfs_opts[SOPT_DIRECTPORT].value);

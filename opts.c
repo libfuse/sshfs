@@ -119,3 +119,12 @@ int opt_get_unsigned(const struct opt *o, unsigned *valp)
     *valp = val;
     return 0;
 }
+
+char *opt_get_string(const struct opt *o)
+{
+    if (!o->value || !o->value[0]) {
+        fprintf(stderr, "Missing value for '%s' option\n", o->optname);
+        return NULL;
+    }
+    return o->value;
+}
