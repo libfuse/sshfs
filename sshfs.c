@@ -217,7 +217,7 @@ enum {
     SOPT_MAX_READ,
     SOPT_DEBUG,
     SOPT_RECONNECT,
-    SOPT_RENAME_FIX,
+    SOPT_WORKAROUND,
     SOPT_IDMAP,
     SOPT_PROTOCOL,
     SOPT_SFTPSERVER,
@@ -232,7 +232,7 @@ static struct opt sshfs_opts[] = {
     [SOPT_MAX_READ]   = { .optname = "max_read" },
     [SOPT_DEBUG]      = { .optname = "sshfs_debug" },
     [SOPT_RECONNECT]  = { .optname = "reconnect" },
-    [SOPT_RENAME_FIX] = { .optname = "rename_workaround" },
+    [SOPT_WORKAROUND] = { .optname = "workaround" },
     [SOPT_IDMAP]      = { .optname = "idmap" },
     [SOPT_PROTOCOL]   = { .optname = "ssh_protocol" },
     [SOPT_SFTPSERVER] = { .optname = "sftp_server" },
@@ -1836,7 +1836,10 @@ static void usage(const char *progname)
 "    -o cache=YESNO         enable caching {yes,no} (default: yes)\n"
 "    -o cache_timeout=N     sets timeout for caches in seconds (default: 20)\n"
 "    -o cache_X_timeout=N   sets timeout for {stat,dir,link} cache\n"
-"    -o rename_workaround   work around problem renaming to existing file\n"
+"    -o workaround=LIST     colon separated list of workarounds\n"
+"             none             no workarounds enabled (default)\n"
+"             all              all workarounds enabled\n"
+"             rename           work around problem renaming to existing file\n"
 "    -o idmap=TYPE          user/group ID mapping, possible types are:\n"
 "             none             no translation of the ID space (default)\n"
 "             user             only translate UID of connecting user\n"
@@ -1932,8 +1935,25 @@ int main(int argc, char *argv[])
         sync_read = 1;
     if (sshfs_opts[SOPT_DEBUG].present)
         debug = 1;
-    if (sshfs_opts[SOPT_RENAME_FIX].present)
-        rename_workaround = 1;
+    if (sshfs_opts[SOPT_WORKAROUND].present) {
+        struct opt *o = &sshfs_opts[SOPT_WORKAROUND];
+        char *s = opt_get_string(o);
+        if (!s)
+            exit(1);
+
+        for (s = strtok(s, ":"); s; s = strtok(NULL, ":")) {
+            if (strcmp(s, "none") == 0)
+                ;
+            else if (strcmp(s, "all") == 0)
+                rename_workaround = 1;
+            else if (strcmp(s, "rename") == 0)
+                rename_workaround = 1;
+            else {
+                fprintf(stderr, "Invalid value for '%s' option\n", o->optname);
+                exit(1);
+            }
+        }
+    }
     if (sshfs_opts[SOPT_IDMAP].present) {
         struct opt *o = &sshfs_opts[SOPT_IDMAP];
         char *idmap = opt_get_string(o);
