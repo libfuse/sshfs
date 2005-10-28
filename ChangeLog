@@ -2,8 +2,9 @@
 
 	* Add atomic create+open and ftruncate operation.  This should fix
 	issues with 'cp' and other programs failing with "Permission
-	denied".  Needs FUSE version 2.5 and kernel version 2.6.15 (just a
-	guess, since neither of them is released yet).
+	denied".  To be effective, needs FUSE version 2.5 and kernel
+	version 2.6.15 (just a guess, since neither of them is released
+	yet).
 
 2005-10-27  Miklos Szeredi <miklos@szeredi.hu>
 
