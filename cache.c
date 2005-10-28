@@ -192,26 +192,31 @@ static void cache_add_link(const char *path, const char *link, size_t size)
     pthread_mutex_unlock(&cache_lock);
 }
 
-static int cache_getattr(const char *path, struct stat *stbuf)
+static int cache_get_attr(const char *path, struct stat *stbuf)
 {
     struct node *node;
-    int err;
-
+    int err = -EAGAIN;
     pthread_mutex_lock(&cache_lock);
     node = cache_lookup(path);
     if (node != NULL) {
         time_t now = time(NULL);
         if (node->stat_valid - now >= 0) {
             *stbuf = node->stat;
-            pthread_mutex_unlock(&cache_lock);
-            return 0;
+            err = 0;
         }
     }
     pthread_mutex_unlock(&cache_lock);
-    err = next_oper->oper.getattr(path, stbuf);
-    if (!err)
-        cache_add_attr(path, stbuf);
+    return err;
+}
 
+static int cache_getattr(const char *path, struct stat *stbuf)
+{
+    int err = cache_get_attr(path, stbuf);
+    if (err) {
+        err = next_oper->oper.getattr(path, stbuf);
+        if (!err)
+            cache_add_attr(path, stbuf);
+    }
     return err;
 }
 
@@ -403,6 +408,38 @@ static int cache_write(const char *path, const char *buf, size_t size,
     return res;
 }
 
+#if FUSE_VERSION >= 25
+static int cache_create(const char *path, mode_t mode,
+                        struct fuse_file_info *fi)
+{
+    int err = next_oper->oper.create(path, mode, fi);
+    if (!err)
+        cache_invalidate_dir(path);
+    return err;
+}
+
+static int cache_ftruncate(const char *path, off_t size,
+                           struct fuse_file_info *fi)
+{
+    int err = next_oper->oper.ftruncate(path, size, fi);
+    if (!err)
+        cache_invalidate(path);
+    return err;
+}
+
+static int cache_fgetattr(const char *path, struct stat *stbuf,
+                          struct fuse_file_info *fi)
+{
+    int err = cache_get_attr(path, stbuf);
+    if (err) {
+        err = next_oper->oper.fgetattr(path, stbuf, fi);
+        if (!err)
+            cache_add_attr(path, stbuf);
+    }
+    return err;
+}
+#endif
+
 static void cache_unity_fill(struct fuse_cache_operations *oper,
                              struct fuse_operations *cache_oper)
 {
@@ -434,6 +471,11 @@ static void cache_unity_fill(struct fuse_cache_operations *oper,
     cache_oper->getxattr    = oper->oper.getxattr;
     cache_oper->listxattr   = oper->oper.listxattr;
     cache_oper->removexattr = oper->oper.removexattr;
+#if FUSE_VERSION >= 25
+    cache_oper->create      = oper->oper.create;
+    cache_oper->ftruncate   = oper->oper.ftruncate;
+    cache_oper->fgetattr    = oper->oper.fgetattr;
+#endif
 }
 
 struct fuse_operations *cache_init(struct fuse_cache_operations *oper)
@@ -458,6 +500,11 @@ struct fuse_operations *cache_init(struct fuse_cache_operations *oper)
         cache_oper.truncate = oper->oper.truncate ? cache_truncate : NULL;
         cache_oper.utime    = oper->oper.utime ? cache_utime : NULL;
         cache_oper.write    = oper->oper.write ? cache_write : NULL;
+#if FUSE_VERSION >= 25
+        cache_oper.create   = oper->oper.create ? cache_create : NULL;
+        cache_oper.ftruncate = oper->oper.ftruncate ? cache_ftruncate : NULL;
+        cache_oper.fgetattr = oper->oper.fgetattr ? cache_fgetattr : NULL;
+#endif
         pthread_mutex_init(&cache_lock, NULL);
         cache = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
                                       free_node);

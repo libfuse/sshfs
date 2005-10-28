@@ -1434,6 +1434,9 @@ static int sshfs_open_common(const char *path, mode_t mode,
     if (fi->flags & O_EXCL)
         pflags |= SSH_FXF_EXCL;
 
+    if (fi->flags & O_TRUNC)
+        pflags |= SSH_FXF_TRUNC;
+
     sf = g_new0(struct sshfs_file, 1);
     list_init(&sf->write_reqs);
     pthread_cond_init(&sf->write_finished, NULL);
@@ -1778,6 +1781,61 @@ static int sshfs_statfs(const char *path, struct statfs *buf)
     return 0;
 }
 
+#if FUSE_VERSION >= 25
+static int sshfs_create(const char *path, mode_t mode,
+                        struct fuse_file_info *fi)
+{
+    return sshfs_open_common(path, mode, fi);
+}
+
+static int sshfs_ftruncate(const char *path, off_t size,
+                           struct fuse_file_info *fi)
+{
+    int err;
+    struct buffer buf;
+    struct sshfs_file *sf = (struct sshfs_file *) fi->fh;
+
+    (void) path;
+
+    if (!sshfs_file_is_conn(sf))
+        return -EIO;
+
+    buf_init(&buf, 0);
+    buf_add_buf(&buf, &sf->handle);
+    buf_add_uint32(&buf, SSH_FILEXFER_ATTR_SIZE);
+    buf_add_uint64(&buf, size);
+    err = sftp_request(SSH_FXP_FSETSTAT, &buf, SSH_FXP_STATUS, NULL);
+    buf_free(&buf);
+
+    return err;
+}
+
+static int sshfs_fgetattr(const char *path, struct stat *stbuf,
+                           struct fuse_file_info *fi)
+{
+    int err;
+    struct buffer buf;
+    struct buffer outbuf;
+    struct sshfs_file *sf = (struct sshfs_file *) fi->fh;
+
+    (void) path;
+
+    if (!sshfs_file_is_conn(sf))
+        return -EIO;
+
+    buf_init(&buf, 0);
+    buf_add_buf(&buf, &sf->handle);
+    err = sftp_request(SSH_FXP_FSTAT, &buf, SSH_FXP_ATTRS, &outbuf);
+    if (!err) {
+        if (buf_get_attrs(&outbuf, stbuf, NULL) == -1)
+            err = -EPROTO;
+        buf_free(&outbuf);
+    }
+    buf_free(&buf);
+    return err;
+}
+#endif
+
 static int processing_init(void)
 {
     pthread_mutex_init(&lock, NULL);
@@ -1813,6 +1871,11 @@ static struct fuse_cache_operations sshfs_oper = {
         .read       = sshfs_read,
         .write      = sshfs_write,
         .statfs     = sshfs_statfs,
+#if FUSE_VERSION >= 25
+        .create     = sshfs_create,
+        .ftruncate  = sshfs_ftruncate,
+        .fgetattr   = sshfs_fgetattr,
+#endif
     },
     .cache_getdir = sshfs_getdir,
 };
