@@ -1767,6 +1767,21 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
     return err ? err : (int) size;
 }
 
+#if FUSE_VERSION >= 25
+static int sshfs_statfs(const char *path, struct statvfs *buf)
+{
+    (void) path;
+
+    buf->f_namemax = 255;
+    buf->f_bsize = 512;
+    buf->f_blocks = 999999999 * 2;
+    buf->f_bfree =  999999999 * 2;
+    buf->f_bavail = 999999999 * 2;
+    buf->f_files =  999999999;
+    buf->f_ffree =  999999999;
+    return 0;
+}
+#else
 static int sshfs_statfs(const char *path, struct statfs *buf)
 {
     (void) path;
@@ -1780,6 +1795,7 @@ static int sshfs_statfs(const char *path, struct statfs *buf)
     buf->f_ffree =  999999999;
     return 0;
 }
+#endif
 
 #if FUSE_VERSION >= 25
 static int sshfs_create(const char *path, mode_t mode,

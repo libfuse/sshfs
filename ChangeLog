@@ -1,5 +1,9 @@
 2005-10-29  Miklos Szeredi <miklos@szeredi.hu>
 
+	* Use FUSE version 25 if available
+
+2005-10-29  Miklos Szeredi <miklos@szeredi.hu>
+
 	* Released 1.3
 
 2005-10-28  Miklos Szeredi <miklos@szeredi.hu>

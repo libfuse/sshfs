@@ -2,4 +2,4 @@
 
 bin_PROGRAMS = sshfs
 sshfs_SOURCES = sshfs.c cache.c opts.c cache.h opts.h
-sshfs_CPPFLAGS = -DFUSE_USE_VERSION=22
+sshfs_CPPFLAGS = -DFUSE_USE_VERSION=25
