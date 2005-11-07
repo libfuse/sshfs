@@ -2,6 +2,8 @@
 
 	* Use FUSE version 25 if available
 
+	* Add <sys/socket.h> include.  Reported by Csaba Henk
+
 2005-10-29  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Released 1.3
