@@ -59,11 +59,13 @@ static int process_option_group(char *arg, struct opt opts[],
             if (comma)
                 arg = comma + 1;
         }
-        if (!remove_one && prevcomma)
-            *prevcomma = ',';
+        if (!remove_one) {
+            if (prevcomma) 
+                *prevcomma = ',';
+            prevcomma = comma;
+        }
         if (!comma)
             break;
-        prevcomma = comma;
     }
     return remove;
 }

@@ -1465,7 +1465,7 @@ static int sshfs_open(const char *path, struct fuse_file_info *fi)
     return sshfs_open_common(path, 0, fi);
 }
 
-static struct sshfs_file *get_sshfs_file(struct fuse_file_info *fi)
+static inline struct sshfs_file *get_sshfs_file(struct fuse_file_info *fi)
 {
     return (struct sshfs_file *) (uintptr_t) fi->fh;
 }

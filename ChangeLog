@@ -2,6 +2,8 @@
 
 	* Replace EPROTO with the more portable EIO
 
+	* Fix bug in option parsing.  Reported by Csaba Henk
+
 2005-10-29  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Use FUSE version 25 if available
