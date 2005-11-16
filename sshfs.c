@@ -1071,7 +1071,7 @@ static int sftp_request_common(uint8_t type, const struct buffer *buf,
         err = req->error;
         goto out;
     }
-    err = -EPROTO;
+    err = -EIO;
     if (req->reply_type != expect_type && req->reply_type != SSH_FXP_STATUS) {
         fprintf(stderr, "protocol error\n");
         goto out;
@@ -1086,21 +1086,21 @@ static int sftp_request_common(uint8_t type, const struct buffer *buf,
             if (expect_type == SSH_FXP_STATUS)
                 err = 0;
             else
-                err = -EPROTO;
+                err = -EIO;
             break;
 
         case SSH_FX_EOF:
             if (type == SSH_FXP_READ || type == SSH_FXP_READDIR)
                 err = MY_EOF;
             else
-                err = -EPROTO;
+                err = -EIO;
             break;
 
         case SSH_FX_NO_SUCH_FILE:      err = -ENOENT; break;
         case SSH_FX_PERMISSION_DENIED: err = -EACCES; break;
         case SSH_FX_FAILURE:           err = -EPERM;  break;
         case SSH_FX_BAD_MESSAGE:
-        default:                       err = -EPROTO; break;
+        default:                       err = -EIO; break;
         }
     } else {
         buf_init(outbuf, req->reply.size - req->reply.len);
@@ -1143,7 +1143,7 @@ static int sshfs_getattr(const char *path, struct stat *stbuf)
     err = sftp_request(SSH_FXP_LSTAT, &buf, SSH_FXP_ATTRS, &outbuf);
     if (!err) {
         if (buf_get_attrs(&outbuf, stbuf, NULL) == -1)
-            err = -EPROTO;
+            err = -EIO;
         buf_free(&outbuf);
     }
     buf_free(&buf);
@@ -1165,7 +1165,7 @@ static int sshfs_readlink(const char *path, char *linkbuf, size_t size)
     if (!err) {
         uint32_t count;
         char *link;
-        err = -EPROTO;
+        err = -EIO;
         if(buf_get_uint32(&name, &count) != -1 && count == 1 &&
            buf_get_string(&name, &link) != -1) {
             strncpy(linkbuf, link, size-1);
@@ -1196,7 +1196,7 @@ static int sshfs_getdir(const char *path, fuse_cache_dirh_t h,
             err = sftp_request(SSH_FXP_READDIR, &handle, SSH_FXP_NAME, &name);
             if (!err) {
                 if (buf_get_entries(&name, h, filler) == -1)
-                    err = -EPROTO;
+                    err = -EIO;
                 buf_free(&name);
             }
         } while (!err);
@@ -1465,10 +1465,15 @@ static int sshfs_open(const char *path, struct fuse_file_info *fi)
     return sshfs_open_common(path, 0, fi);
 }
 
+static struct sshfs_file *get_sshfs_file(struct fuse_file_info *fi)
+{
+    return (struct sshfs_file *) (uintptr_t) fi->fh;
+}
+
 static int sshfs_flush(const char *path, struct fuse_file_info *fi)
 {
     int err;
-    struct sshfs_file *sf = (struct sshfs_file *) fi->fh;
+    struct sshfs_file *sf = get_sshfs_file(fi);
     struct list_head write_reqs;
     struct list_head *curr_list;
 
@@ -1503,7 +1508,7 @@ static int sshfs_fsync(const char *path, int isdatasync,
 
 static int sshfs_release(const char *path, struct fuse_file_info *fi)
 {
-    struct sshfs_file *sf = (struct sshfs_file *) fi->fh;
+    struct sshfs_file *sf = get_sshfs_file(fi);
     struct buffer *handle = &sf->handle;
     if (sshfs_file_is_conn(sf)) {
         sshfs_flush(path, fi);
@@ -1529,7 +1534,7 @@ static int sshfs_sync_read(struct sshfs_file *sf, char *rbuf, size_t size,
     err = sftp_request(SSH_FXP_READ, &buf, SSH_FXP_DATA, &data);
     if (!err) {
         uint32_t retsize;
-        err = -EPROTO;
+        err = -EIO;
         if (buf_get_uint32(&data, &retsize) != -1) {
             if (retsize > size)
                 fprintf(stderr, "long read\n");
@@ -1551,7 +1556,7 @@ static void sshfs_read_end(struct request *req)
     if (req->error)
         chunk->res = req->error;
     else if (req->replied) {
-        chunk->res = -EPROTO;
+        chunk->res = -EIO;
 
         if (req->reply_type == SSH_FXP_STATUS) {
             uint32_t serr;
@@ -1704,7 +1709,7 @@ static int sshfs_async_read(struct sshfs_file *sf, char *rbuf, size_t size,
 static int sshfs_read(const char *path, char *rbuf, size_t size, off_t offset,
                       struct fuse_file_info *fi)
 {
-    struct sshfs_file *sf = (struct sshfs_file *) fi->fh;
+    struct sshfs_file *sf = get_sshfs_file(fi);
     (void) path;
 
     if (!sshfs_file_is_conn(sf))
@@ -1745,7 +1750,7 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
     int err;
     struct buffer buf;
     struct buffer data;
-    struct sshfs_file *sf = (struct sshfs_file *) fi->fh;
+    struct sshfs_file *sf = get_sshfs_file(fi);
     struct buffer *handle = &sf->handle;
 
     (void) path;
@@ -1810,7 +1815,7 @@ static int sshfs_ftruncate(const char *path, off_t size,
 {
     int err;
     struct buffer buf;
-    struct sshfs_file *sf = (struct sshfs_file *) fi->fh;
+    struct sshfs_file *sf = get_sshfs_file(fi);
 
     (void) path;
 
@@ -1833,7 +1838,7 @@ static int sshfs_fgetattr(const char *path, struct stat *stbuf,
     int err;
     struct buffer buf;
     struct buffer outbuf;
-    struct sshfs_file *sf = (struct sshfs_file *) fi->fh;
+    struct sshfs_file *sf = get_sshfs_file(fi);
 
     (void) path;
 
@@ -1845,7 +1850,7 @@ static int sshfs_fgetattr(const char *path, struct stat *stbuf,
     err = sftp_request(SSH_FXP_FSTAT, &buf, SSH_FXP_ATTRS, &outbuf);
     if (!err) {
         if (buf_get_attrs(&outbuf, stbuf, NULL) == -1)
-            err = -EPROTO;
+            err = -EIO;
         buf_free(&outbuf);
     }
     buf_free(&buf);
