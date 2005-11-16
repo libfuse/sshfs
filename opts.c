@@ -58,8 +58,6 @@ static int process_option_group(char *arg, struct opt opts[],
             remove = 0;
             if (comma)
                 arg = comma + 1;
-        }
-        if (!remove_one) {
             if (prevcomma) 
                 *prevcomma = ',';
             prevcomma = comma;
