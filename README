@@ -22,6 +22,13 @@ codebase, so I rewrote it.  Features of this implementation are:
 
   - Reconnect on failure
 
+Latest version
+==============
+
+The latest and more information can be found on
+
+  http://fuse.sourceforge.net/sshfs.html
+
 
 How to mount a filesystem
 =========================
@@ -64,10 +71,3 @@ installing FUSE, compile sshfs the usual way:
 And you are ready to go.
 
 
-Bugs and feature requests
-=========================
-
-Send bug reports to <miklos@szeredi.hu>.
-
-Good luck!
-Miklos Szeredi
