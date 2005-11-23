@@ -1,3 +1,7 @@
+2005-11-23  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Fix warnings on 64bit systems.  Reported by D. R. Evans
+
 2005-11-16  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Replace EPROTO with the more portable EIO

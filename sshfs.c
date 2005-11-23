@@ -842,11 +842,12 @@ static void *process_requests(void *data_)
             break;
 
         pthread_mutex_lock(&lock);
-        req = (struct request *) g_hash_table_lookup(reqtab, (gpointer) id);
+        req = (struct request *) g_hash_table_lookup(reqtab,
+                                                     GUINT_TO_POINTER(id));
         if (req == NULL)
             fprintf(stderr, "request %i not found\n", id);
         else
-            g_hash_table_remove(reqtab, (gpointer) id);
+            g_hash_table_remove(reqtab, GUINT_TO_POINTER(id));
         pthread_mutex_unlock(&lock);
         if (req != NULL) {
             struct timeval now;
@@ -854,8 +855,8 @@ static void *process_requests(void *data_)
             gettimeofday(&now, NULL);
             difftime = (now.tv_sec - req->start.tv_sec) * 1000;
             difftime += (now.tv_usec - req->start.tv_usec) / 1000;
-            DEBUG("  [%05i] %14s %8ibytes (%ims)\n", id, type_name(type),
-                  buf.size+5, difftime);
+            DEBUG("  [%05i] %14s %8ubytes (%ims)\n", id, type_name(type),
+                  (unsigned) buf.size + 5, difftime);
             req->reply = buf;
             req->reply_type = type;
             req->replied = 1;
@@ -924,8 +925,8 @@ static int sftp_init()
 static void sftp_detect_uid()
 {
     int flags;
-    int id = sftp_get_id();
-    int replid;
+    uint32_t id = sftp_get_id();
+    uint32_t replid;
     uint8_t type;
     struct buffer buf;
     struct stat stbuf;
@@ -1049,13 +1050,13 @@ static int sftp_request_common(uint8_t type, const struct buffer *buf,
         pthread_mutex_unlock(&lock);
         goto out;
     }
-    g_hash_table_insert(reqtab, (gpointer) id, req);
+    g_hash_table_insert(reqtab, GUINT_TO_POINTER(id), req);
     gettimeofday(&req->start, NULL);
     DEBUG("[%05i] %s\n", id, type_name(type));
 
     err = -EIO;
     if (sftp_send(type, &buf2) == -1) {
-        g_hash_table_remove(reqtab, (gpointer) id);
+        g_hash_table_remove(reqtab, GUINT_TO_POINTER(id));
         pthread_mutex_unlock(&lock);
         goto out;
     }
