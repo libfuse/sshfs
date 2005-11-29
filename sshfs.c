@@ -1780,7 +1780,8 @@ static int sshfs_statfs(const char *path, struct statvfs *buf)
     (void) path;
 
     buf->f_namemax = 255;
-    buf->f_bsize = 512;
+    buf->f_bsize = blksize;
+    buf->f_frsize = 512;
     buf->f_blocks = 999999999 * 2;
     buf->f_bfree =  999999999 * 2;
     buf->f_bavail = 999999999 * 2;
