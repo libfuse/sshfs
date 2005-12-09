@@ -519,12 +519,6 @@ struct fuse_operations *cache_init(struct fuse_cache_operations *oper)
     return &cache_oper;
 }
 
-static int cache_opt_proc(void *data, const char *arg, int key)
-{
-    (void) data, (void) arg, (void) key;
-    return 1;
-}
-
 static const struct fuse_opt cache_opts[] = {
     { "cache=yes", offsetof(struct cache, on), 1 },
     { "cache=no", offsetof(struct cache, on), 0 },
@@ -544,6 +538,5 @@ int cache_parse_options(int *argcp, char **argvp[])
     cache.link_timeout = DEFAULT_CACHE_TIMEOUT;
     cache.on = 1;
 
-    return fuse_opt_parse(0, NULL, &cache, cache_opts, cache_opt_proc,
-                          argcp, argvp);
+    return fuse_opt_parse(0, NULL, &cache, cache_opts, NULL, argcp, argvp);
 }
