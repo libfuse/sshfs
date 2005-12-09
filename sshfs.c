@@ -9,6 +9,7 @@
 #include "config.h"
 
 #include <fuse.h>
+#include <fuse_opt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -27,7 +28,6 @@
 #include <glib.h>
 
 #include "cache.h"
-#include "opts.h"
 
 #if FUSE_VERSION >= 23
 #define SSHFS_USE_INIT
@@ -94,27 +94,6 @@
 
 #define SFTP_SERVER_PATH "/usr/lib/sftp-server"
 
-static unsigned int randseed;
-
-static int infd;
-static int outfd;
-static int connver;
-static int server_version;
-static unsigned ssh_ver = 2;
-static char *sftp_server = NULL;
-static int debug = 0;
-static int reconnect = 0;
-static int sync_write = 0;
-static int sync_read = 0;
-static int rename_workaround = 0;
-static int detect_uid = 0;
-static unsigned remote_uid;
-static unsigned local_uid;
-static int remote_uid_detected = 0;
-static char *base_path;
-static char *host;
-static unsigned blksize = 4096;
-
 struct buffer {
     uint8_t *p;
     size_t len;
@@ -162,86 +141,120 @@ struct sshfs_file {
     int connver;
 };
 
-static GHashTable *reqtab;
-static pthread_mutex_t lock;
-static int processing_thread_started;
+struct sshfs {
+    const char *progname;
+    char *directport;
+    char *ssh_command;
+    char *sftp_server;
+    char **ssh_args;
+    int ssh_argc;
+    int rename_workaround;
+    int detect_uid;
+    unsigned max_read;
+    unsigned ssh_ver;
+    int sync_write;
+    int sync_read;
+    int debug;
+    int reconnect;
+    char *host;
+    char *base_path;
+    GHashTable *reqtab;
+    pthread_mutex_t lock;
+    int processing_thread_started;
+    unsigned int randseed;
+    int infd;
+    int outfd;
+    int connver;
+    int server_version;
+    unsigned remote_uid;
+    unsigned local_uid;
+    int remote_uid_detected;
+    unsigned blksize;
+};
 
+static struct sshfs sshfs;
 
-static struct opt ssh_opts[] = {
-    { .optname = "AddressFamily"                    },
-    { .optname = "BatchMode"                        },
-    { .optname = "BindAddress"                      },
-    { .optname = "ChallengeResponseAuthentication"  },
-    { .optname = "CheckHostIP"                      },
-    { .optname = "Cipher"                           },
-    { .optname = "Ciphers"                          },
-    { .optname = "Compression"                      },
-    { .optname = "CompressionLevel"                 },
-    { .optname = "ConnectionAttempts"               },
-    { .optname = "ConnectTimeout"                   },
-    { .optname = "GlobalKnownHostsFile"             },
-    { .optname = "GSSAPIAuthentication"             },
-    { .optname = "GSSAPIDelegateCredentials"        },
-    { .optname = "HostbasedAuthentication"          },
-    { .optname = "HostKeyAlgorithms"                },
-    { .optname = "HostKeyAlias"                     },
-    { .optname = "HostName"                         },
-    { .optname = "IdentityFile"                     },
-    { .optname = "IdentitiesOnly"                   },
-    { .optname = "LogLevel"                         },
-    { .optname = "MACs"                             },
-    { .optname = "NoHostAuthenticationForLocalhost" },
-    { .optname = "NumberOfPasswordPrompts"          },
-    { .optname = "PasswordAuthentication"           },
-    { .optname = "Port"                             },
-    { .optname = "PreferredAuthentications"         },
-    { .optname = "ProxyCommand"                     },
-    { .optname = "PubkeyAuthentication"             },
-    { .optname = "RhostsRSAAuthentication"          },
-    { .optname = "RSAAuthentication"                },
-    { .optname = "ServerAliveInterval"              },
-    { .optname = "ServerAliveCountMax"              },
-    { .optname = "SmartcardDevice"                  },
-    { .optname = "StrictHostKeyChecking"            },
-    { .optname = "TCPKeepAlive"                     },
-    { .optname = "UsePrivilegedPort"                },
-    { .optname = "UserKnownHostsFile"               },
-    { .optname = "VerifyHostKeyDNS"                 },
-    { .optname = NULL                               }
+static const char *ssh_opts[] = {
+    "AddressFamily",
+    "BatchMode",
+    "BindAddress",
+    "ChallengeResponseAuthentication",
+    "CheckHostIP",
+    "Cipher",
+    "Ciphers",
+    "Compression",
+    "CompressionLevel",
+    "ConnectionAttempts",
+    "ConnectTimeout",
+    "GlobalKnownHostsFile",
+    "GSSAPIAuthentication",
+    "GSSAPIDelegateCredentials",
+    "HostbasedAuthentication",
+    "HostKeyAlgorithms",
+    "HostKeyAlias",
+    "HostName",
+    "IdentityFile",
+    "IdentitiesOnly",
+    "LogLevel",
+    "MACs",
+    "NoHostAuthenticationForLocalhost",
+    "NumberOfPasswordPrompts",
+    "PasswordAuthentication",
+    "Port",
+    "PreferredAuthentications",
+    "ProxyCommand",
+    "PubkeyAuthentication",
+    "RhostsRSAAuthentication",
+    "RSAAuthentication",
+    "ServerAliveInterval",
+    "ServerAliveCountMax",
+    "SmartcardDevice",
+    "StrictHostKeyChecking",
+    "TCPKeepAlive",
+    "UsePrivilegedPort",
+    "UserKnownHostsFile",
+    "VerifyHostKeyDNS",
+    NULL,
 };
 
 enum {
-    SOPT_DIRECTPORT,
-    SOPT_SSHCMD,
-    SOPT_SYNC_WRITE,
-    SOPT_SYNC_READ,
-    SOPT_MAX_READ,
-    SOPT_DEBUG,
-    SOPT_RECONNECT,
-    SOPT_WORKAROUND,
-    SOPT_IDMAP,
-    SOPT_PROTOCOL,
-    SOPT_SFTPSERVER,
-    SOPT_LAST /* Last entry in this list! */
+    KEY_PORT,
+    KEY_COMPRESS,
+    KEY_HELP,
+    KEY_VERSION,
 };
 
-static struct opt sshfs_opts[] = {
-    [SOPT_DIRECTPORT] = { .optname = "directport" },
-    [SOPT_SSHCMD]     = { .optname = "ssh_command" },
-    [SOPT_SYNC_WRITE] = { .optname = "sshfs_sync" },
-    [SOPT_SYNC_READ]  = { .optname = "no_readahead" },
-    [SOPT_MAX_READ]   = { .optname = "max_read" },
-    [SOPT_DEBUG]      = { .optname = "sshfs_debug" },
-    [SOPT_RECONNECT]  = { .optname = "reconnect" },
-    [SOPT_WORKAROUND] = { .optname = "workaround" },
-    [SOPT_IDMAP]      = { .optname = "idmap" },
-    [SOPT_PROTOCOL]   = { .optname = "ssh_protocol" },
-    [SOPT_SFTPSERVER] = { .optname = "sftp_server" },
-    [SOPT_LAST]       = { .optname = NULL }
+#define SSHFS_OPT(t, p, v) { t, offsetof(struct sshfs, p), v }
+#define SSHFS_KEY(t, k)    { t, FUSE_OPT_OFFSET_KEY, k }
+
+static struct fuse_opt sshfs_opts[] = {
+    SSHFS_OPT("directport=%s",     directport, 0),
+    SSHFS_OPT("ssh_command=%s",    ssh_command, 0),
+    SSHFS_OPT("sftp_server=%s",    sftp_server, 0),
+    SSHFS_OPT("max_read=%u",       max_read, 0),
+    SSHFS_OPT("ssh_protocol=%u",   ssh_ver, 0),
+    SSHFS_OPT("-1",                ssh_ver, 1),
+    SSHFS_OPT("workaround=none",   rename_workaround, 0),
+    SSHFS_OPT("workaround=rename", rename_workaround, 1),
+    SSHFS_OPT("workaround=all",    rename_workaround, 1),
+    SSHFS_OPT("idmap=none",        detect_uid, 0),
+    SSHFS_OPT("idmap=user",        detect_uid, 1),
+    SSHFS_OPT("sshfs_sync",        sync_write, 1),
+    SSHFS_OPT("no_readahead",      sync_read, 1),
+    SSHFS_OPT("sshfs_debug",       debug, 1),
+    SSHFS_OPT("reconnect",         reconnect, 1),
+
+    SSHFS_KEY("-p ",               KEY_PORT),
+    SSHFS_KEY("-C",                KEY_COMPRESS),
+    SSHFS_KEY("-V",                KEY_VERSION),
+    SSHFS_KEY("--version",         KEY_VERSION),
+    SSHFS_KEY("-h",                KEY_HELP),
+    SSHFS_KEY("--help",            KEY_HELP),
+    FUSE_OPT_END
 };
 
 #define DEBUG(format, args...) \
-	do { if (debug) fprintf(stderr, format, args); } while(0)
+	do { if (sshfs.debug) fprintf(stderr, format, args); } while(0)
 
 static const char *type_name(uint8_t type)
 {
@@ -318,8 +331,10 @@ static inline void buf_init(struct buffer *buf, size_t size)
 {
     if (size) {
         buf->p = (uint8_t *) malloc(size);
-        if (!buf->p)
+        if (!buf->p) {
+            fprintf(stderr, "sshfs: memory allocation failed\n");
             exit(1);
+        }
     } else
         buf->p = NULL;
     buf->len = 0;
@@ -347,8 +362,10 @@ static void buf_resize(struct buffer *buf, size_t len)
 {
     buf->size = (buf->len + len + 63) & ~31;
     buf->p = (uint8_t *) realloc(buf->p, buf->size);
-    if (!buf->p)
+    if (!buf->p) {
+        fprintf(stderr, "sshfs: memory allocation failed\n");
         exit(1);
+    }
 }
 
 static inline void buf_check_add(struct buffer *buf, size_t len)
@@ -407,7 +424,8 @@ static inline void buf_add_string(struct buffer *buf, const char *str)
 
 static inline void buf_add_path(struct buffer *buf, const char *path)
 {
-    char *realpath = g_strdup_printf("%s%s", base_path, path[1] ? path+1 : ".");
+    char *realpath =
+        g_strdup_printf("%s%s", sshfs.base_path, path[1] ? path+1 : ".");
     buf_add_string(buf, realpath);
     g_free(realpath);
 }
@@ -523,16 +541,17 @@ static int buf_get_attrs(struct buffer *buf, struct stat *stbuf, int *flagsp)
         }
     }
 
-    if (remote_uid_detected && uid == remote_uid)
-        uid = local_uid;
+    if (sshfs.remote_uid_detected && uid == sshfs.remote_uid)
+        uid = sshfs.local_uid;
 
     memset(stbuf, 0, sizeof(struct stat));
     stbuf->st_mode = mode;
     stbuf->st_nlink = 1;
     stbuf->st_size = size;
-    if (blksize) {
-        stbuf->st_blksize = blksize;
-        stbuf->st_blocks = ((size + blksize - 1) & ~(blksize - 1)) >> 9;
+    if (sshfs.blksize) {
+        stbuf->st_blksize = sshfs.blksize;
+        stbuf->st_blocks =
+            ((size + sshfs.blksize - 1) & ~(sshfs.blksize - 1)) >> 9;
     }
     stbuf->st_uid = uid;
     stbuf->st_gid = gid;
@@ -571,19 +590,24 @@ static int buf_get_entries(struct buffer *buf, fuse_cache_dirh_t h,
     return 0;
 }
 
-static int start_ssh(char *host)
+static void ssh_add_arg(const char *arg)
+{
+    if (fuse_opt_add_arg(&sshfs.ssh_argc, &sshfs.ssh_args, arg) == -1)
+        _exit(1);
+}
+
+static int start_ssh(void)
 {
     int inpipe[2];
     int outpipe[2];
-    int i;
     int pid;
 
     if (pipe(inpipe) == -1 || pipe(outpipe) == -1) {
         perror("failed to create pipe");
         return -1;
     }
-    infd = inpipe[0];
-    outfd = outpipe[1];
+    sshfs.infd = inpipe[0];
+    sshfs.outfd = outpipe[1];
 
     pid = fork();
     if (pid == -1) {
@@ -591,23 +615,14 @@ static int start_ssh(char *host)
         return -1;
     } else if (pid == 0) {
         int devnull;
-        int argctr = 0;
-        char *ssh_args[sizeof(ssh_opts)/sizeof(struct opt) + 32];
-        char *ssh_cmd;
-        char veropt[64];
 
         devnull = open("/dev/null", O_WRONLY);
-
-        if (sshfs_opts[SOPT_SSHCMD].present)
-            ssh_cmd = sshfs_opts[SOPT_SSHCMD].value;
-        else
-            ssh_cmd = "ssh";
 
         if (dup2(outpipe[0], 0) == -1 || dup2(inpipe[1], 1) == -1) {
             perror("failed to redirect input/output");
             _exit(1);
         }
-        if (!debug && devnull != -1)
+        if (!sshfs.debug && devnull != -1)
             dup2(devnull, 2);
 
         close(devnull);
@@ -627,33 +642,8 @@ static int start_ssh(char *host)
         }
         chdir("/");
 
-        ssh_args[argctr++] = ssh_cmd;
-        sprintf(veropt, "-%i", ssh_ver);
-        ssh_args[argctr++] = veropt;
-        ssh_args[argctr++] = "-x";
-        ssh_args[argctr++] = "-a";
-        ssh_args[argctr++] = "-oClearAllForwardings=yes";
-        for (i = 0; ssh_opts[i].optname != NULL; i++) {
-            if (ssh_opts[i].present) {
-                char *val = ssh_opts[i].value;
-                char *sopt = g_strdup_printf("-o%s=%s", ssh_opts[i].optname,
-                                             val ? val : "");
-                ssh_args[argctr++] = sopt;
-            }
-        }
-        ssh_args[argctr++] = host;
-        if (!sftp_server) {
-            if (ssh_ver == 1)
-                sftp_server = SFTP_SERVER_PATH;
-            else
-                sftp_server = "sftp";
-        }
-        if (ssh_ver != 1 && strchr(sftp_server, '/') == NULL)
-            ssh_args[argctr++] = "-s";
-        ssh_args[argctr++] = sftp_server;
-        ssh_args[argctr++] = NULL;
-
-        execvp(ssh_cmd, ssh_args);
+        execvp(sshfs.ssh_args[0], sshfs.ssh_args);
+        perror("execvp");
         _exit(1);
     }
     waitpid(pid, NULL, 0);
@@ -690,8 +680,8 @@ static int connect_to(char *host, char *port)
     }
     freeaddrinfo(ai);
 
-    infd = sock;
-    outfd = sock;
+    sshfs.infd = sock;
+    sshfs.outfd = sock;
     return 0;
 }
 
@@ -701,7 +691,7 @@ static int do_write(struct buffer *buf)
     size_t size = buf->len;
     int res;
     while (size) {
-        res = write(outfd, p, size);
+        res = write(sshfs.outfd, p, size);
         if (res == -1) {
             perror("write");
             return -1;
@@ -741,7 +731,7 @@ static int do_read(struct buffer *buf)
     uint8_t *p = buf->p;
     size_t size = buf->size;
     while (size) {
-        res = read(infd, p, size);
+        res = read(sshfs.infd, p, size);
         if (res == -1) {
             perror("read");
             return -1;
@@ -803,9 +793,9 @@ static void chunk_put(struct read_chunk *chunk)
 
 static void chunk_put_locked(struct read_chunk *chunk)
 {
-    pthread_mutex_lock(&lock);
+    pthread_mutex_lock(&sshfs.lock);
     chunk_put(chunk);
-    pthread_mutex_unlock(&lock);
+    pthread_mutex_unlock(&sshfs.lock);
 }
 
 static int clean_req(void *key_, struct request *req)
@@ -841,14 +831,14 @@ static void *process_requests(void *data_)
         if (buf_get_uint32(&buf, &id) == -1)
             break;
 
-        pthread_mutex_lock(&lock);
-        req = (struct request *) g_hash_table_lookup(reqtab,
+        pthread_mutex_lock(&sshfs.lock);
+        req = (struct request *) g_hash_table_lookup(sshfs.reqtab,
                                                      GUINT_TO_POINTER(id));
         if (req == NULL)
             fprintf(stderr, "request %i not found\n", id);
         else
-            g_hash_table_remove(reqtab, GUINT_TO_POINTER(id));
-        pthread_mutex_unlock(&lock);
+            g_hash_table_remove(sshfs.reqtab, GUINT_TO_POINTER(id));
+        pthread_mutex_unlock(&sshfs.lock);
         if (req != NULL) {
             struct timeval now;
             unsigned int difftime;
@@ -864,28 +854,28 @@ static void *process_requests(void *data_)
                 sem_post(&req->ready);
             else {
                 if (req->end_func) {
-                    pthread_mutex_lock(&lock);
+                    pthread_mutex_lock(&sshfs.lock);
                     req->end_func(req);
-                    pthread_mutex_unlock(&lock);
+                    pthread_mutex_unlock(&sshfs.lock);
                 }
                 request_free(req);
             }
         } else
             buf_free(&buf);
     }
-    if (!reconnect) {
+    if (!sshfs.reconnect) {
         /* harakiri */
         kill(getpid(), SIGTERM);
     } else {
-        pthread_mutex_lock(&lock);
-        processing_thread_started = 0;
-        close(infd);
-        infd = -1;
-        close(outfd);
-        outfd = -1;
-        g_hash_table_foreach_remove(reqtab, (GHRFunc) clean_req, NULL);
-        connver ++;
-        pthread_mutex_unlock(&lock);
+        pthread_mutex_lock(&sshfs.lock);
+        sshfs.processing_thread_started = 0;
+        close(sshfs.infd);
+        sshfs.infd = -1;
+        close(sshfs.outfd);
+        sshfs.outfd = -1;
+        g_hash_table_foreach_remove(sshfs.reqtab, (GHRFunc) clean_req, NULL);
+        sshfs.connver ++;
+        pthread_mutex_unlock(&sshfs.lock);
     }
     return NULL;
 }
@@ -910,8 +900,8 @@ static int sftp_init()
     if (buf_get_uint32(&buf, &version) == -1)
         goto out;
 
-    server_version = version;
-    DEBUG("Server version: %i\n", server_version);
+    sshfs.server_version = version;
+    DEBUG("Server version: %i\n", sshfs.server_version);
     if (version > PROTO_VERSION)
         fprintf(stderr, "Warning: server uses version: %i, we support: %i\n",
                 version, PROTO_VERSION);
@@ -963,13 +953,13 @@ static void sftp_detect_uid()
     if (!(flags & SSH_FILEXFER_ATTR_UIDGID))
         goto out;
 
-    remote_uid = stbuf.st_uid;
-    local_uid = getuid();
-    remote_uid_detected = 1;
-    DEBUG("remote_uid = %i\n", remote_uid);
+    sshfs.remote_uid = stbuf.st_uid;
+    sshfs.local_uid = getuid();
+    sshfs.remote_uid_detected = 1;
+    DEBUG("remote_uid = %i\n", sshfs.remote_uid);
 
  out:
-    if (!remote_uid_detected)
+    if (!sshfs.remote_uid_detected)
         fprintf(stderr, "failed to detect remote user ID\n");
 
     buf_free(&buf);
@@ -979,10 +969,10 @@ static int connect_remote(void)
 {
     int err;
 
-    if (sshfs_opts[SOPT_DIRECTPORT].present)
-        err = connect_to(host, sshfs_opts[SOPT_DIRECTPORT].value);
+    if (sshfs.directport)
+        err = connect_to(sshfs.host, sshfs.directport);
     else
-        err = start_ssh(host);
+        err = start_ssh();
     if (!err)
         err = sftp_init();
 
@@ -993,10 +983,10 @@ static int start_processing_thread(void)
 {
     int err;
     pthread_t thread_id;
-    if (processing_thread_started)
+    if (sshfs.processing_thread_started)
         return 0;
 
-    if (outfd == -1) {
+    if (sshfs.outfd == -1) {
         err = connect_remote();
         if (err)
             return -EIO;
@@ -1008,14 +998,14 @@ static int start_processing_thread(void)
         return -EIO;
     }
     pthread_detach(thread_id);
-    processing_thread_started = 1;
+    sshfs.processing_thread_started = 1;
     return 0;
 }
 
 #ifdef SSHFS_USE_INIT
 static void *sshfs_init(void)
 {
-    if (detect_uid)
+    if (sshfs.detect_uid)
         sftp_detect_uid();
 
     start_processing_thread();
@@ -1039,7 +1029,7 @@ static int sftp_request_common(uint8_t type, const struct buffer *buf,
     sem_init(&req->ready, 0, 0);
     buf_init(&req->reply, 0);
     buf_init(&buf2, buf->len + 4);
-    pthread_mutex_lock(&lock);
+    pthread_mutex_lock(&sshfs.lock);
     if (begin_func)
         begin_func(req);
     id = sftp_get_id();
@@ -1047,20 +1037,20 @@ static int sftp_request_common(uint8_t type, const struct buffer *buf,
     buf_add_mem(&buf2, buf->p, buf->len);
     err = start_processing_thread();
     if (err) {
-        pthread_mutex_unlock(&lock);
+        pthread_mutex_unlock(&sshfs.lock);
         goto out;
     }
-    g_hash_table_insert(reqtab, GUINT_TO_POINTER(id), req);
+    g_hash_table_insert(sshfs.reqtab, GUINT_TO_POINTER(id), req);
     gettimeofday(&req->start, NULL);
     DEBUG("[%05i] %s\n", id, type_name(type));
 
     err = -EIO;
     if (sftp_send(type, &buf2) == -1) {
-        g_hash_table_remove(reqtab, GUINT_TO_POINTER(id));
-        pthread_mutex_unlock(&lock);
+        g_hash_table_remove(sshfs.reqtab, GUINT_TO_POINTER(id));
+        pthread_mutex_unlock(&sshfs.lock);
         goto out;
     }
-    pthread_mutex_unlock(&lock);
+    pthread_mutex_unlock(&sshfs.lock);
 
     if (expect_type == 0) {
         buf_free(&buf2);
@@ -1111,9 +1101,9 @@ static int sftp_request_common(uint8_t type, const struct buffer *buf,
 
  out:
     if (end_func) {
-        pthread_mutex_lock(&lock);
+        pthread_mutex_lock(&sshfs.lock);
         end_func(req);
-        pthread_mutex_unlock(&lock);
+        pthread_mutex_unlock(&sshfs.lock);
     }
     buf_free(&buf2);
     request_free(req);
@@ -1157,7 +1147,7 @@ static int sshfs_readlink(const char *path, char *linkbuf, size_t size)
     struct buffer buf;
     struct buffer name;
 
-    if (server_version < 3)
+    if (sshfs.server_version < 3)
         return -EPERM;
 
     buf_init(&buf, 0);
@@ -1259,7 +1249,7 @@ static int sshfs_symlink(const char *from, const char *to)
     int err;
     struct buffer buf;
 
-    if (server_version < 3)
+    if (sshfs.server_version < 3)
         return -EPERM;
 
     /* openssh sftp server doesn't follow standard: link target and
@@ -1310,7 +1300,7 @@ static void random_string(char *str, int length)
 {
     int i;
     for (i = 0; i < length; i++)
-        *str++ = (char)('0' + rand_r(&randseed) % 10);
+        *str++ = (char)('0' + rand_r(&sshfs.randseed) % 10);
     *str = '\0';
 }
 
@@ -1318,7 +1308,7 @@ static int sshfs_rename(const char *from, const char *to)
 {
     int err;
     err = sshfs_do_rename(from, to);
-    if (err == -EPERM && rename_workaround) {
+    if (err == -EPERM && sshfs.rename_workaround) {
         size_t tolen = strlen(to);
         if (tolen + RENAME_TEMP_CHARS < PATH_MAX) {
             int tmperr;
@@ -1411,7 +1401,7 @@ static int sshfs_utime(const char *path, struct utimbuf *ubuf)
 
 static inline int sshfs_file_is_conn(struct sshfs_file *sf)
 {
-    return sf->connver == connver;
+    return sf->connver == sshfs.connver;
 }
 
 static int sshfs_open_common(const char *path, mode_t mode,
@@ -1445,7 +1435,7 @@ static int sshfs_open_common(const char *path, mode_t mode,
     /* Assume random read after open */
     sf->is_seq = 0;
     sf->next_pos = 0;
-    sf->connver = connver;
+    sf->connver = sshfs.connver;
     buf_init(&buf, 0);
     buf_add_path(&buf, path);
     buf_add_uint32(&buf, pflags);
@@ -1481,22 +1471,22 @@ static int sshfs_flush(const char *path, struct fuse_file_info *fi)
     if (!sshfs_file_is_conn(sf))
         return -EIO;
 
-    if (sync_write)
+    if (sshfs.sync_write)
         return 0;
 
     (void) path;
-    pthread_mutex_lock(&lock);
+    pthread_mutex_lock(&sshfs.lock);
     if (!list_empty(&sf->write_reqs)) {
         curr_list = sf->write_reqs.prev;
         list_del(&sf->write_reqs);
         list_init(&sf->write_reqs);
         list_add(&write_reqs, curr_list);
         while (!list_empty(&write_reqs))
-            pthread_cond_wait(&sf->write_finished, &lock);
+            pthread_cond_wait(&sf->write_finished, &sshfs.lock);
     }
     err = sf->write_error;
     sf->write_error = 0;
-    pthread_mutex_unlock(&lock);
+    pthread_mutex_unlock(&sshfs.lock);
     return err;
 }
 
@@ -1620,10 +1610,10 @@ static int submit_read(struct sshfs_file *sf, size_t size, off_t offset,
     chunk->refs = 1;
     err = sshfs_send_async_read(sf, chunk);
     if (!err) {
-        pthread_mutex_lock(&lock);
+        pthread_mutex_lock(&sshfs.lock);
         chunk_put(*chunkp);
         *chunkp = chunk;
-        pthread_mutex_unlock(&lock);
+        pthread_mutex_unlock(&sshfs.lock);
     } else
         chunk_put(chunk);
 
@@ -1668,12 +1658,12 @@ static int sshfs_async_read(struct sshfs_file *sf, char *rbuf, size_t size,
     size_t origsize = size;
     int curr_is_seq;
 
-    pthread_mutex_lock(&lock);
+    pthread_mutex_lock(&sshfs.lock);
     curr_is_seq = sf->is_seq;
     sf->is_seq = (sf->next_pos == offset);
     sf->next_pos = offset + size;
     chunk = search_read_chunk(sf, offset);
-    pthread_mutex_unlock(&lock);
+    pthread_mutex_unlock(&sshfs.lock);
 
     if (chunk && chunk->size < size) {
         chunk_prev = chunk;
@@ -1716,7 +1706,7 @@ static int sshfs_read(const char *path, char *rbuf, size_t size, off_t offset,
     if (!sshfs_file_is_conn(sf))
         return -EIO;
 
-    if (sync_read)
+    if (sshfs.sync_read)
         return sshfs_sync_read(sf, rbuf, size, offset);
     else
         return sshfs_async_read(sf, rbuf, size, offset);
@@ -1765,7 +1755,7 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
     buf_add_buf(&buf, handle);
     buf_add_uint64(&buf, offset);
     buf_add_data(&buf, &data);
-    if (!sync_write && !sf->write_error)
+    if (!sshfs.sync_write && !sf->write_error)
         err = sftp_request_async(SSH_FXP_WRITE, &buf, sshfs_write_begin,
                                  sshfs_write_end, sf);
     else
@@ -1780,7 +1770,7 @@ static int sshfs_statfs(const char *path, struct statvfs *buf)
     (void) path;
 
     buf->f_namemax = 255;
-    buf->f_bsize = blksize;
+    buf->f_bsize = sshfs.blksize;
     buf->f_frsize = 512;
     buf->f_blocks = 999999999 * 2;
     buf->f_bfree =  999999999 * 2;
@@ -1862,9 +1852,9 @@ static int sshfs_fgetattr(const char *path, struct stat *stbuf,
 
 static int processing_init(void)
 {
-    pthread_mutex_init(&lock, NULL);
-    reqtab = g_hash_table_new(NULL, NULL);
-    if (!reqtab) {
+    pthread_mutex_init(&sshfs.lock, NULL);
+    sshfs.reqtab = g_hash_table_new(NULL, NULL);
+    if (!sshfs.reqtab) {
         fprintf(stderr, "failed to create hash table\n");
         return -1;
     }
@@ -1940,152 +1930,126 @@ static void usage(const char *progname)
     exit(1);
 }
 
+static int is_ssh_opt(const char *arg)
+{
+    if (arg[0] != '-') {
+        unsigned arglen = strlen(arg);
+        const char **o;
+        for (o = ssh_opts; *o; o++) {
+            unsigned olen = strlen(*o);
+            if (arglen > olen && arg[olen] == '=' &&
+                strncasecmp(arg, *o, olen) == 0)
+                return 1;
+        }
+    }
+    return 0;
+}
+
+static int sshfs_opt_proc(void *data, const char *arg, int key)
+{
+    char *tmp;
+    (void) data;
+
+    switch (key) {
+    case FUSE_OPT_KEY_OPT:
+        if (is_ssh_opt(arg)) {
+            tmp = g_strdup_printf("-o%s", arg);
+            ssh_add_arg(tmp);
+            g_free(tmp);
+            return 0;
+        }
+        return 1;
+
+    case FUSE_OPT_KEY_NONOPT:
+        if (!sshfs.host && strchr(arg, ':')) {
+            sshfs.host = strdup(arg);
+            return 0;
+        }
+        return 1;
+
+    case KEY_PORT:
+        tmp = g_strdup_printf("-oPort=%s", arg + 2);
+        ssh_add_arg(tmp);
+        g_free(tmp);
+        return 0;
+
+    case KEY_COMPRESS:
+        ssh_add_arg("-oCompression=yes");
+        return 0;
+
+    case KEY_HELP:
+        usage(sshfs.progname);
+
+    case KEY_VERSION:
+        fprintf(stderr, "SSHFS version %s\n", PACKAGE_VERSION);
+        exit(0);
+
+    default:
+        fprintf(stderr, "internal error\n");
+        abort();
+    }
+}
+
 int main(int argc, char *argv[])
 {
-    char *fsname;
     int res;
-    int argctr;
-    unsigned max_read = 65536;
-    int newargc = 0;
-    char **newargv = (char **) malloc((argc + 10) * sizeof(char *));
-    newargv[newargc++] = argv[0];
+    int argcout;
+    char **argvout;
+    char *tmp;
+    char *fsname;
+    char *base_path;
+    const char *sftp_server;
 
-    for (argctr = 1; argctr < argc; argctr++) {
-        char *arg = argv[argctr];
-        if (arg[0] == '-') {
-            switch (arg[1]) {
-            case '-':
-                if (strcmp(arg+2, "help") == 0)
-                    goto help;
-                else if (strcmp(arg+2, "version") == 0)
-                    goto version;
-                break;
+    sshfs.progname = argv[0];
+    sshfs.blksize = 4096;
+    sshfs.max_read = 65536;
+    sshfs.ssh_ver = 2;
+    ssh_add_arg("ssh");
+    ssh_add_arg("-x");
+    ssh_add_arg("-a");
+    ssh_add_arg("-oClearAllForwardings=yes");
 
-            case 'V':
-            version:
-                fprintf(stderr, "SSHFS version %s\n", PACKAGE_VERSION);
-                exit(0);
-                break;
+    if (fuse_opt_parse(argc, argv, &sshfs, sshfs_opts, sshfs_opt_proc,
+                       &argcout, &argvout) == -1)
+        exit(1);
 
-            case 'h':
-            help:
-                usage(argv[0]);
-                break;
-
-            case 'C':
-                if (!arg[2])
-                    arg = "-oCompression=yes";
-                break;
-
-            case '1':
-                if (!arg[2])
-                    arg = "-ossh_protocol=1";
-                break;
-
-            case 'p':
-                if (arg[2] || argctr + 1 < argc) {
-                    char *newarg;
-                    if (arg[2])
-                        arg = arg + 2;
-                    else
-                        arg = argv[++argctr];
-                    newarg = malloc(strlen(arg)+32);
-                    sprintf(newarg, "-oPort=%s", arg);
-                    arg = newarg;
-                }
-                break;
-            }
-            newargv[newargc++] = g_strdup(arg);
-        } else if (!host && strchr(arg, ':'))
-            host = g_strdup(arg);
-        else
-            newargv[newargc++] = g_strdup(arg);
-    }
-    if (!host) {
+    if (!sshfs.host) {
         fprintf(stderr, "missing host\n");
         fprintf(stderr, "see `%s -h' for usage\n", argv[0]);
         exit(1);
     }
 
-    fsname = g_strdup(host);
-    base_path = strchr(host, ':');
+    fsname = g_strdup(sshfs.host);
+    base_path = strchr(sshfs.host, ':');
     *base_path++ = '\0';
     if (base_path[0] && base_path[strlen(base_path)-1] != '/')
-        base_path = g_strdup_printf("%s/", base_path);
+        sshfs.base_path = g_strdup_printf("%s/", base_path);
     else
-        base_path = g_strdup(base_path);
+        sshfs.base_path = g_strdup(base_path);
 
-    process_options(&newargc, newargv, sshfs_opts, 1);
-    if (sshfs_opts[SOPT_SYNC_WRITE].present)
-        sync_write = 1;
-    if (sshfs_opts[SOPT_SYNC_READ].present)
-        sync_read = 1;
-    if (sshfs_opts[SOPT_DEBUG].present)
-        debug = 1;
-    if (sshfs_opts[SOPT_WORKAROUND].present) {
-        struct opt *o = &sshfs_opts[SOPT_WORKAROUND];
-        char *s = opt_get_string(o);
-        if (!s)
-            exit(1);
+    if (sshfs.ssh_command) {
+        free(sshfs.ssh_args[0]);
+        sshfs.ssh_args[0] = sshfs.ssh_command;
+    }
 
-        for (s = strtok(s, ":"); s; s = strtok(NULL, ":")) {
-            if (strcmp(s, "none") == 0)
-                ;
-            else if (strcmp(s, "all") == 0)
-                rename_workaround = 1;
-            else if (strcmp(s, "rename") == 0)
-                rename_workaround = 1;
-            else {
-                fprintf(stderr, "Invalid value for '%s' option\n", o->optname);
-                exit(1);
-            }
-        }
-    }
-    if (sshfs_opts[SOPT_IDMAP].present) {
-        struct opt *o = &sshfs_opts[SOPT_IDMAP];
-        char *idmap = opt_get_string(o);
-        if (!idmap)
-            exit(1);
+    tmp = g_strdup_printf("-%i", sshfs.ssh_ver);
+    ssh_add_arg(tmp);
+    g_free(tmp);
+    ssh_add_arg(sshfs.host);
+    if (sshfs.sftp_server)
+        sftp_server = sshfs.sftp_server;
+    else if (sshfs.ssh_ver == 1)
+        sftp_server = SFTP_SERVER_PATH;
+    else
+        sftp_server = "sftp";
 
-        if (strcmp(idmap, "none") == 0)
-            detect_uid = 0;
-        else if (strcmp(idmap, "user") == 0)
-            detect_uid = 1;
-        else {
-            fprintf(stderr, "Invalid value for '%s' option\n", o->optname);
-            exit(1);
-        }
-    }
-    if (sshfs_opts[SOPT_RECONNECT].present)
-        reconnect = 1;
-    if (sshfs_opts[SOPT_MAX_READ].present) {
-        unsigned val;
-        if (opt_get_unsigned(&sshfs_opts[SOPT_MAX_READ], &val) == -1)
-            exit(1);
+    if (sshfs.ssh_ver != 1 && strchr(sftp_server, '/') == NULL)
+        ssh_add_arg("-s");
 
-        if (val < max_read)
-            max_read = val;
-    }
-    if (sshfs_opts[SOPT_PROTOCOL].present) {
-        if (opt_get_unsigned(&sshfs_opts[SOPT_PROTOCOL], &ssh_ver) == -1)
-            exit(1);
-    }
-    if (sshfs_opts[SOPT_SFTPSERVER].present) {
-        sftp_server = opt_get_string(&sshfs_opts[SOPT_SFTPSERVER]);
-        if (!sftp_server)
-            exit(1);
-    }
-    if (sshfs_opts[SOPT_DIRECTPORT].present)
-        res = connect_to(host, sshfs_opts[SOPT_DIRECTPORT].value);
-    else {
-        process_options(&newargc, newargv, ssh_opts, 0);
-        res = start_ssh(host);
-    }
-    if (res == -1)
-        exit(1);
+    ssh_add_arg(sftp_server);
+    free(sshfs.sftp_server);
 
-    res = sftp_init();
-    if (res == -1)
+    if (connect_remote() == -1)
         exit(1);
 
 #ifndef SSHFS_USE_INIT
@@ -2097,15 +2061,26 @@ int main(int argc, char *argv[])
     if (res == -1)
         exit(1);
 
-    res = cache_parse_options(&newargc, newargv);
+    res = cache_parse_options(&argcout, &argvout);
     if (res == -1)
         exit(1);
 
-    randseed = time(0);
+    sshfs.randseed = time(0);
 
-    newargv[newargc++] = g_strdup_printf("-omax_read=%u", max_read);
-    newargv[newargc++] = g_strdup_printf("-ofsname=sshfs#%s", fsname);
+    if (sshfs.max_read > 65536)
+        sshfs.max_read = 65536;
+
+    tmp = g_strdup_printf("-omax_read=%u", sshfs.max_read);
+    fuse_opt_add_arg(&argcout, &argvout, tmp);
+    g_free(tmp);
+    tmp = g_strdup_printf("-ofsname=sshfs#%s", fsname);
+    fuse_opt_add_arg(&argcout, &argvout, tmp);
+    g_free(tmp);
     g_free(fsname);
-    newargv[newargc] = NULL;
-    return fuse_main(newargc, newargv, cache_init(&sshfs_oper));
+    res = fuse_main(argcout, argvout, cache_init(&sshfs_oper));
+    fuse_opt_free_args(argvout);
+    fuse_opt_free_args(sshfs.ssh_args);
+    free(sshfs.directport);
+
+    return res;
 }

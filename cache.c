@@ -7,6 +7,7 @@
 */
 
 #include "cache.h"
+#include <fuse_opt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,17 +15,23 @@
 #include <glib.h>
 #include <pthread.h>
 
-#include "opts.h"
-
 #define DEFAULT_CACHE_TIMEOUT 20
 #define MAX_CACHE_SIZE 10000
 #define MIN_CACHE_CLEAN_INTERVAL 5
 #define CACHE_CLEAN_INTERVAL 60
 
-static int cache_on = 1;
-static unsigned cache_stat_timeout = DEFAULT_CACHE_TIMEOUT;
-static unsigned cache_dir_timeout = DEFAULT_CACHE_TIMEOUT;
-static unsigned cache_link_timeout = DEFAULT_CACHE_TIMEOUT;
+struct cache {
+    int on;
+    unsigned stat_timeout;
+    unsigned dir_timeout;
+    unsigned link_timeout;
+    struct fuse_cache_operations *next_oper;
+    GHashTable *table;
+    pthread_mutex_t lock;
+    time_t last_cleaned;
+};
+
+static struct cache cache;
 
 struct node {
     struct stat stat;
@@ -42,11 +49,6 @@ struct fuse_cache_dirhandle {
     fuse_dirfil_t filler;
     GPtrArray *dir;
 };
-
-static struct fuse_cache_operations *next_oper;
-static GHashTable *cache;
-static pthread_mutex_t cache_lock;
-static time_t last_cleaned;
 
 static void free_node(gpointer node_)
 {
@@ -67,22 +69,23 @@ static int cache_clean_entry(void *key_, struct node *node, time_t *now)
 static void cache_clean(void)
 {
     time_t now = time(NULL);
-    if (now > last_cleaned + MIN_CACHE_CLEAN_INTERVAL &&
-         (g_hash_table_size(cache) > MAX_CACHE_SIZE ||
-          now > last_cleaned + CACHE_CLEAN_INTERVAL)) {
-        g_hash_table_foreach_remove(cache, (GHRFunc) cache_clean_entry, &now);
-        last_cleaned = now;
+    if (now > cache.last_cleaned + MIN_CACHE_CLEAN_INTERVAL &&
+         (g_hash_table_size(cache.table) > MAX_CACHE_SIZE ||
+          now > cache.last_cleaned + CACHE_CLEAN_INTERVAL)) {
+        g_hash_table_foreach_remove(cache.table,
+                                    (GHRFunc) cache_clean_entry, &now);
+        cache.last_cleaned = now;
     }
 }
 
 static struct node *cache_lookup(const char *path)
 {
-    return (struct node *) g_hash_table_lookup(cache, path);
+    return (struct node *) g_hash_table_lookup(cache.table, path);
 }
 
 static void cache_purge(const char *path)
 {
-    g_hash_table_remove(cache, path);
+    g_hash_table_remove(cache.table, path);
 }
 
 static void cache_purge_parent(const char *path)
@@ -90,7 +93,7 @@ static void cache_purge_parent(const char *path)
     const char *s = strrchr(path, '/');
     if (s) {
         if (s == path)
-            g_hash_table_remove(cache, "/");
+            g_hash_table_remove(cache.table, "/");
         else {
             char *parent = g_strndup(path, s - path);
             cache_purge(parent);
@@ -101,27 +104,27 @@ static void cache_purge_parent(const char *path)
 
 static void cache_invalidate(const char *path)
 {
-    pthread_mutex_lock(&cache_lock);
+    pthread_mutex_lock(&cache.lock);
     cache_purge(path);
-    pthread_mutex_unlock(&cache_lock);
+    pthread_mutex_unlock(&cache.lock);
 }
 
 static void cache_invalidate_dir(const char *path)
 {
-    pthread_mutex_lock(&cache_lock);
+    pthread_mutex_lock(&cache.lock);
     cache_purge(path);
     cache_purge_parent(path);
-    pthread_mutex_unlock(&cache_lock);
+    pthread_mutex_unlock(&cache.lock);
 }
 
 static void cache_do_rename(const char *from, const char *to)
 {
-    pthread_mutex_lock(&cache_lock);
+    pthread_mutex_lock(&cache.lock);
     cache_purge(from);
     cache_purge(to);
     cache_purge_parent(from);
     cache_purge_parent(to);
-    pthread_mutex_unlock(&cache_lock);
+    pthread_mutex_unlock(&cache.lock);
 }
 
 static struct node *cache_get(const char *path)
@@ -130,7 +133,7 @@ static struct node *cache_get(const char *path)
     if (node == NULL) {
         char *pathcopy = g_strdup(path);
         node = g_new0(struct node, 1);
-        g_hash_table_insert(cache, pathcopy, node);
+        g_hash_table_insert(cache.table, pathcopy, node);
     }
     return node;
 }
@@ -140,15 +143,15 @@ static void cache_add_attr(const char *path, const struct stat *stbuf)
     struct node *node;
     time_t now;
 
-    pthread_mutex_lock(&cache_lock);
+    pthread_mutex_lock(&cache.lock);
     node = cache_get(path);
     now = time(NULL);
     node->stat = *stbuf;
-    node->stat_valid = time(NULL) + cache_stat_timeout;
+    node->stat_valid = time(NULL) + cache.stat_timeout;
     if (node->stat_valid > node->valid)
         node->valid = node->stat_valid;
     cache_clean();
-    pthread_mutex_unlock(&cache_lock);
+    pthread_mutex_unlock(&cache.lock);
 }
 
 static void cache_add_dir(const char *path, char **dir)
@@ -156,16 +159,16 @@ static void cache_add_dir(const char *path, char **dir)
     struct node *node;
     time_t now;
 
-    pthread_mutex_lock(&cache_lock);
+    pthread_mutex_lock(&cache.lock);
     node = cache_get(path);
     now = time(NULL);
     g_strfreev(node->dir);
     node->dir = dir;
-    node->dir_valid = time(NULL) + cache_dir_timeout;
+    node->dir_valid = time(NULL) + cache.dir_timeout;
     if (node->dir_valid > node->valid)
         node->valid = node->dir_valid;
     cache_clean();
-    pthread_mutex_unlock(&cache_lock);
+    pthread_mutex_unlock(&cache.lock);
 }
 
 static size_t my_strnlen(const char *s, size_t maxsize)
@@ -180,23 +183,23 @@ static void cache_add_link(const char *path, const char *link, size_t size)
     struct node *node;
     time_t now;
 
-    pthread_mutex_lock(&cache_lock);
+    pthread_mutex_lock(&cache.lock);
     node = cache_get(path);
     now = time(NULL);
     g_free(node->link);
     node->link = g_strndup(link, my_strnlen(link, size-1));
-    node->link_valid = time(NULL) + cache_link_timeout;
+    node->link_valid = time(NULL) + cache.link_timeout;
     if (node->link_valid > node->valid)
         node->valid = node->link_valid;
     cache_clean();
-    pthread_mutex_unlock(&cache_lock);
+    pthread_mutex_unlock(&cache.lock);
 }
 
 static int cache_get_attr(const char *path, struct stat *stbuf)
 {
     struct node *node;
     int err = -EAGAIN;
-    pthread_mutex_lock(&cache_lock);
+    pthread_mutex_lock(&cache.lock);
     node = cache_lookup(path);
     if (node != NULL) {
         time_t now = time(NULL);
@@ -205,7 +208,7 @@ static int cache_get_attr(const char *path, struct stat *stbuf)
             err = 0;
         }
     }
-    pthread_mutex_unlock(&cache_lock);
+    pthread_mutex_unlock(&cache.lock);
     return err;
 }
 
@@ -213,7 +216,7 @@ static int cache_getattr(const char *path, struct stat *stbuf)
 {
     int err = cache_get_attr(path, stbuf);
     if (err) {
-        err = next_oper->oper.getattr(path, stbuf);
+        err = cache.next_oper->oper.getattr(path, stbuf);
         if (!err)
             cache_add_attr(path, stbuf);
     }
@@ -225,19 +228,19 @@ static int cache_readlink(const char *path, char *buf, size_t size)
     struct node *node;
     int err;
 
-    pthread_mutex_lock(&cache_lock);
+    pthread_mutex_lock(&cache.lock);
     node = cache_lookup(path);
     if (node != NULL) {
         time_t now = time(NULL);
         if (node->link_valid - now >= 0) {
             strncpy(buf, node->link, size-1);
             buf[size-1] = '\0';
-            pthread_mutex_unlock(&cache_lock);
+            pthread_mutex_unlock(&cache.lock);
             return 0;
         }
     }
-    pthread_mutex_unlock(&cache_lock);
-    err = next_oper->oper.readlink(path, buf, size);
+    pthread_mutex_unlock(&cache.lock);
+    err = cache.next_oper->oper.readlink(path, buf, size);
     if (!err)
         cache_add_link(path, buf, size);
 
@@ -265,24 +268,24 @@ static int cache_getdir(const char *path, fuse_dirh_t h, fuse_dirfil_t filler)
     char **dir;
     struct node *node;
 
-    pthread_mutex_lock(&cache_lock);
+    pthread_mutex_lock(&cache.lock);
     node = cache_lookup(path);
     if (node != NULL && node->dir != NULL) {
         time_t now = time(NULL);
         if (node->dir_valid - now >= 0) {
             for(dir = node->dir; *dir != NULL; dir++)
                 filler(h, *dir, 0, 0);
-            pthread_mutex_unlock(&cache_lock);
+            pthread_mutex_unlock(&cache.lock);
             return 0;
         }
     }
-    pthread_mutex_unlock(&cache_lock);
+    pthread_mutex_unlock(&cache.lock);
 
     ch.path = path;
     ch.h = h;
     ch.filler = filler;
     ch.dir = g_ptr_array_new();
-    err = next_oper->cache_getdir(path, &ch, cache_dirfill);
+    err = cache.next_oper->cache_getdir(path, &ch, cache_dirfill);
     g_ptr_array_add(ch.dir, NULL);
     dir = (char **) ch.dir->pdata;
     if (!err)
@@ -306,12 +309,12 @@ static int cache_unity_getdir(const char *path, fuse_dirh_t h,
     struct fuse_cache_dirhandle ch;
     ch.h = h;
     ch.filler = filler;
-    return next_oper->cache_getdir(path, &ch, cache_unity_dirfill);
+    return cache.next_oper->cache_getdir(path, &ch, cache_unity_dirfill);
 }
 
 static int cache_mknod(const char *path, mode_t mode, dev_t rdev)
 {
-    int err = next_oper->oper.mknod(path, mode, rdev);
+    int err = cache.next_oper->oper.mknod(path, mode, rdev);
     if (!err)
         cache_invalidate_dir(path);
     return err;
@@ -319,7 +322,7 @@ static int cache_mknod(const char *path, mode_t mode, dev_t rdev)
 
 static int cache_mkdir(const char *path, mode_t mode)
 {
-    int err = next_oper->oper.mkdir(path, mode);
+    int err = cache.next_oper->oper.mkdir(path, mode);
     if (!err)
         cache_invalidate_dir(path);
     return err;
@@ -327,7 +330,7 @@ static int cache_mkdir(const char *path, mode_t mode)
 
 static int cache_unlink(const char *path)
 {
-    int err = next_oper->oper.unlink(path);
+    int err = cache.next_oper->oper.unlink(path);
     if (!err)
         cache_invalidate_dir(path);
     return err;
@@ -335,7 +338,7 @@ static int cache_unlink(const char *path)
 
 static int cache_rmdir(const char *path)
 {
-    int err = next_oper->oper.rmdir(path);
+    int err = cache.next_oper->oper.rmdir(path);
     if (!err)
         cache_invalidate_dir(path);
     return err;
@@ -343,7 +346,7 @@ static int cache_rmdir(const char *path)
 
 static int cache_symlink(const char *from, const char *to)
 {
-    int err = next_oper->oper.symlink(from, to);
+    int err = cache.next_oper->oper.symlink(from, to);
     if (!err)
         cache_invalidate_dir(to);
     return err;
@@ -351,7 +354,7 @@ static int cache_symlink(const char *from, const char *to)
 
 static int cache_rename(const char *from, const char *to)
 {
-    int err = next_oper->oper.rename(from, to);
+    int err = cache.next_oper->oper.rename(from, to);
     if (!err)
         cache_do_rename(from, to);
     return err;
@@ -359,7 +362,7 @@ static int cache_rename(const char *from, const char *to)
 
 static int cache_link(const char *from, const char *to)
 {
-    int err = next_oper->oper.link(from, to);
+    int err = cache.next_oper->oper.link(from, to);
     if (!err) {
         cache_invalidate(from);
         cache_invalidate_dir(to);
@@ -369,7 +372,7 @@ static int cache_link(const char *from, const char *to)
 
 static int cache_chmod(const char *path, mode_t mode)
 {
-    int err = next_oper->oper.chmod(path, mode);
+    int err = cache.next_oper->oper.chmod(path, mode);
     if (!err)
         cache_invalidate(path);
     return err;
@@ -377,7 +380,7 @@ static int cache_chmod(const char *path, mode_t mode)
 
 static int cache_chown(const char *path, uid_t uid, gid_t gid)
 {
-    int err = next_oper->oper.chown(path, uid, gid);
+    int err = cache.next_oper->oper.chown(path, uid, gid);
     if (!err)
         cache_invalidate(path);
     return err;
@@ -385,7 +388,7 @@ static int cache_chown(const char *path, uid_t uid, gid_t gid)
 
 static int cache_truncate(const char *path, off_t size)
 {
-    int err = next_oper->oper.truncate(path, size);
+    int err = cache.next_oper->oper.truncate(path, size);
     if (!err)
         cache_invalidate(path);
     return err;
@@ -393,7 +396,7 @@ static int cache_truncate(const char *path, off_t size)
 
 static int cache_utime(const char *path, struct utimbuf *buf)
 {
-    int err = next_oper->oper.utime(path, buf);
+    int err = cache.next_oper->oper.utime(path, buf);
     if (!err)
         cache_invalidate(path);
     return err;
@@ -402,7 +405,7 @@ static int cache_utime(const char *path, struct utimbuf *buf)
 static int cache_write(const char *path, const char *buf, size_t size,
                        off_t offset, struct fuse_file_info *fi)
 {
-    int res = next_oper->oper.write(path, buf, size, offset, fi);
+    int res = cache.next_oper->oper.write(path, buf, size, offset, fi);
     if (res >= 0)
         cache_invalidate(path);
     return res;
@@ -412,7 +415,7 @@ static int cache_write(const char *path, const char *buf, size_t size,
 static int cache_create(const char *path, mode_t mode,
                         struct fuse_file_info *fi)
 {
-    int err = next_oper->oper.create(path, mode, fi);
+    int err = cache.next_oper->oper.create(path, mode, fi);
     if (!err)
         cache_invalidate_dir(path);
     return err;
@@ -421,7 +424,7 @@ static int cache_create(const char *path, mode_t mode,
 static int cache_ftruncate(const char *path, off_t size,
                            struct fuse_file_info *fi)
 {
-    int err = next_oper->oper.ftruncate(path, size, fi);
+    int err = cache.next_oper->oper.ftruncate(path, size, fi);
     if (!err)
         cache_invalidate(path);
     return err;
@@ -432,7 +435,7 @@ static int cache_fgetattr(const char *path, struct stat *stbuf,
 {
     int err = cache_get_attr(path, stbuf);
     if (err) {
-        err = next_oper->oper.fgetattr(path, stbuf, fi);
+        err = cache.next_oper->oper.fgetattr(path, stbuf, fi);
         if (!err)
             cache_add_attr(path, stbuf);
     }
@@ -481,10 +484,10 @@ static void cache_unity_fill(struct fuse_cache_operations *oper,
 struct fuse_operations *cache_init(struct fuse_cache_operations *oper)
 {
     static struct fuse_operations cache_oper;
-    next_oper = oper;
+    cache.next_oper = oper;
 
     cache_unity_fill(oper, &cache_oper);
-    if (cache_on) {
+    if (cache.on) {
         cache_oper.getattr  = oper->oper.getattr ? cache_getattr : NULL;
         cache_oper.readlink = oper->oper.readlink ? cache_readlink : NULL;
         cache_oper.getdir   = oper->cache_getdir ? cache_getdir : NULL;
@@ -505,10 +508,10 @@ struct fuse_operations *cache_init(struct fuse_cache_operations *oper)
         cache_oper.ftruncate = oper->oper.ftruncate ? cache_ftruncate : NULL;
         cache_oper.fgetattr = oper->oper.fgetattr ? cache_fgetattr : NULL;
 #endif
-        pthread_mutex_init(&cache_lock, NULL);
-        cache = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
-                                      free_node);
-        if (cache == NULL) {
+        pthread_mutex_init(&cache.lock, NULL);
+        cache.table = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
+                                            free_node);
+        if (cache.table == NULL) {
             fprintf(stderr, "failed to create cache\n");
             return NULL;
         }
@@ -516,61 +519,31 @@ struct fuse_operations *cache_init(struct fuse_cache_operations *oper)
     return &cache_oper;
 }
 
-enum {
-    COPT_CACHE,
-    COPT_TIMEOUT,
-    COPT_STAT_TIMEOUT,
-    COPT_DIR_TIMEOUT,
-    COPT_LINK_TIMEOUT,
-    COPT_LAST /* Last entry in this list! */
-};
-
-static struct opt cache_opts[] = {
-    [COPT_CACHE] =        { .optname = "cache" },
-    [COPT_TIMEOUT] =      { .optname = "cache_timeout" },
-    [COPT_STAT_TIMEOUT] = { .optname = "cache_stat_timeout" },
-    [COPT_DIR_TIMEOUT]  = { .optname = "cache_dir_timeout" },
-    [COPT_LINK_TIMEOUT] = { .optname = "cache_link_timeout" },
-    [COPT_LAST] =         { .optname = NULL }
-};
-
-static int get_timeout(int sel, unsigned *timeoutp)
+static int cache_opt_proc(void *data, const char *arg, int key)
 {
-    struct opt *o = &cache_opts[sel];
-    if (!o->present)
-        return 0;
-    if (opt_get_unsigned(o, timeoutp) == -1)
-        return -1;
+    (void) data, (void) arg, (void) key;
     return 1;
 }
 
-int cache_parse_options(int *argcp, char *argv[])
+static const struct fuse_opt cache_opts[] = {
+    { "cache=yes", offsetof(struct cache, on), 1 },
+    { "cache=no", offsetof(struct cache, on), 0 },
+    { "cache_timeout=%u", offsetof(struct cache, stat_timeout), 0 },
+    { "cache_timeout=%u", offsetof(struct cache, dir_timeout), 0 },
+    { "cache_timeout=%u", offsetof(struct cache, link_timeout), 0 },
+    { "cache_stat_timeout=%u", offsetof(struct cache, stat_timeout), 0 },
+    { "cache_dir_timeout=%u", offsetof(struct cache, dir_timeout), 0 },
+    { "cache_link_timeout=%u", offsetof(struct cache, link_timeout), 0 },
+    FUSE_OPT_END
+};
+
+int cache_parse_options(int *argcp, char **argvp[])
 {
-    unsigned timeout;
-    int res;
-    process_options(argcp, argv, cache_opts, 1);
-    if (cache_opts[COPT_CACHE].present) {
-        char *val = cache_opts[COPT_CACHE].value;
-        if (!val || !val[0] ||
-            (strcmp(val, "yes") != 0 && strcmp(val, "no") != 0)) {
-            fprintf(stderr, "Invalid or missing value for 'cache' option\n");
-            return -1;
-        }
-        if (strcmp(val, "yes") == 0)
-            cache_on = 1;
-        else
-            cache_on = 0;
-    }
-    if ((res = get_timeout(COPT_TIMEOUT, &timeout)) == -1)
-        return -1;
-    if (res == 1) {
-        cache_stat_timeout = timeout;
-        cache_dir_timeout = timeout;
-        cache_link_timeout = timeout;
-    }
-    if(get_timeout(COPT_STAT_TIMEOUT, &cache_stat_timeout) == -1 ||
-       get_timeout(COPT_DIR_TIMEOUT, &cache_dir_timeout) == -1 ||
-       get_timeout(COPT_LINK_TIMEOUT, &cache_link_timeout) == -1)
-        return -1;
-    return 0;
+    cache.stat_timeout = DEFAULT_CACHE_TIMEOUT;
+    cache.dir_timeout = DEFAULT_CACHE_TIMEOUT;
+    cache.link_timeout = DEFAULT_CACHE_TIMEOUT;
+    cache.on = 1;
+
+    return fuse_opt_parse(0, NULL, &cache, cache_opts, cache_opt_proc,
+                          argcp, argvp);
 }

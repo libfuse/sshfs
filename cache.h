@@ -23,4 +23,4 @@ struct fuse_cache_operations {
 };
 
 struct fuse_operations *cache_init(struct fuse_cache_operations *oper);
-int cache_parse_options(int *argcp, char *argv[]);
+int cache_parse_options(int *argcp, char **argv[]);
