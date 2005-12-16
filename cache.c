@@ -7,7 +7,6 @@
 */
 
 #include "cache.h"
-#include <fuse_opt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -531,12 +530,12 @@ static const struct fuse_opt cache_opts[] = {
     FUSE_OPT_END
 };
 
-int cache_parse_options(int *argcp, char **argvp[])
+int cache_parse_options(struct fuse_args *args)
 {
     cache.stat_timeout = DEFAULT_CACHE_TIMEOUT;
     cache.dir_timeout = DEFAULT_CACHE_TIMEOUT;
     cache.link_timeout = DEFAULT_CACHE_TIMEOUT;
     cache.on = 1;
 
-    return fuse_opt_parse(0, NULL, &cache, cache_opts, NULL, argcp, argvp);
+    return fuse_opt_parse(0, NULL, &cache, cache_opts, NULL, args);
 }

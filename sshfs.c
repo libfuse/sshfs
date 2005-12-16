@@ -142,12 +142,10 @@ struct sshfs_file {
 };
 
 struct sshfs {
-    const char *progname;
     char *directport;
     char *ssh_command;
     char *sftp_server;
-    char **ssh_args;
-    int ssh_argc;
+    struct fuse_args ssh_args;
     int rename_workaround;
     int detect_uid;
     unsigned max_read;
@@ -592,7 +590,7 @@ static int buf_get_entries(struct buffer *buf, fuse_cache_dirh_t h,
 
 static void ssh_add_arg(const char *arg)
 {
-    if (fuse_opt_add_arg(&sshfs.ssh_argc, &sshfs.ssh_args, arg) == -1)
+    if (fuse_opt_add_arg(&sshfs.ssh_args, arg) == -1)
         _exit(1);
 }
 
@@ -642,7 +640,7 @@ static int start_ssh(void)
         }
         chdir("/");
 
-        execvp(sshfs.ssh_args[0], sshfs.ssh_args);
+        execvp(sshfs.ssh_args.argv[0], sshfs.ssh_args.argv);
         perror("execvp");
         _exit(1);
     }
@@ -1896,8 +1894,6 @@ static struct fuse_cache_operations sshfs_oper = {
 
 static void usage(const char *progname)
 {
-    const char *fusehelp[] = { progname, "-ho", NULL };
-
     fprintf(stderr,
 "usage: %s [user@]host:[dir]] mountpoint [options]\n"
 "\n"
@@ -1926,8 +1922,6 @@ static void usage(const char *progname)
 "    -o directport=PORT     directly connect to PORT bypassing ssh\n"
 "    -o SSHOPT=VAL          ssh options (see man ssh_config)\n"
 "\n", progname);
-    fuse_main(2, (char **) fusehelp, &sshfs_oper.oper);
-    exit(1);
 }
 
 static int is_ssh_opt(const char *arg)
@@ -1945,7 +1939,8 @@ static int is_ssh_opt(const char *arg)
     return 0;
 }
 
-static int sshfs_opt_proc(void *data, const char *arg, int key)
+static int sshfs_opt_proc(void *data, const char *arg, int key,
+                          struct fuse_args *outargs)
 {
     char *tmp;
     (void) data;
@@ -1978,7 +1973,10 @@ static int sshfs_opt_proc(void *data, const char *arg, int key)
         return 0;
 
     case KEY_HELP:
-        usage(sshfs.progname);
+        usage(outargs->argv[0]);
+        fuse_opt_add_arg(outargs, "-ho");
+        fuse_main(outargs->argc, outargs->argv, &sshfs_oper.oper);
+        exit(1);
 
     case KEY_VERSION:
         fprintf(stderr, "SSHFS version %s\n", PACKAGE_VERSION);
@@ -1993,14 +1991,12 @@ static int sshfs_opt_proc(void *data, const char *arg, int key)
 int main(int argc, char *argv[])
 {
     int res;
-    int argcout;
-    char **argvout;
+    struct fuse_args outargs;
     char *tmp;
     char *fsname;
     char *base_path;
     const char *sftp_server;
 
-    sshfs.progname = argv[0];
     sshfs.blksize = 4096;
     sshfs.max_read = 65536;
     sshfs.ssh_ver = 2;
@@ -2010,7 +2006,7 @@ int main(int argc, char *argv[])
     ssh_add_arg("-oClearAllForwardings=yes");
 
     if (fuse_opt_parse(argc, argv, &sshfs, sshfs_opts, sshfs_opt_proc,
-                       &argcout, &argvout) == -1)
+                       &outargs) == -1)
         exit(1);
 
     if (!sshfs.host) {
@@ -2028,8 +2024,8 @@ int main(int argc, char *argv[])
         sshfs.base_path = g_strdup(base_path);
 
     if (sshfs.ssh_command) {
-        free(sshfs.ssh_args[0]);
-        sshfs.ssh_args[0] = sshfs.ssh_command;
+        free(sshfs.ssh_args.argv[0]);
+        sshfs.ssh_args.argv[0] = sshfs.ssh_command;
     }
 
     tmp = g_strdup_printf("-%i", sshfs.ssh_ver);
@@ -2061,7 +2057,7 @@ int main(int argc, char *argv[])
     if (res == -1)
         exit(1);
 
-    res = cache_parse_options(&argcout, &argvout);
+    res = cache_parse_options(&outargs);
     if (res == -1)
         exit(1);
 
@@ -2071,15 +2067,15 @@ int main(int argc, char *argv[])
         sshfs.max_read = 65536;
 
     tmp = g_strdup_printf("-omax_read=%u", sshfs.max_read);
-    fuse_opt_add_arg(&argcout, &argvout, tmp);
+    fuse_opt_add_arg(&outargs, tmp);
     g_free(tmp);
     tmp = g_strdup_printf("-ofsname=sshfs#%s", fsname);
-    fuse_opt_add_arg(&argcout, &argvout, tmp);
+    fuse_opt_add_arg(&outargs, tmp);
     g_free(tmp);
     g_free(fsname);
-    res = fuse_main(argcout, argvout, cache_init(&sshfs_oper));
-    fuse_opt_free_args(argvout);
-    fuse_opt_free_args(sshfs.ssh_args);
+    res = fuse_main(outargs.argc, outargs.argv, cache_init(&sshfs_oper));
+    fuse_opt_free_args(&outargs);
+    fuse_opt_free_args(&sshfs.ssh_args);
     free(sshfs.directport);
 
     return res;
