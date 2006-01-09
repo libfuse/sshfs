@@ -70,4 +70,5 @@ installing FUSE, compile sshfs the usual way:
 
 And you are ready to go.
 
-
+If checking out from CVS for the first time also do 'autoreconf -i'
+before doing './configure'.
