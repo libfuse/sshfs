@@ -1,7 +1,10 @@
 2006-01-09  Miklos Szeredi <miklos@szeredi.hu>
 
-	* Added 'workaround=symlink' option to "fix-up" absolute symlinks.
-	Patch by Paul Jarc	
+	* Added 'transform_symlinks' option to "fix-up" absolute symlinks.
+	Patch by Paul Jarc
+
+	* Add option parsing implementation, so linking with older than
+	2.5.0 libfuse still works.
 
 2005-12-09  Miklos Szeredi <miklos@szeredi.hu>
 

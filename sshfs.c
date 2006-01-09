@@ -145,9 +145,10 @@ struct sshfs {
     char *directport;
     char *ssh_command;
     char *sftp_server;
+    char *mountpoint;
     struct fuse_args ssh_args;
     int rename_workaround;
-    int symlink_workaround;
+    int transform_symlinks;
     int detect_uid;
     unsigned max_read;
     unsigned ssh_ver;
@@ -226,7 +227,6 @@ enum {
 };
 
 #define SSHFS_OPT(t, p, v) { t, offsetof(struct sshfs, p), v }
-#define SSHFS_KEY(t, k)    { t, FUSE_OPT_OFFSET_KEY, k }
 
 static struct fuse_opt sshfs_opts[] = {
     SSHFS_OPT("directport=%s",     directport, 0),
@@ -236,24 +236,22 @@ static struct fuse_opt sshfs_opts[] = {
     SSHFS_OPT("ssh_protocol=%u",   ssh_ver, 0),
     SSHFS_OPT("-1",                ssh_ver, 1),
     SSHFS_OPT("workaround=none",   rename_workaround, 0),
-    SSHFS_OPT("workaround=none",   symlink_workaround, 0),
     SSHFS_OPT("workaround=rename", rename_workaround, 1),
-    SSHFS_OPT("workaround=symlink", symlink_workaround, 1),
     SSHFS_OPT("workaround=all",    rename_workaround, 1),
-    SSHFS_OPT("workaround=all",    symlink_workaround, 1),
     SSHFS_OPT("idmap=none",        detect_uid, 0),
     SSHFS_OPT("idmap=user",        detect_uid, 1),
     SSHFS_OPT("sshfs_sync",        sync_write, 1),
     SSHFS_OPT("no_readahead",      sync_read, 1),
     SSHFS_OPT("sshfs_debug",       debug, 1),
     SSHFS_OPT("reconnect",         reconnect, 1),
+    SSHFS_OPT("transform_symlinks", transform_symlinks, 1),
 
-    SSHFS_KEY("-p ",               KEY_PORT),
-    SSHFS_KEY("-C",                KEY_COMPRESS),
-    SSHFS_KEY("-V",                KEY_VERSION),
-    SSHFS_KEY("--version",         KEY_VERSION),
-    SSHFS_KEY("-h",                KEY_HELP),
-    SSHFS_KEY("--help",            KEY_HELP),
+    FUSE_OPT_KEY("-p ",            KEY_PORT),
+    FUSE_OPT_KEY("-C",             KEY_COMPRESS),
+    FUSE_OPT_KEY("-V",             KEY_VERSION),
+    FUSE_OPT_KEY("--version",      KEY_VERSION),
+    FUSE_OPT_KEY("-h",             KEY_HELP),
+    FUSE_OPT_KEY("--help",         KEY_HELP),
     FUSE_OPT_END
 };
 
@@ -1162,18 +1160,17 @@ static int sshfs_readlink(const char *path, char *linkbuf, size_t size)
         char *link;
         err = -EIO;
         if(buf_get_uint32(&name, &count) != -1 && count == 1 &&
-           buf_get_string(&name, &link) != -1) {
-            if (size>0) {
-                if (link[0]=='/') {
-                    size_t len=sshfs.symlink_prefix_len;
-                    if (len>size-1) len=size-1;
-                    memcpy(linkbuf, sshfs.symlink_prefix, len);
-                    linkbuf+=len;
-                    size-=len;
-                }
-                strncpy(linkbuf, link, size-1);
-                linkbuf[size-1] = '\0';
+           buf_get_string(&name, &link) != -1 && size > 0) {
+            if (link[0] == '/' && sshfs.symlink_prefix_len) {
+                size_t len = sshfs.symlink_prefix_len;
+                if (len > size - 1)
+                    len = size - 1;
+                memcpy(linkbuf, sshfs.symlink_prefix, len);
+                linkbuf += len;
+                size -= len;
             }
+            strncpy(linkbuf, link, size - 1);
+            linkbuf[size - 1] = '\0';
             free(link);
             err = 0;
         }
@@ -1912,8 +1909,12 @@ static void usage(const char *progname)
     fprintf(stderr,
 "usage: %s [user@]host:[dir]] mountpoint [options]\n"
 "\n"
-"SSHFS Options:\n"
-"    -V                     show version information\n"
+"general options:\n"
+"    -o opt,[opt...]        mount options\n"
+"    -h   --help            print help\n"
+"    -V   --version         print version\n"
+"\n"
+"SSHFS options:\n"
 "    -p PORT                equivalent to '-o port=PORT'\n"
 "    -C                     equivalent to '-o compression=yes'\n"
 "    -1                     equivalent to '-o ssh_protocol=1'\n"
@@ -1928,7 +1929,6 @@ static void usage(const char *progname)
 "             none             no workarounds enabled (default)\n"
 "             all              all workarounds enabled\n"
 "             rename           work around problem renaming to existing file\n"
-"             symlink          prepend mountpoint to absolute symlink targets\n"
 "    -o idmap=TYPE          user/group ID mapping, possible types are:\n"
 "             none             no translation of the ID space (default)\n"
 "             user             only translate UID of connecting user\n"
@@ -1936,6 +1936,7 @@ static void usage(const char *progname)
 "    -o ssh_protocol=N      ssh protocol to use (default: 2)\n"
 "    -o sftp_server=SERV    path to sftp server or subsystem (default: sftp)\n"
 "    -o directport=PORT     directly connect to PORT bypassing ssh\n"
+"    -o transform_symlinks  prepend mountpoint to absolute symlink targets\n"
 "    -o SSHOPT=VAL          ssh options (see man ssh_config)\n"
 "\n", progname);
 }
@@ -1975,7 +1976,8 @@ static int sshfs_opt_proc(void *data, const char *arg, int key,
         if (!sshfs.host && strchr(arg, ':')) {
             sshfs.host = strdup(arg);
             return 0;
-        }
+        } else if (!sshfs.mountpoint)
+            sshfs.mountpoint = strdup(arg);
         return 1;
 
     case KEY_PORT:
@@ -1996,6 +1998,10 @@ static int sshfs_opt_proc(void *data, const char *arg, int key,
 
     case KEY_VERSION:
         fprintf(stderr, "SSHFS version %s\n", PACKAGE_VERSION);
+#if FUSE_VERSION >= 25
+        fuse_opt_add_arg(outargs, "--version");
+        fuse_main(outargs->argc, outargs->argv, &sshfs_oper.oper);
+#endif
         exit(0);
 
     default:
@@ -2007,7 +2013,7 @@ static int sshfs_opt_proc(void *data, const char *arg, int key,
 int main(int argc, char *argv[])
 {
     int res;
-    struct fuse_args outargs;
+    struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
     char *tmp;
     char *fsname;
     char *base_path;
@@ -2021,8 +2027,7 @@ int main(int argc, char *argv[])
     ssh_add_arg("-a");
     ssh_add_arg("-oClearAllForwardings=yes");
 
-    if (fuse_opt_parse(argc, argv, &sshfs, sshfs_opts, sshfs_opt_proc,
-                       &outargs) == -1)
+    if (fuse_opt_parse(&args, &sshfs, sshfs_opts, sshfs_opt_proc) == -1)
         exit(1);
 
     if (!sshfs.host) {
@@ -2073,7 +2078,7 @@ int main(int argc, char *argv[])
     if (res == -1)
         exit(1);
 
-    res = cache_parse_options(&outargs);
+    res = cache_parse_options(&args);
     if (res == -1)
         exit(1);
 
@@ -2082,37 +2087,28 @@ int main(int argc, char *argv[])
     if (sshfs.max_read > 65536)
         sshfs.max_read = 65536;
 
-    if (sshfs.symlink_workaround && outargs.argv[1] == NULL) {
-        fprintf(stderr, "symlink workaround failed: no mountpoint given\n");
+    if (sshfs.transform_symlinks && !sshfs.mountpoint) {
+        fprintf(stderr, "cannot transform symlinks: no mountpoint given\n");
         exit(1);
     }
-    if (!sshfs.symlink_workaround)
-        sshfs.symlink_prefix_len=0;
-    else if (realpath(outargs.argv[1], sshfs.symlink_prefix)!=NULL)
-        sshfs.symlink_prefix_len=strlen(sshfs.symlink_prefix);
+    if (!sshfs.transform_symlinks)
+        sshfs.symlink_prefix_len = 0;
+    else if (realpath(sshfs.mountpoint, sshfs.symlink_prefix) != NULL)
+        sshfs.symlink_prefix_len = strlen(sshfs.symlink_prefix);
     else {
-        sshfs.symlink_prefix_len=strlen(outargs.argv[1]);
-        if (outargs.argv[1][sshfs.symlink_prefix_len-1]=='/')
-            --sshfs.symlink_prefix_len;
-        if (outargs.argv[1][0]=='/' &&
-            sshfs.symlink_prefix_len<=sizeof sshfs.symlink_prefix) {
-            memcpy(sshfs.symlink_prefix, outargs.argv[1],
-                   sshfs.symlink_prefix_len);
-        } else {
-            perror("unable to normalize mount path");
-            exit(1);
-        }
+        perror("unable to normalize mount path");
+        exit(1);
     }
 
     tmp = g_strdup_printf("-omax_read=%u", sshfs.max_read);
-    fuse_opt_add_arg(&outargs, tmp);
+    fuse_opt_add_arg(&args, tmp);
     g_free(tmp);
     tmp = g_strdup_printf("-ofsname=sshfs#%s", fsname);
-    fuse_opt_add_arg(&outargs, tmp);
+    fuse_opt_add_arg(&args, tmp);
     g_free(tmp);
     g_free(fsname);
-    res = fuse_main(outargs.argc, outargs.argv, cache_init(&sshfs_oper));
-    fuse_opt_free_args(&outargs);
+    res = fuse_main(args.argc, args.argv, cache_init(&sshfs_oper));
+    fuse_opt_free_args(&args);
     fuse_opt_free_args(&sshfs.ssh_args);
     free(sshfs.directport);
 
