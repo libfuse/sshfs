@@ -147,6 +147,7 @@ struct sshfs {
     char *sftp_server;
     struct fuse_args ssh_args;
     int rename_workaround;
+    int symlink_workaround;
     int detect_uid;
     unsigned max_read;
     unsigned ssh_ver;
@@ -168,6 +169,8 @@ struct sshfs {
     unsigned local_uid;
     int remote_uid_detected;
     unsigned blksize;
+    size_t symlink_prefix_len;
+    char symlink_prefix[PATH_MAX+1];
 };
 
 static struct sshfs sshfs;
@@ -233,8 +236,11 @@ static struct fuse_opt sshfs_opts[] = {
     SSHFS_OPT("ssh_protocol=%u",   ssh_ver, 0),
     SSHFS_OPT("-1",                ssh_ver, 1),
     SSHFS_OPT("workaround=none",   rename_workaround, 0),
+    SSHFS_OPT("workaround=none",   symlink_workaround, 0),
     SSHFS_OPT("workaround=rename", rename_workaround, 1),
+    SSHFS_OPT("workaround=symlink", symlink_workaround, 1),
     SSHFS_OPT("workaround=all",    rename_workaround, 1),
+    SSHFS_OPT("workaround=all",    symlink_workaround, 1),
     SSHFS_OPT("idmap=none",        detect_uid, 0),
     SSHFS_OPT("idmap=user",        detect_uid, 1),
     SSHFS_OPT("sshfs_sync",        sync_write, 1),
@@ -1157,8 +1163,17 @@ static int sshfs_readlink(const char *path, char *linkbuf, size_t size)
         err = -EIO;
         if(buf_get_uint32(&name, &count) != -1 && count == 1 &&
            buf_get_string(&name, &link) != -1) {
-            strncpy(linkbuf, link, size-1);
-            linkbuf[size-1] = '\0';
+            if (size>0) {
+                if (link[0]=='/') {
+                    size_t len=sshfs.symlink_prefix_len;
+                    if (len>size-1) len=size-1;
+                    memcpy(linkbuf, sshfs.symlink_prefix, len);
+                    linkbuf+=len;
+                    size-=len;
+                }
+                strncpy(linkbuf, link, size-1);
+                linkbuf[size-1] = '\0';
+            }
             free(link);
             err = 0;
         }
@@ -1913,6 +1928,7 @@ static void usage(const char *progname)
 "             none             no workarounds enabled (default)\n"
 "             all              all workarounds enabled\n"
 "             rename           work around problem renaming to existing file\n"
+"             symlink          prepend mountpoint to absolute symlink targets\n"
 "    -o idmap=TYPE          user/group ID mapping, possible types are:\n"
 "             none             no translation of the ID space (default)\n"
 "             user             only translate UID of connecting user\n"
@@ -2065,6 +2081,28 @@ int main(int argc, char *argv[])
 
     if (sshfs.max_read > 65536)
         sshfs.max_read = 65536;
+
+    if (sshfs.symlink_workaround && outargs.argv[1] == NULL) {
+        fprintf(stderr, "symlink workaround failed: no mountpoint given\n");
+        exit(1);
+    }
+    if (!sshfs.symlink_workaround)
+        sshfs.symlink_prefix_len=0;
+    else if (realpath(outargs.argv[1], sshfs.symlink_prefix)!=NULL)
+        sshfs.symlink_prefix_len=strlen(sshfs.symlink_prefix);
+    else {
+        sshfs.symlink_prefix_len=strlen(outargs.argv[1]);
+        if (outargs.argv[1][sshfs.symlink_prefix_len-1]=='/')
+            --sshfs.symlink_prefix_len;
+        if (outargs.argv[1][0]=='/' &&
+            sshfs.symlink_prefix_len<=sizeof sshfs.symlink_prefix) {
+            memcpy(sshfs.symlink_prefix, outargs.argv[1],
+                   sshfs.symlink_prefix_len);
+        } else {
+            perror("unable to normalize mount path");
+            exit(1);
+        }
+    }
 
     tmp = g_strdup_printf("-omax_read=%u", sshfs.max_read);
     fuse_opt_add_arg(&outargs, tmp);
