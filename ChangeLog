@@ -134,7 +134,7 @@
 
 	* Added asynchronous writeback (big performance gain) and made
 	this the default.  Can be disabled with '-o sshfs_sync'
- 
+
 2005-02-09  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Added option to start arbitary command instead of 'ssh'
@@ -145,7 +145,7 @@
 2005-02-08  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Add caching of symlinks
-	
+
 	* Add support for many ssh options to be passed to ssh
 
 	* Port number can now actually be specified with "-o port=PORT",
@@ -161,7 +161,7 @@
 
 	Fix PKG_CONFIG_PATH setting in configure.ac (reported by Alpar
 	Juttner)
-	
+
 2005-01-09  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Released 1.0
