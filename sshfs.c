@@ -10,6 +10,7 @@
 
 #include <fuse.h>
 #include <fuse_opt.h>
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -1149,6 +1150,8 @@ static int sshfs_readlink(const char *path, char *linkbuf, size_t size)
     struct buffer buf;
     struct buffer name;
 
+    assert(size > 0);
+
     if (sshfs.server_version < 3)
         return -EPERM;
 
@@ -1160,7 +1163,7 @@ static int sshfs_readlink(const char *path, char *linkbuf, size_t size)
         char *link;
         err = -EIO;
         if(buf_get_uint32(&name, &count) != -1 && count == 1 &&
-           buf_get_string(&name, &link) != -1 && size > 0) {
+           buf_get_string(&name, &link) != -1) {
             if (link[0] == '/' && sshfs.symlink_prefix_len) {
                 size_t len = sshfs.symlink_prefix_len;
                 if (len > size - 1)
