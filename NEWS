@@ -1,3 +1,16 @@
+What is new in 1.4
+------------------
+
+* Updated to version 25 of libfuse API
+
+* This means that the 'cp' of readonly file to sshfs bug is finally
+  solved (as long as using libfuse 2.5.0 or later *and* Linux 2.6.15
+  or later)
+
+* Sshfs now works on FreeBSD
+
+* Added option to "transform" absolute symbolic links
+
 What is new in 1.3
 ------------------
 

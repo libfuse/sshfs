@@ -1,3 +1,7 @@
+2006-01-14  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Released 1.4
+
 2006-01-09  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Added 'transform_symlinks' option to "fix-up" absolute symlinks.
