@@ -1910,7 +1910,7 @@ static struct fuse_cache_operations sshfs_oper = {
 static void usage(const char *progname)
 {
     fprintf(stderr,
-"usage: %s [user@]host:[dir]] mountpoint [options]\n"
+"usage: %s [user@]host:[dir] mountpoint [options]\n"
 "\n"
 "general options:\n"
 "    -o opt,[opt...]        mount options\n"
