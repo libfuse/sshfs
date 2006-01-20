@@ -1,3 +1,9 @@
+2006-01-20  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Update to fuse API 2.7
+
+	* Don't do readahead in sshfs if it's done in kernel
+
 2006-01-14  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Released 1.4

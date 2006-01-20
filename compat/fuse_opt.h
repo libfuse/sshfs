@@ -72,7 +72,7 @@ extern "C" {
  */
 struct fuse_opt {
     /** Matching template and optional parameter formatting */
-    const char *template;
+    const char *templ;
 
     /**
      * Offset of variable within 'data' parameter of fuse_opt_parse()
@@ -82,7 +82,7 @@ struct fuse_opt {
 
     /**
      * Value to set the variable to, or to be passed as 'key' to the
-     * processing function.  Ignored if template a format
+     * processing function.  Ignored if template has a format
      */
     int value;
 };
@@ -91,13 +91,13 @@ struct fuse_opt {
  * Key option.  In case of a match, the processing function will be
  * called with the specified key.
  */
-#define FUSE_OPT_KEY(template, key) { template, -1U, key }
+#define FUSE_OPT_KEY(templ, key) { templ, -1U, key }
 
 /**
  * Last option.  An array of 'struct fuse_opt' must end with a NULL
  * template value
  */
-#define FUSE_OPT_END { .template = NULL }
+#define FUSE_OPT_END { .templ = NULL }
 
 /**
  * Argument list
@@ -120,7 +120,7 @@ struct fuse_args {
 
 /**
  * Key value passed to the processing function if an option did not
- * match any templated
+ * match any template
  */
 #define FUSE_OPT_KEY_OPT     -1
 
@@ -131,6 +131,22 @@ struct fuse_args {
  * '-' or all arguments after the special '--' option
  */
 #define FUSE_OPT_KEY_NONOPT  -2
+
+/**
+ * Special key value for options to keep
+ *
+ * Argument is not passed to processing function, but behave as if the
+ * processing function returned 1
+ */
+#define FUSE_OPT_KEY_KEEP -3
+
+/**
+ * Special key value for options to discard
+ *
+ * Argument is not passed to processing function, but behave as if the
+ * processing function returned zero
+ */
+#define FUSE_OPT_KEY_DISCARD -4
 
 /**
  * Processing function
@@ -200,6 +216,21 @@ int fuse_opt_add_opt(char **opts, const char *opt);
  * @return -1 on allocation error, 0 on success
  */
 int fuse_opt_add_arg(struct fuse_args *args, const char *arg);
+
+/**
+ * Add an argument at the specified position in a NULL terminated
+ * argument vector
+ *
+ * Adds the argument to the N-th position.  This is useful for adding
+ * options at the beggining of the array which must not come after the
+ * special '--' option.
+ *
+ * @param args is the structure containing the current argument list
+ * @param pos is the position at which to add the argument
+ * @param arg is the new argument to add
+ * @return -1 on allocation error, 0 on success
+ */
+int fuse_opt_insert_arg(struct fuse_args *args, int pos, const char *arg);
 
 /**
  * Free the contents of argument list

@@ -7,4 +7,4 @@ compat_sources = compat/fuse_opt.c compat/fuse_opt.h
 endif
 
 sshfs_SOURCES = sshfs.c cache.c cache.h $(compat_sources)
-sshfs_CPPFLAGS = -DFUSE_USE_VERSION=25
+sshfs_CPPFLAGS = -DFUSE_USE_VERSION=27

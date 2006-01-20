@@ -1006,8 +1006,18 @@ static int start_processing_thread(void)
 }
 
 #ifdef SSHFS_USE_INIT
+#if FUSE_VERSION >= 27
+static void *sshfs_init(struct fuse_conn_info *conn)
+#else
 static void *sshfs_init(void)
+#endif
 {
+#if FUSE_VERSION >= 27
+    /* Readahead should be done by kernel or sshfs but not both */
+    if (conn->async_read)
+        sshfs.sync_read = 1;
+#endif
+
     if (sshfs.detect_uid)
         sftp_detect_uid();
 
@@ -2104,10 +2114,10 @@ int main(int argc, char *argv[])
     }
 
     tmp = g_strdup_printf("-omax_read=%u", sshfs.max_read);
-    fuse_opt_add_arg(&args, tmp);
+    fuse_opt_insert_arg(&args, 1, tmp);
     g_free(tmp);
     tmp = g_strdup_printf("-ofsname=sshfs#%s", fsname);
-    fuse_opt_add_arg(&args, tmp);
+    fuse_opt_insert_arg(&args, 1, tmp);
     g_free(tmp);
     g_free(fsname);
     res = fuse_main(args.argc, args.argv, cache_init(&sshfs_oper));

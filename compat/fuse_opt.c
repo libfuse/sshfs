@@ -62,6 +62,21 @@ int fuse_opt_add_arg(struct fuse_args *args, const char *arg)
     return 0;
 }
 
+int fuse_opt_insert_arg(struct fuse_args *args, int pos, const char *arg)
+{
+    assert(pos <= args->argc);
+    if (fuse_opt_add_arg(args, arg) == -1)
+        return -1;
+
+    if (pos != args->argc - 1) {
+        char *newarg = args->argv[args->argc - 1];
+        memmove(&args->argv[pos + 1], &args->argv[pos],
+                sizeof(char *) * (args->argc - pos - 1));
+        args->argv[pos] = newarg;
+    }
+    return 0;
+}
+
 static int next_arg(struct fuse_opt_context *ctx, const char *opt)
 {
     if (ctx->argctr + 1 >= ctx->argc) {
@@ -102,25 +117,13 @@ static int add_opt(struct fuse_opt_context *ctx, const char *opt)
     return fuse_opt_add_opt(&ctx->opts, opt);
 }
 
-static int insert_arg(struct fuse_opt_context *ctx, int pos, const char *arg)
-{
-    assert(pos <= ctx->outargs.argc);
-    if (add_arg(ctx, arg) == -1)
-        return -1;
-
-    if (pos != ctx->outargs.argc - 1) {
-        char *newarg = ctx->outargs.argv[ctx->outargs.argc - 1];
-        memmove(&ctx->outargs.argv[pos + 1], &ctx->outargs.argv[pos],
-                sizeof(char *) * (ctx->outargs.argc - pos - 1));
-        ctx->outargs.argv[pos] = newarg;
-    }
-    return 0;
-}
-
 static int call_proc(struct fuse_opt_context *ctx, const char *arg, int key,
                      int iso)
 {
-    if (ctx->proc) {
+    if (key == FUSE_OPT_KEY_DISCARD)
+        return 0;
+
+    if (key != FUSE_OPT_KEY_KEEP && ctx->proc) {
         int res = ctx->proc(ctx->data, arg, key, &ctx->outargs);
         if (res == -1 || !res)
             return res;
@@ -155,8 +158,8 @@ static int match_template(const char *t, const char *arg, unsigned *sepp)
 static const struct fuse_opt *find_opt(const struct fuse_opt *opt,
                                        const char *arg, unsigned *sepp)
 {
-    for (; opt && opt->template; opt++)
-        if (match_template(opt->template, arg, sepp))
+    for (; opt && opt->templ; opt++)
+        if (match_template(opt->templ, arg, sepp))
             return opt;
     return NULL;
 }
@@ -195,11 +198,11 @@ static int process_opt(struct fuse_opt_context *ctx,
             return -1;
     } else {
         void *var = ctx->data + opt->offset;
-        if (sep && opt->template[sep + 1]) {
+        if (sep && opt->templ[sep + 1]) {
             const char *param = arg + sep;
-            if (opt->template[sep] == '=')
+            if (opt->templ[sep] == '=')
                 param ++;
-            if (process_opt_param(var, opt->template + sep + 1,
+            if (process_opt_param(var, opt->templ + sep + 1,
                                   param, arg) == -1)
                 return -1;
         } else
@@ -239,7 +242,7 @@ static int process_gopt(struct fuse_opt_context *ctx, const char *arg, int iso)
     if (opt) {
         for (; opt; opt = find_opt(opt + 1, arg, &sep)) {
             int res;
-            if (sep && opt->template[sep] == ' ' && !arg[sep])
+            if (sep && opt->templ[sep] == ' ' && !arg[sep])
                 res = process_opt_sep_arg(ctx, opt, sep, arg, iso);
             else
                 res = process_opt(ctx, opt, sep, arg, iso);
@@ -321,12 +324,14 @@ static int opt_parse(struct fuse_opt_context *ctx)
             return -1;
 
     if (ctx->opts) {
-        if (insert_arg(ctx, 1, "-o") == -1 ||
-            insert_arg(ctx, 2, ctx->opts) == -1)
+        if (fuse_opt_insert_arg(&ctx->outargs, 1, "-o") == -1 ||
+            fuse_opt_insert_arg(&ctx->outargs, 2, ctx->opts) == -1)
             return -1;
     }
-    if (ctx->nonopt && ctx->nonopt == ctx->outargs.argc)
+    if (ctx->nonopt && ctx->nonopt == ctx->outargs.argc) {
+        free(ctx->outargs.argv[ctx->outargs.argc - 1]);
         ctx->outargs.argv[--ctx->outargs.argc] = NULL;
+    }
 
     return 0;
 }
