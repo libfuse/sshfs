@@ -1006,13 +1006,13 @@ static int start_processing_thread(void)
 }
 
 #ifdef SSHFS_USE_INIT
-#if FUSE_VERSION >= 27
+#if FUSE_VERSION >= 26
 static void *sshfs_init(struct fuse_conn_info *conn)
 #else
 static void *sshfs_init(void)
 #endif
 {
-#if FUSE_VERSION >= 27
+#if FUSE_VERSION >= 26
     /* Readahead should be done by kernel or sshfs but not both */
     if (conn->async_read)
         sshfs.sync_read = 1;
