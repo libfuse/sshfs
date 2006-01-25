@@ -26,6 +26,7 @@
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <glib.h>
 
 #include "cache.h"
@@ -659,6 +660,7 @@ static int connect_to(char *host, char *port)
 {
     int err;
     int sock;
+    int opt;
     struct addrinfo *ai;
     struct addrinfo hint;
 
@@ -681,6 +683,11 @@ static int connect_to(char *host, char *port)
         perror("failed to connect");
         return -1;
     }
+    opt = 1;
+    err = setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
+    if (err == -1)
+        perror("warning: failed to set TCP_NODELAY");
+
     freeaddrinfo(ai);
 
     sshfs.infd = sock;
@@ -688,13 +695,11 @@ static int connect_to(char *host, char *port)
     return 0;
 }
 
-static int do_write(struct buffer *buf)
+static int do_write(struct iovec *iov, size_t count)
 {
-    uint8_t *p = buf->p;
-    size_t size = buf->len;
     int res;
-    while (size) {
-        res = write(sshfs.outfd, p, size);
+    while (count) {
+        res = writev(sshfs.outfd, iov, count);
         if (res == -1) {
             perror("write");
             return -1;
@@ -702,8 +707,17 @@ static int do_write(struct buffer *buf)
             fprintf(stderr, "zero write\n");
             return -1;
         }
-        size -= res;
-        p += res;
+        do {
+            if ((unsigned) res < iov->iov_len) {
+                iov->iov_len -= res;
+                iov->iov_base += res;
+                break;
+            } else {
+                res -= iov->iov_len;
+                count --;
+                iov ++;
+            }
+        } while(count);
     }
     return 0;
 }
@@ -714,16 +728,23 @@ static uint32_t sftp_get_id(void)
     return idctr++;
 }
 
+static void buf_to_iov(struct buffer *buf, struct iovec *iov)
+{
+    iov->iov_base = buf->p;
+    iov->iov_len = buf->len;
+}
+
 static int sftp_send(uint8_t type, struct buffer *buf)
 {
     int res;
     struct buffer buf2;
+    struct iovec iov[2];
     buf_init(&buf2, 5);
     buf_add_uint32(&buf2, buf->len + 1);
     buf_add_uint8(&buf2, type);
-    res = do_write(&buf2);
-    if (res != -1)
-        res = do_write(buf);
+    buf_to_iov(&buf2, &iov[0]);
+    buf_to_iov(buf, &iov[1]);
+    res = do_write(iov, 2);
     buf_free(&buf2);
     return res;
 }
