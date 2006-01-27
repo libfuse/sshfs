@@ -149,7 +149,9 @@ struct sshfs {
     char *sftp_server;
     char *mountpoint;
     struct fuse_args ssh_args;
+    char *workarounds;
     int rename_workaround;
+    int nodelay_workaround;
     int transform_symlinks;
     int detect_uid;
     unsigned max_read;
@@ -237,9 +239,7 @@ static struct fuse_opt sshfs_opts[] = {
     SSHFS_OPT("max_read=%u",       max_read, 0),
     SSHFS_OPT("ssh_protocol=%u",   ssh_ver, 0),
     SSHFS_OPT("-1",                ssh_ver, 1),
-    SSHFS_OPT("workaround=none",   rename_workaround, 0),
-    SSHFS_OPT("workaround=rename", rename_workaround, 1),
-    SSHFS_OPT("workaround=all",    rename_workaround, 1),
+    SSHFS_OPT("workaround=%s",     workarounds, 0),
     SSHFS_OPT("idmap=none",        detect_uid, 0),
     SSHFS_OPT("idmap=user",        detect_uid, 1),
     SSHFS_OPT("sshfs_sync",        sync_write, 1),
@@ -254,6 +254,18 @@ static struct fuse_opt sshfs_opts[] = {
     FUSE_OPT_KEY("--version",      KEY_VERSION),
     FUSE_OPT_KEY("-h",             KEY_HELP),
     FUSE_OPT_KEY("--help",         KEY_HELP),
+    FUSE_OPT_END
+};
+
+static struct fuse_opt workaround_opts[] = {
+    SSHFS_OPT("none",       rename_workaround, 0),
+    SSHFS_OPT("none",       nodelay_workaround, 0),
+    SSHFS_OPT("all",        rename_workaround, 1),
+    SSHFS_OPT("all",        nodelay_workaround, 1),
+    SSHFS_OPT("rename",     rename_workaround, 1),
+    SSHFS_OPT("norename",   rename_workaround, 0),
+    SSHFS_OPT("nodelay",    nodelay_workaround, 1),
+    SSHFS_OPT("nonodelay",  nodelay_workaround, 0),
     FUSE_OPT_END
 };
 
@@ -600,6 +612,32 @@ static void ssh_add_arg(const char *arg)
         _exit(1);
 }
 
+static void do_ssh_nodelay_workaround(void)
+{
+    FILE *tmp = tmpfile();
+    int fd = tmp ? dup(fileno(tmp)) : -1;
+    extern const char sshnodelay_so[];
+    extern const int sshnodelay_so_size;
+    char *oldpreload = getenv("LD_PRELOAD");
+    char *newpreload;
+
+    fclose(tmp);
+    if (fd == -1 || write(fd, sshnodelay_so, sshnodelay_so_size) == -1) {
+        fprintf(stderr, "warning: failed to write file for ssh nodelay workaround\n");
+        return;
+    }
+
+    newpreload = g_strdup_printf("%s%s/proc/self/fd/%i",
+                                 oldpreload ? oldpreload : "",
+                                 oldpreload ? " " : "", fd);
+
+    if (!newpreload || setenv("LD_PRELOAD", newpreload, 1) == -1) {
+        fprintf(stderr, "warning: failed set LD_PRELOAD for ssh nodelay workaround\n");
+        close(fd);
+    }
+    g_free(newpreload);
+}
+
 static int start_ssh(void)
 {
     int inpipe[2];
@@ -619,6 +657,9 @@ static int start_ssh(void)
         return -1;
     } else if (pid == 0) {
         int devnull;
+
+        if (sshfs.nodelay_workaround)
+            do_ssh_nodelay_workaround();
 
         devnull = open("/dev/null", O_WRONLY);
 
@@ -1960,9 +2001,10 @@ static void usage(const char *progname)
 "    -o cache_timeout=N     sets timeout for caches in seconds (default: 20)\n"
 "    -o cache_X_timeout=N   sets timeout for {stat,dir,link} cache\n"
 "    -o workaround=LIST     colon separated list of workarounds\n"
-"             none             no workarounds enabled (default)\n"
-"             all              all workarounds enabled\n"
-"             rename           work around problem renaming to existing file\n"
+"             none             no workarounds enabled\n"
+"             all              all workarounds enabled (default)\n"
+"             [no]rename       fix renaming to existing file\n"
+"             [no]nodelay      set nodelay tcp flag in ssh\n"
 "    -o idmap=TYPE          user/group ID mapping, possible types are:\n"
 "             none             no translation of the ID space (default)\n"
 "             user             only translate UID of connecting user\n"
@@ -1970,7 +2012,7 @@ static void usage(const char *progname)
 "    -o ssh_protocol=N      ssh protocol to use (default: 2)\n"
 "    -o sftp_server=SERV    path to sftp server or subsystem (default: sftp)\n"
 "    -o directport=PORT     directly connect to PORT bypassing ssh\n"
-"    -o transform_symlinks  prepend mountpoint to absolute symlink targets\n"
+"    -o transform_symlinks  transform absolute symlinks to relative\n"
 "    -o SSHOPT=VAL          ssh options (see man ssh_config)\n"
 "\n", progname);
 }
@@ -2044,6 +2086,32 @@ static int sshfs_opt_proc(void *data, const char *arg, int key,
     }
 }
 
+static int workaround_opt_proc(void *data, const char *arg, int key,
+                                struct fuse_args *outargs)
+{
+    (void) data; (void) key; (void) outargs;
+    fprintf(stderr, "unknown workaround: '%s'\n", arg);
+    return -1;
+}
+
+int parse_workarounds(void)
+{
+    int res;
+    char *argv[] = { "", "-o", sshfs.workarounds, NULL };
+    struct fuse_args args = FUSE_ARGS_INIT(3, argv);
+    char *s = sshfs.workarounds;
+    if (!s)
+        return 0;
+
+    while ((s = strchr(s, ':')))
+           *s = ',';
+
+    res = fuse_opt_parse(&args, &sshfs, workaround_opts, workaround_opt_proc);
+    fuse_opt_free_args(&args);
+
+    return res;
+}
+
 int main(int argc, char *argv[])
 {
     int res;
@@ -2055,13 +2123,16 @@ int main(int argc, char *argv[])
 
     sshfs.blksize = 4096;
     sshfs.max_read = 65536;
+    sshfs.nodelay_workaround = 1;
+    sshfs.rename_workaround = 1;
     sshfs.ssh_ver = 2;
     ssh_add_arg("ssh");
     ssh_add_arg("-x");
     ssh_add_arg("-a");
     ssh_add_arg("-oClearAllForwardings=yes");
 
-    if (fuse_opt_parse(&args, &sshfs, sshfs_opts, sshfs_opt_proc) == -1)
+    if (fuse_opt_parse(&args, &sshfs, sshfs_opts, sshfs_opt_proc) == -1 ||
+        parse_workarounds() == -1)
         exit(1);
 
     if (!sshfs.host) {

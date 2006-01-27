@@ -1,3 +1,15 @@
+2006-01-27  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Add workaround (enabled by default) for ssh clients not setting
+	TCP_NODELAY on the network connection.  Currently this is all
+	known versions of openssh.  This may improve download speed in
+	some circumstances
+
+	* Change the rename workaround to be enabled by default
+
+	* Make it possible to idividually disable workarounds with a "no"
+	prefix
+
 2006-01-25  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Use TCP_NODELAY socket option for direct connection.  This may
