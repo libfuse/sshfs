@@ -147,7 +147,6 @@ struct sshfs {
     char *directport;
     char *ssh_command;
     char *sftp_server;
-    char *mountpoint;
     struct fuse_args ssh_args;
     char *workarounds;
     int rename_workaround;
@@ -174,8 +173,6 @@ struct sshfs {
     unsigned local_uid;
     int remote_uid_detected;
     unsigned blksize;
-    size_t symlink_prefix_len;
-    char symlink_prefix[PATH_MAX+1];
 };
 
 static struct sshfs sshfs;
@@ -1216,6 +1213,72 @@ static int sshfs_getattr(const char *path, struct stat *stbuf)
     return err;
 }
 
+static int count_components(const char *p)
+{
+    int ctr;
+
+    for (; *p == '/'; p++);
+    for (ctr = 0; *p; ctr++) {
+        for (; *p && *p != '/'; p++);
+        for (; *p == '/'; p++);
+    }
+    return ctr;
+}
+
+static void strip_common(const char **sp, const char **tp)
+{
+    const char *s = *sp;
+    const char *t = *tp;
+    do {
+        for (; *s == '/'; s++);
+        for (; *t == '/'; t++);
+        *tp = t;
+        *sp = s;
+        for (; *s == *t && *s && *s != '/'; s++, t++);
+    } while ((*s == *t && *s) || (!*s && *t == '/') || (*s == '/' && !*t));
+}
+
+static void transform_symlink(const char *path, char **linkp)
+{
+    const char *l = *linkp;
+    const char *b = sshfs.base_path;
+    char *newlink;
+    char *s;
+    int dotdots;
+    int i;
+
+    if (l[0] != '/' || b[0] != '/')
+        return;
+
+    strip_common(&l, &b);
+    if (*b)
+        return;
+
+    strip_common(&l, &path);
+    dotdots = count_components(path);
+    if (!dotdots)
+        return;
+    dotdots--;
+
+    newlink = malloc(dotdots * 3 + l ? strlen(l) : 1 + 10);
+    if (!newlink) {
+        fprintf(stderr, "sshfs: memory allocation failed\n");
+        exit(1);
+    }
+    for (s = newlink, i = 0; i < dotdots; i++, s += 3)
+        strcpy(s, "../");
+
+    if (l[0])
+        strcpy(s, l);
+    else if (!dotdots)
+        strcpy(s, ".");
+    else
+        s[0] = '\0';
+
+    free(*linkp);
+    *linkp = newlink;
+}
+
 static int sshfs_readlink(const char *path, char *linkbuf, size_t size)
 {
     int err;
@@ -1236,14 +1299,8 @@ static int sshfs_readlink(const char *path, char *linkbuf, size_t size)
         err = -EIO;
         if(buf_get_uint32(&name, &count) != -1 && count == 1 &&
            buf_get_string(&name, &link) != -1) {
-            if (link[0] == '/' && sshfs.symlink_prefix_len) {
-                size_t len = sshfs.symlink_prefix_len;
-                if (len > size - 1)
-                    len = size - 1;
-                memcpy(linkbuf, sshfs.symlink_prefix, len);
-                linkbuf += len;
-                size -= len;
-            }
+            if (sshfs.transform_symlinks)
+                transform_symlink(path, &link);
             strncpy(linkbuf, link, size - 1);
             linkbuf[size - 1] = '\0';
             free(link);
@@ -2052,8 +2109,7 @@ static int sshfs_opt_proc(void *data, const char *arg, int key,
         if (!sshfs.host && strchr(arg, ':')) {
             sshfs.host = strdup(arg);
             return 0;
-        } else if (!sshfs.mountpoint)
-            sshfs.mountpoint = strdup(arg);
+        }
         return 1;
 
     case KEY_PORT:
@@ -2191,19 +2247,6 @@ int main(int argc, char *argv[])
 
     if (sshfs.max_read > 65536)
         sshfs.max_read = 65536;
-
-    if (sshfs.transform_symlinks && !sshfs.mountpoint) {
-        fprintf(stderr, "cannot transform symlinks: no mountpoint given\n");
-        exit(1);
-    }
-    if (!sshfs.transform_symlinks)
-        sshfs.symlink_prefix_len = 0;
-    else if (realpath(sshfs.mountpoint, sshfs.symlink_prefix) != NULL)
-        sshfs.symlink_prefix_len = strlen(sshfs.symlink_prefix);
-    else {
-        perror("unable to normalize mount path");
-        exit(1);
-    }
 
     tmp = g_strdup_printf("-omax_read=%u", sshfs.max_read);
     fuse_opt_insert_arg(&args, 1, tmp);

@@ -10,6 +10,11 @@
 	* Make it possible to idividually disable workarounds with a "no"
 	prefix
 
+	* Change '-otransform_symlinks' not to prefix with the mountpoint
+	(which is fragile wrt. moving/binding the mount).  Rather convert
+	absolute symlinks to relative if possible.  Does not yet work if
+	base path is itself relative
+
 2006-01-25  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Use TCP_NODELAY socket option for direct connection.  This may
