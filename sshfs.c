@@ -131,6 +131,7 @@ struct read_chunk {
     struct buffer data;
     int refs;
     int res;
+    int filever;
 };
 
 struct sshfs_file {
@@ -142,6 +143,7 @@ struct sshfs_file {
     off_t next_pos;
     int is_seq;
     int connver;
+    int filever;
 };
 
 struct sshfs {
@@ -1751,6 +1753,7 @@ static int submit_read(struct sshfs_file *sf, size_t size, off_t offset,
     chunk->offset = offset;
     chunk->size = size;
     chunk->refs = 1;
+    chunk->filever = sf->filever;
     err = sshfs_send_async_read(sf, chunk);
     if (!err) {
         pthread_mutex_lock(&sshfs.lock);
@@ -1784,7 +1787,7 @@ static int wait_chunk(struct read_chunk *chunk, char *buf, size_t size)
 static struct read_chunk *search_read_chunk(struct sshfs_file *sf, off_t offset)
 {
     struct read_chunk *ch = sf->readahead;
-    if (ch && ch->offset == offset) {
+    if (ch && ch->offset == offset && ch->filever == sf->filever) {
         ch->refs++;
         return ch;
     } else
@@ -1892,6 +1895,7 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
     if (!sshfs_file_is_conn(sf))
         return -EIO;
 
+    sf->filever ++;
     data.p = (uint8_t *) wbuf;
     data.len = size;
     buf_init(&buf, 0);
@@ -2060,9 +2064,9 @@ static void usage(const char *progname)
 "    -o cache_X_timeout=N   sets timeout for {stat,dir,link} cache\n"
 "    -o workaround=LIST     colon separated list of workarounds\n"
 "             none             no workarounds enabled\n"
-"             all              all workarounds enabled (default)\n"
-"             [no]rename       fix renaming to existing file\n"
-"             [no]nodelay      set nodelay tcp flag in ssh\n"
+"             all              all workarounds enabled\n"
+"             [no]rename       fix renaming to existing file (default: on)\n"
+"             [no]nodelay      set nodelay tcp flag in ssh (default: on)\n"
 "    -o idmap=TYPE          user/group ID mapping, possible types are:\n"
 "             none             no translation of the ID space (default)\n"
 "             user             only translate UID of connecting user\n"
