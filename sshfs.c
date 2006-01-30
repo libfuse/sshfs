@@ -25,6 +25,7 @@
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
+#include <sys/utsname.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <glib.h>
@@ -2168,6 +2169,33 @@ int parse_workarounds(void)
     return res;
 }
 
+#if FUSE_VERSION == 25
+static int fuse_opt_insert_arg(struct fuse_args *args, int pos,
+                               const char *arg)
+{
+    assert(pos <= args->argc);
+    if (fuse_opt_add_arg(args, arg) == -1)
+        return -1;
+
+    if (pos != args->argc - 1) {
+        char *newarg = args->argv[args->argc - 1];
+        memmove(&args->argv[pos + 1], &args->argv[pos],
+                sizeof(char *) * (args->argc - pos - 1));
+        args->argv[pos] = newarg;
+    }
+    return 0;
+}
+#endif
+
+void check_large_read(struct fuse_args *args)
+{
+    struct utsname buf;
+    int err = uname(&buf);
+    if (!err && strcmp(buf.sysname, "Linux") == 0 &&
+        strncmp(buf.release, "2.4.", 4) == 0)
+        fuse_opt_insert_arg(args, 1, "-olarge_read");
+}
+
 int main(int argc, char *argv[])
 {
     int res;
@@ -2253,6 +2281,7 @@ int main(int argc, char *argv[])
     g_free(tmp);
     tmp = g_strdup_printf("-ofsname=sshfs#%s", fsname);
     fuse_opt_insert_arg(&args, 1, tmp);
+    check_large_read(&args);
     g_free(tmp);
     g_free(fsname);
     res = fuse_main(args.argc, args.argv, cache_init(&sshfs_oper));
