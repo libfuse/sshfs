@@ -2,18 +2,24 @@
 
 bin_PROGRAMS = sshfs
 
-sshfs_SOURCES = sshfs.c cache.c cache.h sshnodelay_so.c
+sshfs_SOURCES = sshfs.c cache.c cache.h
 if FUSE_OPT_COMPAT
 sshfs_SOURCES += compat/fuse_opt.c compat/fuse_opt.h
 endif
 
-sshfs_CPPFLAGS = -DFUSE_USE_VERSION=26
+sshfs_CPPFLAGS = -DFUSE_USE_VERSION=26 -DLIBDIR=\"$(libdir)\"
 
-EXTRA_DIST = sshnodelay.c bin2c.c
-CLEANFILES = sshnodelay.so sshnodelay_so.c bin2c
+EXTRA_DIST = sshnodelay.c
+CLEANFILES = sshnodelay.so
 
-sshnodelay_so.c: bin2c sshnodelay.so
-	./bin2c sshnodelay_so < sshnodelay.so > sshnodelay_so.c
+all-local: sshnodelay.so
+
+install-exec-local: sshnodelay.so
+	test -z "$(libdir)" || $(mkdir_p) "$(DESTDIR)$(libdir)"
+	$(INSTALL) -m 755 sshnodelay.so "$(DESTDIR)$(libdir)/sshnodelay.so"
+
+uninstall-local:
+	rm -f "$(DESTDIR)$(libdir)/sshnodelay.so"
 
 sshnodelay.so:
-	$(CC) -Wall -W -s --shared -ldl sshnodelay.c -o sshnodelay.so
+	$(CC) -Wall -W -s --shared $(sshnodelay_libs) sshnodelay.c -o sshnodelay.so

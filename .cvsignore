@@ -14,5 +14,3 @@ missing
 sshfs
 stamp*
 .deps
-bin2c
-sshnodelay_so.c

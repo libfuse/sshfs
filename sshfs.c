@@ -22,6 +22,7 @@
 #include <pthread.h>
 #include <netdb.h>
 #include <signal.h>
+#include <sys/uio.h>
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
@@ -96,6 +97,8 @@
 #define RENAME_TEMP_CHARS 8
 
 #define SFTP_SERVER_PATH "/usr/lib/sftp-server"
+
+#define SSHNODELAY_SO "sshnodelay.so"
 
 struct buffer {
     uint8_t *p;
@@ -176,6 +179,7 @@ struct sshfs {
     unsigned local_uid;
     int remote_uid_detected;
     unsigned blksize;
+    char *progname;
 };
 
 static struct sshfs sshfs;
@@ -612,30 +616,46 @@ static void ssh_add_arg(const char *arg)
         _exit(1);
 }
 
-static void do_ssh_nodelay_workaround(void)
+static int do_ssh_nodelay_workaround(void)
 {
-    FILE *tmp = tmpfile();
-    int fd = tmp ? dup(fileno(tmp)) : -1;
-    extern const char sshnodelay_so[];
-    extern const int sshnodelay_so_size;
     char *oldpreload = getenv("LD_PRELOAD");
     char *newpreload;
+    char sopath[PATH_MAX];
+    int res;
 
-    fclose(tmp);
-    if (fd == -1 || write(fd, sshnodelay_so, sshnodelay_so_size) == -1) {
-        fprintf(stderr, "warning: failed to write file for ssh nodelay workaround\n");
-        return;
+    snprintf(sopath, sizeof(sopath), "%s/%s", LIBDIR, SSHNODELAY_SO);
+    res = access(sopath, R_OK);
+    if (res == -1) {
+        char *s;
+        if (!realpath(sshfs.progname, sopath))
+            return -1;
+
+        s = strrchr(sopath, '/');
+        if (!s)
+            s = sopath;
+        else
+            s++;
+
+        if (s + strlen(SSHNODELAY_SO) >= sopath + sizeof(sopath))
+            return -1;
+
+        strcpy(s, SSHNODELAY_SO);
+        res = access(sopath, R_OK);
+        if (res == -1) {
+            fprintf(stderr, "sshfs: cannot find %s\n", SSHNODELAY_SO);
+            return -1;
+        }
     }
 
-    newpreload = g_strdup_printf("%s%s/proc/self/fd/%i",
+    newpreload = g_strdup_printf("%s%s%s",
                                  oldpreload ? oldpreload : "",
-                                 oldpreload ? " " : "", fd);
+                                 oldpreload ? " " : "",
+                                 sopath);
 
-    if (!newpreload || setenv("LD_PRELOAD", newpreload, 1) == -1) {
+    if (!newpreload || setenv("LD_PRELOAD", newpreload, 1) == -1)
         fprintf(stderr, "warning: failed set LD_PRELOAD for ssh nodelay workaround\n");
-        close(fd);
-    }
     g_free(newpreload);
+    return 0;
 }
 
 static int start_ssh(void)
@@ -658,8 +678,8 @@ static int start_ssh(void)
     } else if (pid == 0) {
         int devnull;
 
-        if (sshfs.nodelay_workaround)
-            do_ssh_nodelay_workaround();
+        if (sshfs.nodelay_workaround && do_ssh_nodelay_workaround() == -1)
+            fprintf(stderr, "warning: ssh nodelay workaround disabled\n");
 
         devnull = open("/dev/null", O_WRONLY);
 
@@ -2214,6 +2234,7 @@ int main(int argc, char *argv[])
     sshfs.nodelay_workaround = 1;
     sshfs.rename_workaround = 1;
     sshfs.ssh_ver = 2;
+    sshfs.progname = argv[0];
     ssh_add_arg("ssh");
     ssh_add_arg("-x");
     ssh_add_arg("-a");
