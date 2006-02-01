@@ -5,9 +5,12 @@
 2006-01-30  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Fix data consitency bug if readahead is enabled and writes are
-	intermixed with reads.  Only fixed for the case when reads and
-	writes are performed on the same file handle.  Bug reported and
-	test program written by Wolfgang Köbler
+	intermixed with reads.  Solution is far from optimal, since it
+	will prevent readahead in the above situation.  If used with FUSE
+	>= 2.6.0 with Linux-2.6.X, readahead will be done by the kernel,
+	and hence there will be no performance penalty.  Bug reported and
+	test program written by Wolfgang Köbler.  Further testing on
+	FreeBSD by Csaba Henk
 
 2006-01-29  Miklos Szeredi <miklos@szeredi.hu>
 

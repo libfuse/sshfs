@@ -134,7 +134,7 @@ struct read_chunk {
     struct buffer data;
     int refs;
     int res;
-    int filever;
+    long modifver;
 };
 
 struct sshfs_file {
@@ -146,7 +146,7 @@ struct sshfs_file {
     off_t next_pos;
     int is_seq;
     int connver;
-    int filever;
+    int modifver;
 };
 
 struct sshfs {
@@ -169,6 +169,7 @@ struct sshfs {
     char *base_path;
     GHashTable *reqtab;
     pthread_mutex_t lock;
+    pthread_mutex_t lock_write;
     int processing_thread_started;
     unsigned int randseed;
     int infd;
@@ -180,6 +181,7 @@ struct sshfs {
     int remote_uid_detected;
     unsigned blksize;
     char *progname;
+    long modifver;
 };
 
 static struct sshfs sshfs;
@@ -805,7 +807,9 @@ static int sftp_send(uint8_t type, struct buffer *buf)
     buf_add_uint8(&buf2, type);
     buf_to_iov(&buf2, &iov[0]);
     buf_to_iov(buf, &iov[1]);
+    pthread_mutex_lock(&sshfs.lock_write);
     res = do_write(iov, 2);
+    pthread_mutex_unlock(&sshfs.lock_write);
     buf_free(&buf2);
     return res;
 }
@@ -1138,14 +1142,15 @@ static int sftp_request_common(uint8_t type, const struct buffer *buf,
     g_hash_table_insert(sshfs.reqtab, GUINT_TO_POINTER(id), req);
     gettimeofday(&req->start, NULL);
     DEBUG("[%05i] %s\n", id, type_name(type));
+    pthread_mutex_unlock(&sshfs.lock);
 
     err = -EIO;
     if (sftp_send(type, &buf2) == -1) {
+        pthread_mutex_lock(&sshfs.lock);
         g_hash_table_remove(sshfs.reqtab, GUINT_TO_POINTER(id));
         pthread_mutex_unlock(&sshfs.lock);
         goto out;
     }
-    pthread_mutex_unlock(&sshfs.lock);
 
     if (expect_type == 0) {
         buf_free(&buf2);
@@ -1524,6 +1529,8 @@ static int sshfs_truncate(const char *path, off_t size)
 {
     int err;
     struct buffer buf;
+
+    sshfs.modifver ++;
     buf_init(&buf, 0);
     buf_add_path(&buf, path);
     if (size == 0) {
@@ -1600,6 +1607,7 @@ static int sshfs_open_common(const char *path, mode_t mode,
     /* Assume random read after open */
     sf->is_seq = 0;
     sf->next_pos = 0;
+    sf->modifver= sshfs.modifver;
     sf->connver = sshfs.connver;
     buf_init(&buf, 0);
     buf_add_path(&buf, path);
@@ -1773,7 +1781,7 @@ static int submit_read(struct sshfs_file *sf, size_t size, off_t offset,
     chunk->offset = offset;
     chunk->size = size;
     chunk->refs = 1;
-    chunk->filever = sf->filever;
+    chunk->modifver = sshfs.modifver;
     err = sshfs_send_async_read(sf, chunk);
     if (!err) {
         pthread_mutex_lock(&sshfs.lock);
@@ -1807,7 +1815,7 @@ static int wait_chunk(struct read_chunk *chunk, char *buf, size_t size)
 static struct read_chunk *search_read_chunk(struct sshfs_file *sf, off_t offset)
 {
     struct read_chunk *ch = sf->readahead;
-    if (ch && ch->offset == offset && ch->filever == sf->filever) {
+    if (ch && ch->offset == offset && ch->modifver == sshfs.modifver) {
         ch->refs++;
         return ch;
     } else
@@ -1826,8 +1834,9 @@ static int sshfs_async_read(struct sshfs_file *sf, char *rbuf, size_t size,
 
     pthread_mutex_lock(&sshfs.lock);
     curr_is_seq = sf->is_seq;
-    sf->is_seq = (sf->next_pos == offset);
+    sf->is_seq = (sf->next_pos == offset && sf->modifver == sshfs.modifver);
     sf->next_pos = offset + size;
+    sf->modifver = sshfs.modifver;
     chunk = search_read_chunk(sf, offset);
     pthread_mutex_unlock(&sshfs.lock);
 
@@ -1915,7 +1924,7 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
     if (!sshfs_file_is_conn(sf))
         return -EIO;
 
-    sf->filever ++;
+    sshfs.modifver ++;
     data.p = (uint8_t *) wbuf;
     data.len = size;
     buf_init(&buf, 0);
@@ -1981,6 +1990,7 @@ static int sshfs_ftruncate(const char *path, off_t size,
     if (!sshfs_file_is_conn(sf))
         return -EIO;
 
+    sshfs.modifver ++;
     buf_init(&buf, 0);
     buf_add_buf(&buf, &sf->handle);
     buf_add_uint32(&buf, SSH_FILEXFER_ATTR_SIZE);
@@ -2020,6 +2030,7 @@ static int sshfs_fgetattr(const char *path, struct stat *stbuf,
 static int processing_init(void)
 {
     pthread_mutex_init(&sshfs.lock, NULL);
+    pthread_mutex_init(&sshfs.lock_write, NULL);
     sshfs.reqtab = g_hash_table_new(NULL, NULL);
     if (!sshfs.reqtab) {
         fprintf(stderr, "failed to create hash table\n");
