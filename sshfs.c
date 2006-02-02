@@ -2291,6 +2291,10 @@ int main(int argc, char *argv[])
     ssh_add_arg(sftp_server);
     free(sshfs.sftp_server);
 
+    res = processing_init();
+    if (res == -1)
+        exit(1);
+
     if (connect_remote() == -1)
         exit(1);
 
@@ -2298,10 +2302,6 @@ int main(int argc, char *argv[])
     if (detect_uid)
         sftp_detect_uid();
 #endif
-
-    res = processing_init();
-    if (res == -1)
-        exit(1);
 
     res = cache_parse_options(&args);
     if (res == -1)
