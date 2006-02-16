@@ -24,3 +24,5 @@ struct fuse_cache_operations {
 
 struct fuse_operations *cache_init(struct fuse_cache_operations *oper);
 int cache_parse_options(struct fuse_args *args);
+void cache_add_attr(const char *path, const struct stat *stbuf);
+void cache_invalidate(const char *path);

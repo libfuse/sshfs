@@ -101,7 +101,7 @@ static void cache_purge_parent(const char *path)
     }
 }
 
-static void cache_invalidate(const char *path)
+void cache_invalidate(const char *path)
 {
     pthread_mutex_lock(&cache.lock);
     cache_purge(path);
@@ -137,7 +137,7 @@ static struct node *cache_get(const char *path)
     return node;
 }
 
-static void cache_add_attr(const char *path, const struct stat *stbuf)
+void cache_add_attr(const char *path, const struct stat *stbuf)
 {
     struct node *node;
     time_t now;

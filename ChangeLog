@@ -4,6 +4,10 @@
 	will always be received by the FUSE main thread.  Fixes the
 	"double ^C" problem seen on FreeBSD.
 
+	* Use 'auto_cache' option if available, so that file cache is not
+	thrown away on each open.  This should make repeated reading of a
+	file much much faster.
+
 2006-01-31  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Fix problems with nodelay workaround on FreeBSD.
