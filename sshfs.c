@@ -1072,6 +1072,9 @@ static int start_processing_thread(void)
 {
     int err;
     pthread_t thread_id;
+    sigset_t oldset;
+    sigset_t newset;
+
     if (sshfs.processing_thread_started)
         return 0;
 
@@ -1081,12 +1084,19 @@ static int start_processing_thread(void)
             return -EIO;
     }
 
+    sigemptyset(&newset);
+    sigaddset(&newset, SIGTERM);
+    sigaddset(&newset, SIGINT);
+    sigaddset(&newset, SIGHUP);
+    sigaddset(&newset, SIGQUIT);
+    pthread_sigmask(SIG_BLOCK, &newset, &oldset);
     err = pthread_create(&thread_id, NULL, process_requests, NULL);
     if (err) {
         fprintf(stderr, "failed to create thread: %s\n", strerror(err));
         return -EIO;
     }
     pthread_detach(thread_id);
+    pthread_sigmask(SIG_SETMASK, &oldset, NULL);
     sshfs.processing_thread_started = 1;
     return 0;
 }
