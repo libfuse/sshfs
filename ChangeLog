@@ -1,3 +1,7 @@
+2006-02-20  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Released 1.5
+
 2006-02-19  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Fix compilation with old FUSE versions.  Report by Kurt George
@@ -54,7 +58,7 @@
 
 2006-01-20  Miklos Szeredi <miklos@szeredi.hu>
 
-	* Update to fuse API 2.7
+	* Update to fuse API 2.6
 
 	* Don't do readahead in sshfs if it's done in kernel
 

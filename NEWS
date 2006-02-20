@@ -1,3 +1,15 @@
+What is new in 1.5
+------------------
+
+* Improvements to read performance.  Now both read and write
+  throughput should be very close to 'scp'
+
+* If used with FUSE 2.6.0 or later, then perform better data caching.
+  This should show dramatic speed improvements when a file is opened
+  more than once
+
+* Bug fixes
+
 What is new in 1.4
 ------------------
 
