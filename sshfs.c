@@ -2355,7 +2355,7 @@ int main(int argc, char *argv[])
         exit(1);
 
 #ifndef SSHFS_USE_INIT
-    if (detect_uid)
+    if (sshfs.detect_uid)
         sftp_detect_uid();
 #endif
 

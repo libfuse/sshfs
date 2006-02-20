@@ -1,3 +1,8 @@
+2006-02-19  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Fix compilation with old FUSE versions.  Report by Kurt George
+	Gjerde
+
 2006-02-16  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Block TERM/INT/HUP/QUIT signals in sshfs reading thread, so they
