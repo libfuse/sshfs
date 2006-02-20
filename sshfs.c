@@ -2152,7 +2152,7 @@ static void usage(const char *progname)
 "    -o workaround=LIST     colon separated list of workarounds\n"
 "             none             no workarounds enabled\n"
 "             all              all workarounds enabled\n"
-"             [no]rename       fix renaming to existing file (default: on)\n"
+"             [no]rename       fix renaming to existing file (default: off)\n"
 "             [no]nodelay      set nodelay tcp flag in ssh (default: on)\n"
 "    -o idmap=TYPE          user/group ID mapping, possible types are:\n"
 "             none             no translation of the ID space (default)\n"
@@ -2299,7 +2299,7 @@ int main(int argc, char *argv[])
     sshfs.blksize = 4096;
     sshfs.max_read = 65536;
     sshfs.nodelay_workaround = 1;
-    sshfs.rename_workaround = 1;
+    sshfs.rename_workaround = 0;
     sshfs.ssh_ver = 2;
     sshfs.progname = argv[0];
     ssh_add_arg("ssh");

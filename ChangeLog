@@ -34,8 +34,6 @@
 	known versions of openssh.  This may improve download speed in
 	some circumstances
 
-	* Change the rename workaround to be enabled by default
-
 	* Make it possible to idividually disable workarounds with a "no"
 	prefix
 
