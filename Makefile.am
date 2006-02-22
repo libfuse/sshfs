@@ -24,4 +24,4 @@ uninstall-local:
 	rm -f "$(DESTDIR)$(libdir)/sshnodelay.so"
 
 sshnodelay.so:
-	$(CC) -Wall -W -s --shared $(sshnodelay_libs) sshnodelay.c -o sshnodelay.so
+	$(CC) -Wall -W -s --shared -fPIC $(sshnodelay_libs) sshnodelay.c -o sshnodelay.so
