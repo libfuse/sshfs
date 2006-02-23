@@ -809,7 +809,8 @@ static size_t iov_length(const struct iovec *iov, unsigned long nr_segs)
 
 #define SFTP_MAX_IOV 3
 
-static int sftp_send_iov(uint8_t type, struct iovec iov[], size_t count)
+static int sftp_send_iov(uint8_t type, uint32_t id, struct iovec iov[],
+                         size_t count)
 {
     int res;
     struct buffer buf;
@@ -819,8 +820,9 @@ static int sftp_send_iov(uint8_t type, struct iovec iov[], size_t count)
 
     assert(count <= SFTP_MAX_IOV - 1);
     buf_init(&buf, 5);
-    buf_add_uint32(&buf, iov_length(iov, count) + 1);
+    buf_add_uint32(&buf, iov_length(iov, count) + 5);
     buf_add_uint8(&buf, type);
+    buf_add_uint32(&buf, id);
     buf_to_iov(&buf, &iovout[nout++]);
     for (i = 0; i < count; i++)
         iovout[nout++] = iov[i];
@@ -829,13 +831,6 @@ static int sftp_send_iov(uint8_t type, struct iovec iov[], size_t count)
     pthread_mutex_unlock(&sshfs.lock_write);
     buf_free(&buf);
     return res;
-}
-
-static int sftp_send(uint8_t type, struct buffer *buf)
-{
-    struct iovec iov[1];
-    buf_to_iov(buf, &iov[0]);
-    return sftp_send_iov(type, iov, 1);
 }
 
 static int do_read(struct buffer *buf)
@@ -999,11 +994,9 @@ static int sftp_init()
     uint8_t type;
     uint32_t version;
     struct buffer buf;
-    buf_init(&buf, 4);
-    buf_add_uint32(&buf, PROTO_VERSION);
-    if (sftp_send(SSH_FXP_INIT, &buf) == -1)
+    if (sftp_send_iov(SSH_FXP_INIT, PROTO_VERSION, NULL, 0) == -1)
         goto out;
-    buf_clear(&buf);
+    buf_init(&buf, 0);
     if (sftp_read(&type, &buf) == -1)
         goto out;
     if (type != SSH_FXP_VERSION) {
@@ -1033,11 +1026,12 @@ static void sftp_detect_uid()
     uint8_t type;
     struct buffer buf;
     struct stat stbuf;
+    struct iovec iov[1];
 
-    buf_init(&buf, 9);
-    buf_add_uint32(&buf, id);
+    buf_init(&buf, 5);
     buf_add_string(&buf, ".");
-    if (sftp_send(SSH_FXP_STAT, &buf) == -1)
+    buf_to_iov(&buf, &iov[0]);
+    if (sftp_send_iov(SSH_FXP_STAT, id, iov, 1) == -1)
         goto out;
     buf_clear(&buf);
     if (sftp_read(&type, &buf) == -1)
@@ -1207,30 +1201,24 @@ static int sftp_request_wait(struct request *req, uint8_t type,
     return err;
 }
 
-static int sftp_request_send(uint8_t type, const struct buffer *buf,
+static int sftp_request_send(uint8_t type, struct iovec *iov, size_t count,
                              request_func begin_func, request_func end_func,
                              int want_reply, void *data,
                              struct request **reqp)
 {
     int err;
-    struct buffer buf2;
     uint32_t id;
     struct request *req = g_new0(struct request, 1);
-    struct iovec iov[2];
 
     req->want_reply = want_reply;
     req->end_func = end_func;
     req->data = data;
     sem_init(&req->ready, 0, 0);
     buf_init(&req->reply, 0);
-    buf_init(&buf2, buf->len + 4);
     pthread_mutex_lock(&sshfs.lock);
     if (begin_func)
         begin_func(req);
     id = sftp_get_id();
-    buf_add_uint32(&buf2, id);
-    buf_to_iov(&buf2, &iov[0]);
-    buf_to_iov(buf, &iov[1]);
     err = start_processing_thread();
     if (err) {
         pthread_mutex_unlock(&sshfs.lock);
@@ -1242,19 +1230,17 @@ static int sftp_request_send(uint8_t type, const struct buffer *buf,
     pthread_mutex_unlock(&sshfs.lock);
 
     err = -EIO;
-    if (sftp_send_iov(type, iov, 2) == -1) {
+    if (sftp_send_iov(type, id, iov, count) == -1) {
         pthread_mutex_lock(&sshfs.lock);
         g_hash_table_remove(sshfs.reqtab, GUINT_TO_POINTER(id));
         pthread_mutex_unlock(&sshfs.lock);
         goto out;
     }
-    buf_free(&buf2);
     if (want_reply)
         *reqp = req;
     return 0;
 
  out:
-    buf_free(&buf2);
     req->error = err;
     if (!want_reply)
         sftp_request_wait(req, type, 0, NULL);
@@ -1263,16 +1249,12 @@ static int sftp_request_send(uint8_t type, const struct buffer *buf,
 }
 
 
-static int sftp_request_common(uint8_t type, const struct buffer *buf,
-                               uint8_t expect_type, struct buffer *outbuf,
-                               request_func begin_func, request_func end_func,
-                               void *data)
+static int sftp_request_iov(uint8_t type, struct iovec *iov, size_t count,
+                            uint8_t expect_type, struct buffer *outbuf)
 {
     struct request *req;
 
-    sftp_request_send(type, buf, begin_func, end_func, expect_type, data,
-                      &req);
-
+    sftp_request_send(type, iov, count, NULL, NULL, expect_type, NULL, &req);
     if (expect_type == 0)
         return 0;
 
@@ -1282,15 +1264,10 @@ static int sftp_request_common(uint8_t type, const struct buffer *buf,
 static int sftp_request(uint8_t type, const struct buffer *buf,
                         uint8_t expect_type, struct buffer *outbuf)
 {
-    return sftp_request_common(type, buf, expect_type, outbuf, NULL, NULL,
-                               NULL);
-}
+    struct iovec iov;
 
-static int sftp_request_async(uint8_t type, const struct buffer *buf,
-                              request_func begin_func, request_func end_func,
-                              void *data)
-{
-    return sftp_request_send(type, buf, begin_func, end_func, 0, data, NULL);
+    buf_to_iov(buf, &iov);
+    return sftp_request_iov(type, &iov, 1, expect_type, outbuf);
 }
 
 static int sshfs_getattr(const char *path, struct stat *stbuf)
@@ -1656,6 +1633,8 @@ static int sshfs_open_common(const char *path, mode_t mode,
     struct sshfs_file *sf;
     struct request *open_req;
     uint32_t pflags = 0;
+    struct iovec iov;
+
     if ((fi->flags & O_ACCMODE) == O_RDONLY)
         pflags = SSH_FXF_READ;
     else if((fi->flags & O_ACCMODE) == O_WRONLY)
@@ -1687,7 +1666,8 @@ static int sshfs_open_common(const char *path, mode_t mode,
     buf_add_uint32(&buf, pflags);
     buf_add_uint32(&buf, SSH_FILEXFER_ATTR_PERMISSIONS);
     buf_add_uint32(&buf, mode);
-    sftp_request_send(SSH_FXP_OPEN, &buf, NULL, NULL, 1, NULL, &open_req);
+    buf_to_iov(&buf, &iov);
+    sftp_request_send(SSH_FXP_OPEN, &iov, 1, NULL, NULL, 1, NULL, &open_req);
     buf_clear(&buf);
     buf_add_path(&buf, path);
     err2 = sftp_request(SSH_FXP_LSTAT, &buf, SSH_FXP_ATTRS, &outbuf);
@@ -1849,12 +1829,15 @@ static void sshfs_send_async_read(struct sshfs_file *sf,
 {
     struct buffer buf;
     struct buffer *handle = &sf->handle;
+    struct iovec iov;
+
     buf_init(&buf, 0);
     buf_add_buf(&buf, handle);
     buf_add_uint64(&buf, chunk->offset);
     buf_add_uint32(&buf, chunk->size);
-    sftp_request_async(SSH_FXP_READ, &buf, sshfs_read_begin, sshfs_read_end,
-                       chunk);
+    buf_to_iov(&buf, &iov);
+    sftp_request_send(SSH_FXP_READ, &iov, 1, sshfs_read_begin, sshfs_read_end,
+                       0, chunk, NULL);
     buf_free(&buf);
 }
 
@@ -1997,9 +1980,9 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
 {
     int err;
     struct buffer buf;
-    struct buffer data;
     struct sshfs_file *sf = get_sshfs_file(fi);
     struct buffer *handle = &sf->handle;
+    struct iovec iov[2];
 
     (void) path;
 
@@ -2007,17 +1990,18 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
         return -EIO;
 
     sshfs.modifver ++;
-    data.p = (uint8_t *) wbuf;
-    data.len = size;
     buf_init(&buf, 0);
     buf_add_buf(&buf, handle);
     buf_add_uint64(&buf, offset);
-    buf_add_data(&buf, &data);
+    buf_add_uint32(&buf, size);
+    buf_to_iov(&buf, &iov[0]);
+    iov[1].iov_base = (void *) wbuf;
+    iov[1].iov_len = size;
     if (!sshfs.sync_write && !sf->write_error)
-        err = sftp_request_async(SSH_FXP_WRITE, &buf, sshfs_write_begin,
-                                 sshfs_write_end, sf);
+        err = sftp_request_send(SSH_FXP_WRITE, iov, 2, sshfs_write_begin,
+                                 sshfs_write_end, 0, sf, NULL);
     else
-        err = sftp_request(SSH_FXP_WRITE, &buf, SSH_FXP_STATUS, NULL);
+        err = sftp_request_iov(SSH_FXP_WRITE, iov, 2, SSH_FXP_STATUS, NULL);
     buf_free(&buf);
     return err ? err : (int) size;
 }
