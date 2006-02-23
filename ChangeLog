@@ -1,3 +1,7 @@
+2006-02-23  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Avoid double memcpy on writes.  Patch by Joseph M Link
+
 2006-02-22  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Add -fPIC to the comile flags of sshnodelay.so.  Reported by

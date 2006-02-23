@@ -791,27 +791,51 @@ static uint32_t sftp_get_id(void)
     return idctr++;
 }
 
-static void buf_to_iov(struct buffer *buf, struct iovec *iov)
+static void buf_to_iov(const struct buffer *buf, struct iovec *iov)
 {
     iov->iov_base = buf->p;
     iov->iov_len = buf->len;
 }
 
-static int sftp_send(uint8_t type, struct buffer *buf)
+static size_t iov_length(const struct iovec *iov, unsigned long nr_segs)
+{
+    unsigned long seg;
+    size_t ret = 0;
+
+    for (seg = 0; seg < nr_segs; seg++)
+        ret += iov[seg].iov_len;
+    return ret;
+}
+
+#define SFTP_MAX_IOV 3
+
+static int sftp_send_iov(uint8_t type, struct iovec iov[], size_t count)
 {
     int res;
-    struct buffer buf2;
-    struct iovec iov[2];
-    buf_init(&buf2, 5);
-    buf_add_uint32(&buf2, buf->len + 1);
-    buf_add_uint8(&buf2, type);
-    buf_to_iov(&buf2, &iov[0]);
-    buf_to_iov(buf, &iov[1]);
+    struct buffer buf;
+    struct iovec iovout[SFTP_MAX_IOV];
+    unsigned i;
+    unsigned nout = 0;
+
+    assert(count <= SFTP_MAX_IOV - 1);
+    buf_init(&buf, 5);
+    buf_add_uint32(&buf, iov_length(iov, count) + 1);
+    buf_add_uint8(&buf, type);
+    buf_to_iov(&buf, &iovout[nout++]);
+    for (i = 0; i < count; i++)
+        iovout[nout++] = iov[i];
     pthread_mutex_lock(&sshfs.lock_write);
-    res = do_write(iov, 2);
+    res = do_write(iovout, nout);
     pthread_mutex_unlock(&sshfs.lock_write);
-    buf_free(&buf2);
+    buf_free(&buf);
     return res;
+}
+
+static int sftp_send(uint8_t type, struct buffer *buf)
+{
+    struct iovec iov[1];
+    buf_to_iov(buf, &iov[0]);
+    return sftp_send_iov(type, iov, 1);
 }
 
 static int do_read(struct buffer *buf)
@@ -1192,6 +1216,7 @@ static int sftp_request_send(uint8_t type, const struct buffer *buf,
     struct buffer buf2;
     uint32_t id;
     struct request *req = g_new0(struct request, 1);
+    struct iovec iov[2];
 
     req->want_reply = want_reply;
     req->end_func = end_func;
@@ -1204,7 +1229,8 @@ static int sftp_request_send(uint8_t type, const struct buffer *buf,
         begin_func(req);
     id = sftp_get_id();
     buf_add_uint32(&buf2, id);
-    buf_add_mem(&buf2, buf->p, buf->len);
+    buf_to_iov(&buf2, &iov[0]);
+    buf_to_iov(buf, &iov[1]);
     err = start_processing_thread();
     if (err) {
         pthread_mutex_unlock(&sshfs.lock);
@@ -1216,7 +1242,7 @@ static int sftp_request_send(uint8_t type, const struct buffer *buf,
     pthread_mutex_unlock(&sshfs.lock);
 
     err = -EIO;
-    if (sftp_send(type, &buf2) == -1) {
+    if (sftp_send_iov(type, iov, 2) == -1) {
         pthread_mutex_lock(&sshfs.lock);
         g_hash_table_remove(sshfs.reqtab, GUINT_TO_POINTER(id));
         pthread_mutex_unlock(&sshfs.lock);
