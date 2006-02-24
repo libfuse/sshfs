@@ -157,6 +157,7 @@ struct sshfs {
     char *workarounds;
     int rename_workaround;
     int nodelay_workaround;
+    int truncate_workaround;
     int transform_symlinks;
     int detect_uid;
     unsigned max_read;
@@ -266,12 +267,16 @@ static struct fuse_opt sshfs_opts[] = {
 static struct fuse_opt workaround_opts[] = {
     SSHFS_OPT("none",       rename_workaround, 0),
     SSHFS_OPT("none",       nodelay_workaround, 0),
+    SSHFS_OPT("none",       truncate_workaround, 0),
     SSHFS_OPT("all",        rename_workaround, 1),
     SSHFS_OPT("all",        nodelay_workaround, 1),
+    SSHFS_OPT("all",        truncate_workaround, 1),
     SSHFS_OPT("rename",     rename_workaround, 1),
     SSHFS_OPT("norename",   rename_workaround, 0),
     SSHFS_OPT("nodelay",    nodelay_workaround, 1),
     SSHFS_OPT("nonodelay",  nodelay_workaround, 0),
+    SSHFS_OPT("truncate",   truncate_workaround, 1),
+    SSHFS_OPT("notruncate", truncate_workaround, 0),
     FUSE_OPT_END
 };
 
@@ -1571,34 +1576,23 @@ static int sshfs_chown(const char *path, uid_t uid, gid_t gid)
     return err;
 }
 
+static int sshfs_truncate_workaround(const char *path, off_t size,
+                                     struct fuse_file_info *fi);
+
 static int sshfs_truncate(const char *path, off_t size)
 {
     int err;
     struct buffer buf;
 
     sshfs.modifver ++;
+    if (size == 0 || sshfs.truncate_workaround)
+        return sshfs_truncate_workaround(path, size, NULL);
+
     buf_init(&buf, 0);
     buf_add_path(&buf, path);
-    if (size == 0) {
-        /* If size is zero, use open(..., O_TRUNC), to work around
-           broken sftp servers */
-        struct buffer handle;
-        buf_add_uint32(&buf, SSH_FXF_WRITE | SSH_FXF_TRUNC);
-        buf_add_uint32(&buf, 0);
-        err = sftp_request(SSH_FXP_OPEN, &buf, SSH_FXP_HANDLE, &handle);
-        if (!err) {
-            int err2;
-            buf_finish(&handle);
-            err2 = sftp_request(SSH_FXP_CLOSE, &handle, 0, NULL);
-            if (!err)
-                err = err2;
-            buf_free(&handle);
-        }
-    } else {
-        buf_add_uint32(&buf, SSH_FILEXFER_ATTR_SIZE);
-        buf_add_uint64(&buf, size);
-        err = sftp_request(SSH_FXP_SETSTAT, &buf, SSH_FXP_STATUS, NULL);
-    }
+    buf_add_uint32(&buf, SSH_FILEXFER_ATTR_SIZE);
+    buf_add_uint64(&buf, size);
+    err = sftp_request(SSH_FXP_SETSTAT, &buf, SSH_FXP_STATUS, NULL);
     buf_free(&buf);
     return err;
 }
@@ -2057,6 +2051,9 @@ static int sshfs_ftruncate(const char *path, off_t size,
         return -EIO;
 
     sshfs.modifver ++;
+    if (sshfs.truncate_workaround)
+        return sshfs_truncate_workaround(path, size, fi);
+
     buf_init(&buf, 0);
     buf_add_buf(&buf, &sf->handle);
     buf_add_uint32(&buf, SSH_FILEXFER_ATTR_SIZE);
@@ -2066,6 +2063,7 @@ static int sshfs_ftruncate(const char *path, off_t size,
 
     return err;
 }
+#endif
 
 static int sshfs_fgetattr(const char *path, struct stat *stbuf,
                            struct fuse_file_info *fi)
@@ -2091,7 +2089,128 @@ static int sshfs_fgetattr(const char *path, struct stat *stbuf,
     buf_free(&buf);
     return err;
 }
-#endif
+
+static int sshfs_truncate_zero(const char *path)
+{
+    int err;
+    struct fuse_file_info fi;
+
+    fi.flags = O_WRONLY | O_TRUNC;
+    err = sshfs_open(path, &fi);
+    if (!err)
+        sshfs_release(path, &fi);
+
+    return err;
+}
+
+static size_t calc_buf_size(off_t size, off_t offset)
+{
+    return offset + sshfs.max_read < size ? sshfs.max_read : size - offset;
+}
+
+static int sshfs_truncate_shrink(const char *path, off_t size)
+{
+    int res;
+    char *data;
+    off_t offset;
+    struct fuse_file_info fi;
+
+    data = calloc(size, 1);
+    if (!data)
+        return -ENOMEM;
+
+    fi.flags = O_RDONLY;
+    res = sshfs_open(path, &fi);
+    if (res)
+        goto out;
+
+    for (offset = 0; offset < size; offset += res) {
+        size_t bufsize = calc_buf_size(size, offset);
+        res = sshfs_read(path, data + offset, bufsize, offset, &fi);
+        if (res <= 0)
+            break;
+    }
+    sshfs_release(path, &fi);
+    if (res < 0)
+        goto out;
+
+    fi.flags = O_WRONLY | O_TRUNC;
+    res = sshfs_open(path, &fi);
+    if (res)
+        goto out;
+
+    for (offset = 0; offset < size; offset += res) {
+        size_t bufsize = calc_buf_size(size, offset);
+        res = sshfs_write(path, data + offset, bufsize, offset, &fi);
+        if (res < 0)
+            break;
+    }
+    if (res >= 0)
+        res = sshfs_flush(path, &fi);
+    sshfs_release(path, &fi);
+
+ out:
+    free(data);
+    return res;
+}
+
+static int sshfs_truncate_extend(const char *path, off_t size,
+                                 struct fuse_file_info *fi)
+{
+    int res;
+    char c = 0;
+    struct fuse_file_info tmpfi;
+    struct fuse_file_info *openfi = fi;
+    if (!fi) {
+        openfi = &tmpfi;
+        openfi->flags = O_WRONLY;
+        res = sshfs_open(path, openfi);
+        if (res)
+            return res;
+    }
+    res = sshfs_write(path, &c, 1, size - 1, openfi);
+    if (res == 1)
+        res = sshfs_flush(path, openfi);
+    if (!fi)
+        sshfs_release(path, openfi);
+
+    return res;
+}
+
+/*
+ * Work around broken sftp servers which don't handle
+ * SSH_FILEXFER_ATTR_SIZE in SETSTAT request.
+ *
+ * If new size is zero, just open the file with O_TRUNC.
+ *
+ * If new size is smaller than current size, then copy file locally,
+ * then open/trunc and send it back.
+ *
+ * If new size is greater than current size, then write a zero byte to
+ * the new end of the file.
+ */
+static int sshfs_truncate_workaround(const char *path, off_t size,
+                                     struct fuse_file_info *fi)
+{
+    if (size == 0)
+        return sshfs_truncate_zero(path);
+    else {
+        struct stat stbuf;
+        int err;
+        if (fi)
+            err = sshfs_fgetattr(path, &stbuf, fi);
+        else
+            err = sshfs_getattr(path, &stbuf);
+        if (err)
+            return err;
+        if (stbuf.st_size == size)
+            return 0;
+        else if (stbuf.st_size > size)
+            return sshfs_truncate_shrink(path, size);
+        else
+            return sshfs_truncate_extend(path, size, fi);
+    }
+}
 
 static int processing_init(void)
 {
@@ -2164,6 +2283,7 @@ static void usage(const char *progname)
 "             all              all workarounds enabled\n"
 "             [no]rename       fix renaming to existing file (default: off)\n"
 "             [no]nodelay      set nodelay tcp flag in ssh (default: on)\n"
+"             [no]truncate     fix truncate for old servers (default: off)\n"
 "    -o idmap=TYPE          user/group ID mapping, possible types are:\n"
 "             none             no translation of the ID space (default)\n"
 "             user             only translate UID of connecting user\n"
@@ -2310,6 +2430,7 @@ int main(int argc, char *argv[])
     sshfs.max_read = 65536;
     sshfs.nodelay_workaround = 1;
     sshfs.rename_workaround = 0;
+    sshfs.truncate_workaround = 0;
     sshfs.ssh_ver = 2;
     sshfs.progname = argv[0];
     ssh_add_arg("ssh");

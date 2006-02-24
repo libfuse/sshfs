@@ -1,3 +1,8 @@
+2006-02-24  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Add workaround for broken truncate on old sftp servers.  Can be
+	enabled with '-oworkaround=truncate'.  Patch from Joseph M Link
+
 2006-02-23  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Avoid double memcpy on writes.  Patch by Joseph M Link
