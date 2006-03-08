@@ -1339,7 +1339,7 @@ static void transform_symlink(const char *path, char **linkp)
         return;
     dotdots--;
 
-    newlink = malloc(dotdots * 3 + l ? strlen(l) : 1 + 10);
+    newlink = malloc(dotdots * 3 + strlen(l) + 2);
     if (!newlink) {
         fprintf(stderr, "sshfs: memory allocation failed\n");
         exit(1);
