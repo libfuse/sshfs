@@ -1,3 +1,10 @@
+What is new in 1.6
+------------------
+
+* Workaround for missing truncate operation on old sftp servers
+
+* Bug fixes
+
 What is new in 1.5
 ------------------
 
