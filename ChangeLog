@@ -1,5 +1,9 @@
 2006-03-09  Miklos Szeredi <miklos@szeredi.hu>
 
+	* Released 1.6
+
+2006-03-09  Miklos Szeredi <miklos@szeredi.hu>
+
 	* Fix segfault if remote host is down and reconnection is enabled
 
 2006-03-08  Miklos Szeredi <miklos@szeredi.hu>
