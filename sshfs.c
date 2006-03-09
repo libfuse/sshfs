@@ -999,9 +999,9 @@ static int sftp_init()
     uint8_t type;
     uint32_t version;
     struct buffer buf;
+    buf_init(&buf, 0);
     if (sftp_send_iov(SSH_FXP_INIT, PROTO_VERSION, NULL, 0) == -1)
         goto out;
-    buf_init(&buf, 0);
     if (sftp_read(&type, &buf) == -1)
         goto out;
     if (type != SSH_FXP_VERSION) {
@@ -1249,6 +1249,8 @@ static int sftp_request_send(uint8_t type, struct iovec *iov, size_t count,
     req->error = err;
     if (!want_reply)
         sftp_request_wait(req, type, 0, NULL);
+    else
+        *reqp = req;
 
     return err;
 }
