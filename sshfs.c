@@ -173,8 +173,7 @@ struct sshfs {
     pthread_mutex_t lock_write;
     int processing_thread_started;
     unsigned int randseed;
-    int infd;
-    int outfd;
+    int fd;
     int connver;
     int server_version;
     unsigned remote_uid;
@@ -667,16 +666,14 @@ static int do_ssh_nodelay_workaround(void)
 
 static int start_ssh(void)
 {
-    int inpipe[2];
-    int outpipe[2];
+    int sockpair[2];
     int pid;
 
-    if (pipe(inpipe) == -1 || pipe(outpipe) == -1) {
-        perror("failed to create pipe");
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockpair) == -1) {
+        perror("failed to create socket pair");
         return -1;
     }
-    sshfs.infd = inpipe[0];
-    sshfs.outfd = outpipe[1];
+    sshfs.fd = sockpair[0];
 
     pid = fork();
     if (pid == -1) {
@@ -690,7 +687,7 @@ static int start_ssh(void)
 
         devnull = open("/dev/null", O_WRONLY);
 
-        if (dup2(outpipe[0], 0) == -1 || dup2(inpipe[1], 1) == -1) {
+        if (dup2(sockpair[1], 0) == -1 || dup2(sockpair[1], 1) == -1) {
             perror("failed to redirect input/output");
             _exit(1);
         }
@@ -698,10 +695,8 @@ static int start_ssh(void)
             dup2(devnull, 2);
 
         close(devnull);
-        close(inpipe[0]);
-        close(inpipe[1]);
-        close(outpipe[0]);
-        close(outpipe[1]);
+        close(sockpair[0]);
+        close(sockpair[1]);
 
         switch (fork()) {
         case -1:
@@ -719,8 +714,7 @@ static int start_ssh(void)
         _exit(1);
     }
     waitpid(pid, NULL, 0);
-    close(inpipe[1]);
-    close(outpipe[0]);
+    close(sockpair[1]);
     return 0;
 }
 
@@ -758,8 +752,7 @@ static int connect_to(char *host, char *port)
 
     freeaddrinfo(ai);
 
-    sshfs.infd = sock;
-    sshfs.outfd = sock;
+    sshfs.fd = sock;
     return 0;
 }
 
@@ -767,7 +760,7 @@ static int do_write(struct iovec *iov, size_t count)
 {
     int res;
     while (count) {
-        res = writev(sshfs.outfd, iov, count);
+        res = writev(sshfs.fd, iov, count);
         if (res == -1) {
             perror("write");
             return -1;
@@ -844,7 +837,7 @@ static int do_read(struct buffer *buf)
     uint8_t *p = buf->p;
     size_t size = buf->size;
     while (size) {
-        res = read(sshfs.infd, p, size);
+        res = read(sshfs.fd, p, size);
         if (res == -1) {
             perror("read");
             return -1;
@@ -982,10 +975,8 @@ static void *process_requests(void *data_)
     } else {
         pthread_mutex_lock(&sshfs.lock);
         sshfs.processing_thread_started = 0;
-        close(sshfs.infd);
-        sshfs.infd = -1;
-        close(sshfs.outfd);
-        sshfs.outfd = -1;
+        close(sshfs.fd);
+        sshfs.fd = -1;
         g_hash_table_foreach_remove(sshfs.reqtab, (GHRFunc) clean_req, NULL);
         sshfs.connver ++;
         pthread_mutex_unlock(&sshfs.lock);
@@ -1101,7 +1092,7 @@ static int start_processing_thread(void)
     if (sshfs.processing_thread_started)
         return 0;
 
-    if (sshfs.outfd == -1) {
+    if (sshfs.fd == -1) {
         err = connect_remote();
         if (err)
             return -EIO;
@@ -2313,6 +2304,15 @@ static int is_ssh_opt(const char *arg)
     return 0;
 }
 
+static int sshfs_fuse_main(struct fuse_args *args)
+{
+#if FUSE_VERSION >= 26
+    return fuse_main(args->argc, args->argv, cache_init(&sshfs_oper), NULL);
+#else
+    return fuse_main(args->argc, args->argv, cache_init(&sshfs_oper));
+#endif
+}
+
 static int sshfs_opt_proc(void *data, const char *arg, int key,
                           struct fuse_args *outargs)
 {
@@ -2349,14 +2349,14 @@ static int sshfs_opt_proc(void *data, const char *arg, int key,
     case KEY_HELP:
         usage(outargs->argv[0]);
         fuse_opt_add_arg(outargs, "-ho");
-        fuse_main(outargs->argc, outargs->argv, &sshfs_oper.oper);
+        sshfs_fuse_main(outargs);
         exit(1);
 
     case KEY_VERSION:
         fprintf(stderr, "SSHFS version %s\n", PACKAGE_VERSION);
 #if FUSE_VERSION >= 25
         fuse_opt_add_arg(outargs, "--version");
-        fuse_main(outargs->argc, outargs->argv, &sshfs_oper.oper);
+        sshfs_fuse_main(outargs);
 #endif
         exit(0);
 
@@ -2511,7 +2511,7 @@ int main(int argc, char *argv[])
     check_large_read(&args);
     g_free(tmp);
     g_free(fsname);
-    res = fuse_main(args.argc, args.argv, cache_init(&sshfs_oper));
+    res = sshfs_fuse_main(&args);
     fuse_opt_free_args(&args);
     fuse_opt_free_args(&sshfs.ssh_args);
     free(sshfs.directport);
