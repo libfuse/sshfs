@@ -159,6 +159,8 @@ struct sshfs {
     int nodelay_workaround;
     int truncate_workaround;
     int transform_symlinks;
+    int follow_symlinks;
+    int no_check_root;
     int detect_uid;
     unsigned max_read;
     unsigned ssh_ver;
@@ -253,6 +255,8 @@ static struct fuse_opt sshfs_opts[] = {
     SSHFS_OPT("sshfs_debug",       debug, 1),
     SSHFS_OPT("reconnect",         reconnect, 1),
     SSHFS_OPT("transform_symlinks", transform_symlinks, 1),
+    SSHFS_OPT("follow_symlinks",   follow_symlinks, 1),
+    SSHFS_OPT("no_check_root",     no_check_root, 1),
 
     FUSE_OPT_KEY("-p ",            KEY_PORT),
     FUSE_OPT_KEY("-C",             KEY_COMPRESS),
@@ -376,7 +380,6 @@ static inline void buf_finish(struct buffer *buf)
 {
     buf->len = buf->size;
 }
-
 
 static inline void buf_clear(struct buffer *buf)
 {
@@ -605,6 +608,8 @@ static int buf_get_entries(struct buffer *buf, fuse_cache_dirh_t h,
         if (buf_get_string(buf, &longname) != -1) {
             free(longname);
             if (buf_get_attrs(buf, &stbuf, NULL) != -1) {
+                if (sshfs.follow_symlinks && S_ISLNK(stbuf.st_mode))
+                    stbuf.st_mode = 0;
                 filler(h, name, &stbuf);
                 err = 0;
             }
@@ -984,22 +989,69 @@ static void *process_requests(void *data_)
     return NULL;
 }
 
+static int sftp_init_reply_ok(struct buffer *buf, uint32_t *version)
+{
+    uint32_t len;
+    uint8_t type;
+
+    if (buf_get_uint32(buf, &len) == -1)
+        return -1;
+
+    if (len < 5 || len > MAX_REPLY_LEN)
+        return 1;
+
+    if (buf_get_uint8(buf, &type) == -1)
+        return -1;
+
+    if (type != SSH_FXP_VERSION)
+        return 1;
+
+    if (buf_get_uint32(buf, version) == -1)
+        return -1;
+
+    if (len > 5) {
+        struct buffer buf2;
+        buf_init(&buf2, len - 5);
+        return do_read(&buf2);
+    }
+    return 0;
+}
+
+static int sftp_find_init_reply(uint32_t *version)
+{
+    int res;
+    struct buffer buf;
+
+    buf_init(&buf, 9);
+    res = do_read(&buf);
+    while (res != -1) {
+        struct buffer buf2;
+
+        res = sftp_init_reply_ok(&buf, version);
+        if (res <= 0)
+            break;
+
+        /* Iterate over any rubbish until the version reply is found */
+        DEBUG("%c", *buf.p);
+        memmove(buf.p, buf.p + 1, buf.size - 1);
+        buf.len = 0;
+        buf2.p = buf.p + buf.size - 1;
+        buf2.size = 1;
+        res = do_read(&buf2);
+    }
+    buf_free(&buf);
+    return res;
+}
+
 static int sftp_init()
 {
     int res = -1;
-    uint8_t type;
     uint32_t version;
     struct buffer buf;
     buf_init(&buf, 0);
     if (sftp_send_iov(SSH_FXP_INIT, PROTO_VERSION, NULL, 0) == -1)
         goto out;
-    if (sftp_read(&type, &buf) == -1)
-        goto out;
-    if (type != SSH_FXP_VERSION) {
-        fprintf(stderr, "protocol error\n");
-        goto out;
-    }
-    if (buf_get_uint32(&buf, &version) == -1)
+    if (sftp_find_init_reply(&version) == -1)
         goto out;
 
     sshfs.server_version = version;
@@ -1012,6 +1064,21 @@ static int sftp_init()
  out:
     buf_free(&buf);
     return res;
+}
+
+static int sftp_error_to_errno(uint32_t error)
+{
+    switch (error) {
+    case SSH_FX_OK:                return 0;
+    case SSH_FX_NO_SUCH_FILE:      return ENOENT;
+    case SSH_FX_PERMISSION_DENIED: return EACCES;
+    case SSH_FX_FAILURE:           return EPERM;
+    case SSH_FX_BAD_MESSAGE:       return EBADMSG;
+    case SSH_FX_NO_CONNECTION:     return ENOTCONN;
+    case SSH_FX_CONNECTION_LOST:   return ECONNABORTED;
+    case SSH_FX_OP_UNSUPPORTED:    return EOPNOTSUPP;
+    default:                       return EIO;
+    }
 }
 
 static void sftp_detect_uid()
@@ -1066,6 +1133,64 @@ static void sftp_detect_uid()
         fprintf(stderr, "failed to detect remote user ID\n");
 
     buf_free(&buf);
+}
+
+static int sftp_check_root(const char *base_path)
+{
+    int flags;
+    uint32_t id = sftp_get_id();
+    uint32_t replid;
+    uint8_t type;
+    struct buffer buf;
+    struct stat stbuf;
+    struct iovec iov[1];
+    int err = -1;
+    const char *remote_dir = base_path[0] ? base_path : ".";
+
+    buf_init(&buf, 0);
+    buf_add_string(&buf, remote_dir);
+    buf_to_iov(&buf, &iov[0]);
+    if (sftp_send_iov(SSH_FXP_STAT, id, iov, 1) == -1)
+        goto out;
+    buf_clear(&buf);
+    if (sftp_read(&type, &buf) == -1)
+        goto out;
+    if (type != SSH_FXP_ATTRS && type != SSH_FXP_STATUS) {
+        fprintf(stderr, "protocol error\n");
+        goto out;
+    }
+    if (buf_get_uint32(&buf, &replid) == -1)
+        goto out;
+    if (replid != id) {
+        fprintf(stderr, "bad reply ID\n");
+        goto out;
+    }
+    if (type == SSH_FXP_STATUS) {
+        uint32_t serr;
+        if (buf_get_uint32(&buf, &serr) == -1)
+            goto out;
+
+        fprintf(stderr, "%s:%s: %s\n", sshfs.host, remote_dir,
+                strerror(sftp_error_to_errno(serr)));
+
+        goto out;
+    }
+    if (buf_get_attrs(&buf, &stbuf, &flags) == -1)
+        goto out;
+
+    if (!(flags & SSH_FILEXFER_ATTR_PERMISSIONS))
+        goto out;
+
+    if (!S_ISDIR(stbuf.st_mode)) {
+        fprintf(stderr, "%s:%s: Not a directory\n", sshfs.host, remote_dir);
+        goto out;
+    }
+
+    err = 0;
+
+ out:
+    buf_free(&buf);
+    return err;
 }
 
 static int connect_remote(void)
@@ -1175,11 +1300,8 @@ static int sftp_request_wait(struct request *req, uint8_t type,
                 err = -EIO;
             break;
 
-        case SSH_FX_NO_SUCH_FILE:      err = -ENOENT; break;
-        case SSH_FX_PERMISSION_DENIED: err = -EACCES; break;
-        case SSH_FX_FAILURE:           err = -EPERM;  break;
-        case SSH_FX_BAD_MESSAGE:
-        default:                       err = -EIO; break;
+        default:
+            err = -sftp_error_to_errno(serr);
         }
     } else {
         buf_init(outbuf, req->reply.size - req->reply.len);
@@ -1275,7 +1397,8 @@ static int sshfs_getattr(const char *path, struct stat *stbuf)
     struct buffer outbuf;
     buf_init(&buf, 0);
     buf_add_path(&buf, path);
-    err = sftp_request(SSH_FXP_LSTAT, &buf, SSH_FXP_ATTRS, &outbuf);
+    err = sftp_request(sshfs.follow_symlinks ? SSH_FXP_STAT : SSH_FXP_LSTAT,
+                       &buf, SSH_FXP_ATTRS, &outbuf);
     if (!err) {
         if (buf_get_attrs(&outbuf, stbuf, NULL) == -1)
             err = -EIO;
@@ -1657,7 +1780,8 @@ static int sshfs_open_common(const char *path, mode_t mode,
     sftp_request_send(SSH_FXP_OPEN, &iov, 1, NULL, NULL, 1, NULL, &open_req);
     buf_clear(&buf);
     buf_add_path(&buf, path);
-    err2 = sftp_request(SSH_FXP_LSTAT, &buf, SSH_FXP_ATTRS, &outbuf);
+    err2 = sftp_request(sshfs.follow_symlinks ? SSH_FXP_STAT : SSH_FXP_LSTAT,
+                        &buf, SSH_FXP_ATTRS, &outbuf);
     if (!err2 && buf_get_attrs(&outbuf, &stbuf, NULL) == -1)
         err2 = -EIO;
     err = sftp_request_wait(open_req, SSH_FXP_OPEN, SSH_FXP_HANDLE,
@@ -2285,6 +2409,8 @@ static void usage(const char *progname)
 "    -o sftp_server=SERV    path to sftp server or subsystem (default: sftp)\n"
 "    -o directport=PORT     directly connect to PORT bypassing ssh\n"
 "    -o transform_symlinks  transform absolute symlinks to relative\n"
+"    -o follow_symlinks     follow symlinks on the server\n"
+"    -o no_check_root       don't check for existence of 'dir' on server\n"
 "    -o SSHOPT=VAL          ssh options (see man ssh_config)\n"
 "\n", progname);
 }
@@ -2491,6 +2617,9 @@ int main(int argc, char *argv[])
     if (sshfs.detect_uid)
         sftp_detect_uid();
 #endif
+
+    if (!sshfs.no_check_root && sftp_check_root(base_path) == -1)
+        exit(1);
 
     res = cache_parse_options(&args);
     if (res == -1)

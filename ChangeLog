@@ -1,3 +1,15 @@
+2006-08-16  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Add option 'follow_symlinks' to resolve symlinks on the server.
+
+	* On setups where the login shell prints a banner, the sftp
+	protocol was confused, and bailed out with "reply len too large:
+	...".  So iterate over any rubbish read immediately after login
+	until a valid reply is found.
+
+	* Check remote directory for existence before mounting.  Closes
+	Ubuntu bug #46633
+
 2006-03-10  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Use socketpair() instead of pipe() for communication between ssh
