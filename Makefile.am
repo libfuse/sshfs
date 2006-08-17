@@ -11,7 +11,7 @@ sshfs_LDADD = $(SSHFS_LIBS)
 sshfs_CFLAGS = $(SSHFS_CFLAGS)
 sshfs_CPPFLAGS = -D_REENTRANT -DFUSE_USE_VERSION=26 -DLIBDIR=\"$(libdir)\"
 
-EXTRA_DIST = sshnodelay.c
+EXTRA_DIST = sshnodelay.c FAQ.txt
 CLEANFILES = sshnodelay.so
 
 all-local: sshnodelay.so

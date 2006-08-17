@@ -1,6 +1,7 @@
 .deps
 COPYING
 INSTALL
+FAQ.txt
 Makefile
 Makefile.in
 aclocal.m4
