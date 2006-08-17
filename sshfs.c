@@ -2124,12 +2124,11 @@ static int sshfs_statfs(const char *path, struct statvfs *buf)
 
     buf->f_namemax = 255;
     buf->f_bsize = sshfs.blksize;
-    buf->f_frsize = 512;
-    buf->f_blocks = 999999999 * 2;
-    buf->f_bfree =  999999999 * 2;
-    buf->f_bavail = 999999999 * 2;
-    buf->f_files =  999999999;
-    buf->f_ffree =  999999999;
+    /* df seems to use f_bsize instead of f_frsize, so make them the same */
+    buf->f_frsize = buf->f_bsize;
+    buf->f_blocks = buf->f_bfree =  buf->f_bavail =
+        1000ULL * 1024 * 1024 * 1024 / buf->f_frsize;
+    buf->f_files = buf->f_ffree = 1000000000;
     return 0;
 }
 #else
@@ -2138,12 +2137,10 @@ static int sshfs_statfs(const char *path, struct statfs *buf)
     (void) path;
 
     buf->f_namelen = 255;
-    buf->f_bsize = 512;
-    buf->f_blocks = 999999999 * 2;
-    buf->f_bfree =  999999999 * 2;
-    buf->f_bavail = 999999999 * 2;
-    buf->f_files =  999999999;
-    buf->f_ffree =  999999999;
+    buf->f_bsize = sshfs.blksize;
+    buf->f_blocks = buf->f_bfree = buf->f_bavail =
+        1000ULL * 1024 * 1024 * 1024 / buf->f_bsize;
+    buf->f_files = buf->f_ffree = 1000000000;
     return 0;
 }
 #endif
