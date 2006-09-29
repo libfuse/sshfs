@@ -1,3 +1,9 @@
+2006-09-29  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Fix segfault if there are outstanding writes to the server after
+	release on the file descriptor.  The only happened on FreeBSD.
+	Reported by Andriy Gapon
+
 2006-08-18  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Released 1.7
