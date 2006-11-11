@@ -1,7 +1,12 @@
+2006-11-10  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Fix bug which ommitted directory entries for symlinks with the
+	-ofollow_symlinks option.  Bug reported by Mikael Ståldal
+
 2006-09-29  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Fix segfault if there are outstanding writes to the server after
-	release on the file descriptor.  The only happened on FreeBSD.
+	release on the file descriptor.  This only happened on FreeBSD.
 	Reported by Andriy Gapon
 
 2006-08-18  Miklos Szeredi <miklos@szeredi.hu>

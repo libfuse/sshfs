@@ -250,12 +250,14 @@ static int cache_dirfill(fuse_cache_dirh_t ch, const char *name,
                          const struct stat *stbuf)
 {
     int err = ch->filler(ch->h, name, 0, 0);
-    if (!err && (stbuf->st_mode & S_IFMT)) {
-        char *fullpath;
+    if (!err) {
         g_ptr_array_add(ch->dir, g_strdup(name));
-        fullpath = g_strdup_printf("%s/%s", !ch->path[1] ? "" : ch->path, name);
-        cache_add_attr(fullpath, stbuf);
-        g_free(fullpath);
+        if (stbuf->st_mode & S_IFMT) {
+            char *fullpath =
+                g_strdup_printf("%s/%s", !ch->path[1] ? "" : ch->path, name);
+            cache_add_attr(fullpath, stbuf);
+            g_free(fullpath);
+        }
     }
     return err;
 }
