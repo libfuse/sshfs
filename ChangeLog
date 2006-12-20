@@ -1,3 +1,8 @@
+2006-12-20  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Work around write performace issues due to missing TCP_NODELAY
+	in sshd.  Reported by Justin Searle
+
 2006-11-10  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Fix bug which ommitted directory entries for symlinks with the

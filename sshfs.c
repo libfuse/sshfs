@@ -158,6 +158,7 @@ struct sshfs {
     char *workarounds;
     int rename_workaround;
     int nodelay_workaround;
+    int nodelaysrv_workaround;
     int truncate_workaround;
     int transform_symlinks;
     int follow_symlinks;
@@ -271,6 +272,7 @@ static struct fuse_opt sshfs_opts[] = {
 static struct fuse_opt workaround_opts[] = {
     SSHFS_OPT("none",       rename_workaround, 0),
     SSHFS_OPT("none",       nodelay_workaround, 0),
+    SSHFS_OPT("none",       nodelaysrv_workaround, 0),
     SSHFS_OPT("none",       truncate_workaround, 0),
     SSHFS_OPT("all",        rename_workaround, 1),
     SSHFS_OPT("all",        nodelay_workaround, 1),
@@ -279,6 +281,8 @@ static struct fuse_opt workaround_opts[] = {
     SSHFS_OPT("norename",   rename_workaround, 0),
     SSHFS_OPT("nodelay",    nodelay_workaround, 1),
     SSHFS_OPT("nonodelay",  nodelay_workaround, 0),
+    SSHFS_OPT("nodelaysrv", nodelaysrv_workaround, 1),
+    SSHFS_OPT("nonodelaysrv", nodelaysrv_workaround, 0),
     SSHFS_OPT("truncate",   truncate_workaround, 1),
     SSHFS_OPT("notruncate", truncate_workaround, 0),
     FUSE_OPT_END
@@ -691,6 +695,12 @@ static int start_ssh(void)
         if (sshfs.nodelay_workaround && do_ssh_nodelay_workaround() == -1)
             fprintf(stderr, "warning: ssh nodelay workaround disabled\n");
 
+        if (sshfs.nodelaysrv_workaround) {
+            /* Hack to work around missing TCP_NODELAY setting in sshd  */
+            sshfs.ssh_args.argv[1] = "-X";
+            setenv("DISPLAY", "", 1);
+        }
+
         devnull = open("/dev/null", O_WRONLY);
 
         if (dup2(sockpair[1], 0) == -1 || dup2(sockpair[1], 1) == -1) {
@@ -1047,7 +1057,7 @@ static int sftp_find_init_reply(uint32_t *version)
 static int sftp_init()
 {
     int res = -1;
-    uint32_t version;
+    uint32_t version = 0;
     struct buffer buf;
     buf_init(&buf, 0);
     if (sftp_send_iov(SSH_FXP_INIT, PROTO_VERSION, NULL, 0) == -1)
@@ -2413,6 +2423,7 @@ static void usage(const char *progname)
 "             all              all workarounds enabled\n"
 "             [no]rename       fix renaming to existing file (default: off)\n"
 "             [no]nodelay      set nodelay tcp flag in ssh (default: on)\n"
+"             [no]nodelaysrv   set nodelay tcp flag in sshd (default: on)\n"
 "             [no]truncate     fix truncate for old servers (default: off)\n"
 "    -o idmap=TYPE          user/group ID mapping, possible types are:\n"
 "             none             no translation of the ID space (default)\n"
@@ -2570,6 +2581,7 @@ int main(int argc, char *argv[])
     sshfs.blksize = 4096;
     sshfs.max_read = 65536;
     sshfs.nodelay_workaround = 1;
+    sshfs.nodelaysrv_workaround = 1;
     sshfs.rename_workaround = 0;
     sshfs.truncate_workaround = 0;
     sshfs.ssh_ver = 2;
