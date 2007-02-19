@@ -1,3 +1,14 @@
+2007-02-19  Miklos Szeredi <miklos@szeredi.hu>
+
+	* OpenSSH sftp-server can read requests faster, than it processes
+	them, when it's buffer is full it aborts.  This can happen on a
+	large upload to a slow server.  Work around this by limiting the
+	total size of outstanding reqests.  Debian bug #365541.  Tracked
+	down by Thue Janus Kristensen
+
+	* Add --disable-sshnodelay configure option.  The sshnodelay.so
+	hack shouldnt be needed with OpenSSH client versions >= 4.3
+
 2006-12-20  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Work around write performace issues due to missing TCP_NODELAY

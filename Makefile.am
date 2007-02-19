@@ -14,6 +14,7 @@ sshfs_CPPFLAGS = -D_REENTRANT -DFUSE_USE_VERSION=26 -DLIBDIR=\"$(libdir)\"
 EXTRA_DIST = sshnodelay.c FAQ.txt
 CLEANFILES = sshnodelay.so
 
+if SSH_NODELAY_SO
 all-local: sshnodelay.so
 
 install-exec-local: sshnodelay.so
@@ -25,3 +26,4 @@ uninstall-local:
 
 sshnodelay.so:
 	$(CC) -Wall -W -s --shared -fPIC $(sshnodelay_libs) sshnodelay.c -o sshnodelay.so
+endif

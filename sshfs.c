@@ -124,6 +124,7 @@ struct request {
     struct timeval start;
     void *data;
     request_func end_func;
+    size_t len;
     struct list_head list;
 };
 
@@ -160,6 +161,7 @@ struct sshfs {
     int nodelay_workaround;
     int nodelaysrv_workaround;
     int truncate_workaround;
+    int buflimit_workaround;
     int transform_symlinks;
     int follow_symlinks;
     int no_check_root;
@@ -186,6 +188,9 @@ struct sshfs {
     unsigned blksize;
     char *progname;
     long modifver;
+    unsigned outstanding_len;
+    unsigned max_outstanding_len;
+    pthread_cond_t outstanding_cond;
 };
 
 static struct sshfs sshfs;
@@ -274,9 +279,12 @@ static struct fuse_opt workaround_opts[] = {
     SSHFS_OPT("none",       nodelay_workaround, 0),
     SSHFS_OPT("none",       nodelaysrv_workaround, 0),
     SSHFS_OPT("none",       truncate_workaround, 0),
+    SSHFS_OPT("none",       buflimit_workaround, 0),
     SSHFS_OPT("all",        rename_workaround, 1),
     SSHFS_OPT("all",        nodelay_workaround, 1),
+    SSHFS_OPT("all",        nodelaysrv_workaround, 1),
     SSHFS_OPT("all",        truncate_workaround, 1),
+    SSHFS_OPT("all",        buflimit_workaround, 1),
     SSHFS_OPT("rename",     rename_workaround, 1),
     SSHFS_OPT("norename",   rename_workaround, 0),
     SSHFS_OPT("nodelay",    nodelay_workaround, 1),
@@ -285,6 +293,8 @@ static struct fuse_opt workaround_opts[] = {
     SSHFS_OPT("nonodelaysrv", nodelaysrv_workaround, 0),
     SSHFS_OPT("truncate",   truncate_workaround, 1),
     SSHFS_OPT("notruncate", truncate_workaround, 0),
+    SSHFS_OPT("buflimit",   buflimit_workaround, 1),
+    SSHFS_OPT("nobuflimit", buflimit_workaround, 0),
     FUSE_OPT_END
 };
 
@@ -632,6 +642,7 @@ static void ssh_add_arg(const char *arg)
         _exit(1);
 }
 
+#ifdef SSH_NODELAY_WORKAROUND
 static int do_ssh_nodelay_workaround(void)
 {
     char *oldpreload = getenv("LD_PRELOAD");
@@ -673,6 +684,7 @@ static int do_ssh_nodelay_workaround(void)
     g_free(newpreload);
     return 0;
 }
+#endif
 
 static int start_ssh(void)
 {
@@ -692,8 +704,10 @@ static int start_ssh(void)
     } else if (pid == 0) {
         int devnull;
 
+#ifdef SSH_NODELAY_WORKAROUND
         if (sshfs.nodelay_workaround && do_ssh_nodelay_workaround() == -1)
             fprintf(stderr, "warning: ssh nodelay workaround disabled\n");
+#endif
 
         if (sshfs.nodelaysrv_workaround) {
             /* Hack to work around missing TCP_NODELAY setting in sshd  */
@@ -833,7 +847,7 @@ static int sftp_send_iov(uint8_t type, uint32_t id, struct iovec iov[],
     unsigned nout = 0;
 
     assert(count <= SFTP_MAX_IOV - 1);
-    buf_init(&buf, 5);
+    buf_init(&buf, 9);
     buf_add_uint32(&buf, iov_length(iov, count) + 5);
     buf_add_uint8(&buf, type);
     buf_add_uint32(&buf, id);
@@ -958,8 +972,13 @@ static void *process_requests(void *data_)
                                                      GUINT_TO_POINTER(id));
         if (req == NULL)
             fprintf(stderr, "request %i not found\n", id);
-        else
+        else {
+            int was_over = sshfs.outstanding_len > sshfs.max_outstanding_len;
+            sshfs.outstanding_len -= req->len;
+            if (was_over && sshfs.outstanding_len <= sshfs.max_outstanding_len)
+                pthread_cond_broadcast(&sshfs.outstanding_cond);
             g_hash_table_remove(sshfs.reqtab, GUINT_TO_POINTER(id));
+        }
         pthread_mutex_unlock(&sshfs.lock);
         if (req != NULL) {
             struct timeval now;
@@ -1353,6 +1372,11 @@ static int sftp_request_send(uint8_t type, struct iovec *iov, size_t count,
         pthread_mutex_unlock(&sshfs.lock);
         goto out;
     }
+    req->len = iov_length(iov, count) + 9;
+    sshfs.outstanding_len += req->len;
+    while (sshfs.outstanding_len > sshfs.max_outstanding_len)
+        pthread_cond_wait(&sshfs.outstanding_cond, &sshfs.lock);
+
     g_hash_table_insert(sshfs.reqtab, GUINT_TO_POINTER(id), req);
     gettimeofday(&req->start, NULL);
     DEBUG("[%05i] %s\n", id, type_name(type));
@@ -2356,6 +2380,7 @@ static int processing_init(void)
 {
     pthread_mutex_init(&sshfs.lock, NULL);
     pthread_mutex_init(&sshfs.lock_write, NULL);
+    pthread_cond_init(&sshfs.outstanding_cond, NULL);
     sshfs.reqtab = g_hash_table_new(NULL, NULL);
     if (!sshfs.reqtab) {
         fprintf(stderr, "failed to create hash table\n");
@@ -2422,9 +2447,12 @@ static void usage(const char *progname)
 "             none             no workarounds enabled\n"
 "             all              all workarounds enabled\n"
 "             [no]rename       fix renaming to existing file (default: off)\n"
+#ifdef SSH_NODELAY_WORKAROUND
 "             [no]nodelay      set nodelay tcp flag in ssh (default: on)\n"
+#endif
 "             [no]nodelaysrv   set nodelay tcp flag in sshd (default: on)\n"
 "             [no]truncate     fix truncate for old servers (default: off)\n"
+"             [no]buflimit     fix buffer fillup bug in server (default: on)\n"
 "    -o idmap=TYPE          user/group ID mapping, possible types are:\n"
 "             none             no translation of the ID space (default)\n"
 "             user             only translate UID of connecting user\n"
@@ -2584,6 +2612,7 @@ int main(int argc, char *argv[])
     sshfs.nodelaysrv_workaround = 1;
     sshfs.rename_workaround = 0;
     sshfs.truncate_workaround = 0;
+    sshfs.buflimit_workaround = 1;
     sshfs.ssh_ver = 2;
     sshfs.progname = argv[0];
     ssh_add_arg("ssh");
@@ -2594,6 +2623,14 @@ int main(int argc, char *argv[])
     if (fuse_opt_parse(&args, &sshfs, sshfs_opts, sshfs_opt_proc) == -1 ||
         parse_workarounds() == -1)
         exit(1);
+
+    if (sshfs.buflimit_workaround)
+        /* Work around buggy sftp-server in OpenSSH.  Without this on
+           a slow server a 10Mbyte buffer would fill up and the server
+           would abort */
+        sshfs.max_outstanding_len = 8388608;
+    else
+        sshfs.max_outstanding_len = ~0;
 
     if (!sshfs.host) {
         fprintf(stderr, "missing host\n");

@@ -10,6 +10,15 @@ sshnodelay_libs=$LIBS
 AC_SUBST(sshnodelay_libs)
 LIBS=
 
+AC_ARG_ENABLE(sshnodelay,
+	[  --disable-sshnodelay    Don't compile NODELAY workaround for ssh])
+
+if test "$enable_sshnodelay" != "no"; then
+	AC_DEFINE(SSH_NODELAY_WORKAROUND, 1, [Compile ssh NODELAY workaround])
+fi
+
+AM_CONDITIONAL(SSH_NODELAY_SO, test "$enable_sshnodelay" != "no")
+
 export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
 PKG_CHECK_MODULES(SSHFS, [fuse >= 2.2 glib-2.0])
 have_fuse_opt_parse=no
