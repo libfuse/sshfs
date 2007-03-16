@@ -712,7 +712,6 @@ static int start_ssh(void)
         if (sshfs.nodelaysrv_workaround) {
             /* Hack to work around missing TCP_NODELAY setting in sshd  */
             sshfs.ssh_args.argv[1] = "-X";
-            setenv("DISPLAY", "", 1);
         }
 
         devnull = open("/dev/null", O_WRONLY);
@@ -2609,7 +2608,7 @@ int main(int argc, char *argv[])
     sshfs.blksize = 4096;
     sshfs.max_read = 65536;
     sshfs.nodelay_workaround = 1;
-    sshfs.nodelaysrv_workaround = 1;
+    sshfs.nodelaysrv_workaround = 0;
     sshfs.rename_workaround = 0;
     sshfs.truncate_workaround = 0;
     sshfs.buflimit_workaround = 1;
