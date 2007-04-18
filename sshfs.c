@@ -1299,7 +1299,7 @@ static int sftp_request_wait(struct request *req, uint8_t type,
         err = req->error;
         goto out;
     }
-    sem_wait(&req->ready);
+    while (sem_wait(&req->ready));
     if (req->error) {
         err = req->error;
         goto out;
@@ -2021,7 +2021,7 @@ static void submit_read(struct sshfs_file *sf, size_t size, off_t offset,
 static int wait_chunk(struct read_chunk *chunk, char *buf, size_t size)
 {
     int res;
-    sem_wait(&chunk->ready);
+    while (sem_wait(&chunk->ready));
     res = chunk->res;
     if (res > 0) {
         if ((size_t) res > size)

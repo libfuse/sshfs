@@ -1,3 +1,8 @@
+2007-04-18  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Fix crash within gdb, caused by sem_wait() returning with an
+	error on interrupt.  Reported by Dimitrios Apostolou
+
 2007-02-28  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Don't set DISPLAY environment variable to "", because it breaks
