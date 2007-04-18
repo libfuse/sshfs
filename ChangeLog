@@ -3,12 +3,14 @@
 	* Fix crash within gdb, caused by sem_wait() returning with an
 	error on interrupt.  Reported by Dimitrios Apostolou
 
+	* Fix spurious cache entries remaining after renaming a directory
+
 2007-02-28  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Don't set DISPLAY environment variable to "", because it breaks
 	ssh-askpass.  Make nodelaysrv_workaround default to off, because
 	with this change it may have security implications.
- 
+
 2007-02-19  Miklos Szeredi <miklos@szeredi.hu>
 
 	* OpenSSH sftp-server can read requests faster, than it processes

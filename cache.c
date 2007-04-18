@@ -116,9 +116,20 @@ static void cache_invalidate_dir(const char *path)
     pthread_mutex_unlock(&cache.lock);
 }
 
+static int cache_del_children(const char *key, void *val_, const char *path)
+{
+    (void) val_;
+    if (strncmp(key, path, strlen(path)) == 0)
+        return TRUE;
+    else
+        return FALSE;
+}
+
 static void cache_do_rename(const char *from, const char *to)
 {
     pthread_mutex_lock(&cache.lock);
+    g_hash_table_foreach_remove(cache.table, (GHRFunc) cache_del_children,
+                                (char *) from);
     cache_purge(from);
     cache_purge(to);
     cache_purge_parent(from);
