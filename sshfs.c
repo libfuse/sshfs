@@ -1817,8 +1817,11 @@ static int sshfs_open_common(const char *path, mode_t mode,
     buf_add_path(&buf, path);
     err2 = sftp_request(sshfs.follow_symlinks ? SSH_FXP_STAT : SSH_FXP_LSTAT,
                         &buf, SSH_FXP_ATTRS, &outbuf);
-    if (!err2 && buf_get_attrs(&outbuf, &stbuf, NULL) == -1)
-        err2 = -EIO;
+    if (!err2) {
+        if (buf_get_attrs(&outbuf, &stbuf, NULL) == -1)
+            err2 = -EIO;
+        buf_free(&outbuf);
+    }
     err = sftp_request_wait(open_req, SSH_FXP_OPEN, SSH_FXP_HANDLE,
                             &sf->handle);
     if (!err && err2) {
@@ -2604,6 +2607,8 @@ int main(int argc, char *argv[])
     char *fsname;
     char *base_path;
     const char *sftp_server;
+
+    g_thread_init(NULL);
 
     sshfs.blksize = 4096;
     sshfs.max_read = 65536;

@@ -1,3 +1,10 @@
+2007-05-15  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Add needed g_thread_init() to fix rare crashes.  Reported by
+	Dimitrios Apostolou
+
+	* Fix memory leak in sshfs_open_common()
+
 2007-04-18  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Fix crash within gdb, caused by sem_wait() returning with an
