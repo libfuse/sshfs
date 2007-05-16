@@ -1,3 +1,7 @@
+2007-05-16  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Released 1.8
+
 2007-05-15  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Add needed g_thread_init() to fix rare crashes.  Reported by
