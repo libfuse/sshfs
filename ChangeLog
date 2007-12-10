@@ -1,3 +1,9 @@
+2007-12-10  Miklos Szeredi <miklos@szeredi.h>u
+
+	* Add subtype support with libfuse >= 2.7.0
+
+	* Abort on allocation failure instead of exit
+
 2007-05-16  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Released 1.8
