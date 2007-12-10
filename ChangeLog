@@ -1,8 +1,15 @@
 2007-12-10  Miklos Szeredi <miklos@szeredi.h>u
 
+	* Fix crash on writing files, caused by missing locking around
+	sshfs_file_get()
+
+	* Don't time requests when not debugging
+
 	* Add subtype support with libfuse >= 2.7.0
 
 	* Abort on allocation failure instead of exit
+
+	* Correctly show default of nodelaysrv workaround in help message
 
 2007-05-16  Miklos Szeredi <miklos@szeredi.hu>
 

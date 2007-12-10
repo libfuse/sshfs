@@ -996,14 +996,16 @@ static int process_one_request(void)
 	}
 	pthread_mutex_unlock(&sshfs.lock);
 	if (req != NULL) {
-		struct timeval now;
-		unsigned int difftime;
-		gettimeofday(&now, NULL);
-		difftime = (now.tv_sec - req->start.tv_sec) * 1000;
-		difftime += (now.tv_usec - req->start.tv_usec) / 1000;
-		DEBUG("  [%05i] %14s %8ubytes (%ims)\n", id,
-		      type_name(type),
-		      (unsigned) buf.size + 5, difftime);
+		if (sshfs.debug) {
+			struct timeval now;
+			unsigned int difftime;
+			gettimeofday(&now, NULL);
+			difftime = (now.tv_sec - req->start.tv_sec) * 1000;
+			difftime += (now.tv_usec - req->start.tv_usec) / 1000;
+			DEBUG("  [%05i] %14s %8ubytes (%ims)\n", id,
+			      type_name(type),
+			      (unsigned) buf.size + 5, difftime);
+		}
 		req->reply = buf;
 		req->reply_type = type;
 		req->replied = 1;
@@ -1411,7 +1413,8 @@ static int sftp_request_send(uint8_t type, struct iovec *iov, size_t count,
 		pthread_cond_wait(&sshfs.outstanding_cond, &sshfs.lock);
 
 	g_hash_table_insert(sshfs.reqtab, GUINT_TO_POINTER(id), req);
-	gettimeofday(&req->start, NULL);
+	if (sshfs.debug)
+		gettimeofday(&req->start, NULL);
 	DEBUG("[%05i] %s\n", id, type_name(type));
 	pthread_mutex_unlock(&sshfs.lock);
 
@@ -1934,10 +1937,9 @@ static void sshfs_file_put(struct sshfs_file *sf)
 		g_free(sf);
 }
 
-static struct sshfs_file *sshfs_file_get(struct sshfs_file *sf)
+static void sshfs_file_get(struct sshfs_file *sf)
 {
 	sf->refs++;
-	return sf;
 }
 
 static int sshfs_release(const char *path, struct fuse_file_info *fi)
@@ -2155,6 +2157,8 @@ static int sshfs_read(const char *path, char *rbuf, size_t size, off_t offset,
 static void sshfs_write_begin(struct request *req)
 {
 	struct sshfs_file *sf = (struct sshfs_file *) req->data;
+
+	sshfs_file_get(sf);
 	list_add(&req->list, &sf->write_reqs);
 }
 
@@ -2203,7 +2207,7 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
 	if (!sshfs.sync_write && !sf->write_error) {
 		err = sftp_request_send(SSH_FXP_WRITE, iov, 2,
 					sshfs_write_begin, sshfs_write_end,
-					0, sshfs_file_get(sf), NULL);
+					0, sf, NULL);
 	} else {
 		err = sftp_request_iov(SSH_FXP_WRITE, iov, 2, SSH_FXP_STATUS,
 				       NULL);
@@ -2498,7 +2502,7 @@ static void usage(const char *progname)
 #ifdef SSH_NODELAY_WORKAROUND
 "             [no]nodelay      set nodelay tcp flag in ssh (default: on)\n"
 #endif
-"             [no]nodelaysrv   set nodelay tcp flag in sshd (default: on)\n"
+"             [no]nodelaysrv   set nodelay tcp flag in sshd (default: off)\n"
 "             [no]truncate     fix truncate for old servers (default: off)\n"
 "             [no]buflimit     fix buffer fillup bug in server (default: on)\n"
 "    -o idmap=TYPE          user/group ID mapping, possible types are:\n"
