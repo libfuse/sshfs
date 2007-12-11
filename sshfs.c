@@ -604,7 +604,7 @@ static int buf_get_attrs(struct buffer *buf, struct stat *stbuf, int *flagsp)
 	stbuf->st_uid = uid;
 	stbuf->st_gid = gid;
 	stbuf->st_atime = atime;
-	stbuf->st_mtime = mtime;
+	stbuf->st_ctime = stbuf->st_mtime = mtime;
 	return 0;
 }
 

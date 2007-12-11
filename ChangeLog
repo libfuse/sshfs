@@ -1,4 +1,16 @@
-2007-12-10  Miklos Szeredi <miklos@szeredi.h>u
+2007-12-11  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Released 1.9
+
+2007-12-11  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Fill in st_ctime attribute with st_mtime, instead of leaving it
+	zero
+
+	* Check for OpenSSH version >= 4.4, and if found, don't build the
+	sshnodelay.so workaround
+
+2007-12-10  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Fix crash on writing files, caused by missing locking around
 	sshfs_file_get()
