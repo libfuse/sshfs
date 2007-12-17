@@ -1,6 +1,10 @@
-2007-12-11  Miklos Szeredi <miklos@szeredi.hu>
+2007-12-17  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Released 1.9
+
+2007-12-12  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Fix checking for fuse_opt_parse in configure
 
 2007-12-11  Miklos Szeredi <miklos@szeredi.hu>
 
