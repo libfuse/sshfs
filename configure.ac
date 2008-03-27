@@ -30,11 +30,11 @@ if test -z "$enable_sshnodelay"; then
 	fi
 fi
 
-if test "$enable_sshnodelay" != "no"; then
+if test "$enable_sshnodelay" = "yes"; then
 	AC_DEFINE(SSH_NODELAY_WORKAROUND, 1, [Compile ssh NODELAY workaround])
 fi
 
-AM_CONDITIONAL(SSH_NODELAY_SO, test "$enable_sshnodelay" != "no")
+AM_CONDITIONAL(SSH_NODELAY_SO, test "$enable_sshnodelay" = "yes")
 
 export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
 PKG_CHECK_MODULES(SSHFS, [fuse >= 2.2 glib-2.0 gthread-2.0])

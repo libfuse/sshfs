@@ -1,3 +1,12 @@
+2008-03-03  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Fix ssh debug only appearing if "-d" is used.  Reported by
+	Michael Gorbach
+
+2008-01-03  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Fix condition for building of sshnodelay.so
+
 2007-12-17  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Released 1.9

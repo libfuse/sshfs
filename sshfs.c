@@ -171,6 +171,7 @@ struct sshfs {
 	int sync_write;
 	int sync_read;
 	int debug;
+	int foreground;
 	int reconnect;
 	char *host;
 	char *base_path;
@@ -243,6 +244,7 @@ enum {
 	KEY_COMPRESS,
 	KEY_HELP,
 	KEY_VERSION,
+	KEY_FOREGROUND,
 };
 
 #define SSHFS_OPT(t, p, v) { t, offsetof(struct sshfs, p), v }
@@ -271,6 +273,9 @@ static struct fuse_opt sshfs_opts[] = {
 	FUSE_OPT_KEY("--version",      KEY_VERSION),
 	FUSE_OPT_KEY("-h",             KEY_HELP),
 	FUSE_OPT_KEY("--help",         KEY_HELP),
+	FUSE_OPT_KEY("debug",          KEY_FOREGROUND),
+	FUSE_OPT_KEY("-d",             KEY_FOREGROUND),
+	FUSE_OPT_KEY("-f",             KEY_FOREGROUND),
 	FUSE_OPT_END
 };
 
@@ -735,7 +740,7 @@ static int start_ssh(void)
 			perror("failed to redirect input/output");
 			_exit(1);
 		}
-		if (!sshfs.debug && devnull != -1)
+		if (!sshfs.foreground && devnull != -1)
 			dup2(devnull, 2);
 
 		close(devnull);
@@ -2589,6 +2594,10 @@ static int sshfs_opt_proc(void *data, const char *arg, int key,
 		sshfs_fuse_main(outargs);
 #endif
 		exit(0);
+
+	case KEY_FOREGROUND:
+		sshfs.foreground = 1;
+		return 1;
 
 	default:
 		fprintf(stderr, "internal error\n");
