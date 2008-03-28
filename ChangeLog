@@ -1,3 +1,8 @@
+2008-03-28  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Add support for password authentication with pam_mount.
+	Original patch and help with testing: John S. Skogtvedt
+
 2008-03-03  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Fix ssh debug only appearing if "-d" is used.  Reported by

@@ -6,6 +6,7 @@
   See the file COPYING.
 */
 
+#define _GNU_SOURCE /* avoid implicit declaration of *pt* functions */
 #include "config.h"
 
 #include <fuse.h>
@@ -27,6 +28,8 @@
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/utsname.h>
+#include <sys/mman.h>
+#include <sys/poll.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <glib.h>
@@ -181,6 +184,8 @@ struct sshfs {
 	int processing_thread_started;
 	unsigned int randseed;
 	int fd;
+	int ptyfd;
+	int ptyslavefd;
 	int connver;
 	int server_version;
 	unsigned remote_uid;
@@ -192,6 +197,8 @@ struct sshfs {
 	unsigned outstanding_len;
 	unsigned max_outstanding_len;
 	pthread_cond_t outstanding_cond;
+	int password_stdin;
+	char *password;
 };
 
 static struct sshfs sshfs;
@@ -266,6 +273,7 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("transform_symlinks", transform_symlinks, 1),
 	SSHFS_OPT("follow_symlinks",   follow_symlinks, 1),
 	SSHFS_OPT("no_check_root",     no_check_root, 1),
+	SSHFS_OPT("password_stdin",    password_stdin, 1),
 
 	FUSE_OPT_KEY("-p ",            KEY_PORT),
 	FUSE_OPT_KEY("-C",             KEY_COMPRESS),
@@ -700,10 +708,112 @@ static int do_ssh_nodelay_workaround(void)
 }
 #endif
 
+static int pty_expect_loop(void)
+{
+	int res;
+	char buf[256];
+	const char *passwd_str = "assword:";
+	int timeout = 60 * 1000; /* 1min timeout for the prompt to appear */
+	int passwd_len = strlen(passwd_str);
+	int len = 0;
+	char c;
+
+	while (1) {
+		struct pollfd fds[2];
+
+		fds[0].fd = sshfs.fd;
+		fds[0].events = POLLIN;
+		fds[1].fd = sshfs.ptyfd;
+		fds[1].events = POLLIN;
+		res = poll(fds, 2, timeout);
+		if (res == -1) {
+			perror("poll");
+			return -1;
+		}
+		if (res == 0) {
+			fprintf(stderr, "Timeout waiting for prompt\n");
+			return -1;
+		}
+		if (fds[0].revents) {
+			/*
+			 * Something happened on stdout of ssh, this
+			 * either means, that we are connected, or
+			 * that we are disconnected.  In any case the
+			 * password doesn't matter any more.
+			 */
+			break;
+		}
+
+		res = read(sshfs.ptyfd, &c, 1);
+		if (res == -1) {
+			perror("read");
+			return -1;
+		}
+		if (res == 0) {
+			fprintf(stderr, "EOF while waiting for prompt\n");
+			return -1;
+		}
+		buf[len] = c;
+		len++;
+		if (len == passwd_len) {
+			if (memcmp(buf, passwd_str, passwd_len) == 0) {
+				write(sshfs.ptyfd, sshfs.password,
+				      strlen(sshfs.password));
+			}
+			memmove(buf, buf + 1, passwd_len - 1);
+			len--;
+		}
+	}
+
+	if (!sshfs.reconnect) {
+		size_t size = getpagesize();
+
+		memset(sshfs.password, 0, size);
+		munmap(sshfs.password, size);
+		sshfs.password = NULL;
+	}
+
+	return 0;
+}
+
+static int pty_master(char **name)
+{
+	int mfd;
+
+	mfd = open("/dev/ptmx", O_RDWR | O_NOCTTY);
+	if (mfd == -1) {
+		perror("failed to open pty");
+		return -1;
+	}
+	if (grantpt(mfd) != 0) {
+		perror("grantpt");
+		return -1;
+	}
+	if (unlockpt(mfd) != 0) {
+		perror("unlockpt");
+		return -1;
+	}
+	*name = ptsname(mfd);
+
+	return mfd;
+}
+
 static int start_ssh(void)
 {
+	char *ptyname = NULL;
 	int sockpair[2];
 	int pid;
+
+	if (sshfs.password_stdin) {
+
+		sshfs.ptyfd = pty_master(&ptyname);
+		if (sshfs.ptyfd == -1)
+			return -1;
+
+		sshfs.ptyslavefd = open(ptyname, O_RDWR | O_NOCTTY);
+		if (sshfs.ptyslavefd == -1)
+			return -1;
+	}
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockpair) == -1) {
 		perror("failed to create socket pair");
@@ -714,6 +824,7 @@ static int start_ssh(void)
 	pid = fork();
 	if (pid == -1) {
 		perror("failed to fork");
+		close(sockpair[1]);
 		return -1;
 	} else if (pid == 0) {
 		int devnull;
@@ -757,6 +868,20 @@ static int start_ssh(void)
 			_exit(0);
 		}
 		chdir("/");
+
+		if (sshfs.password_stdin) {
+			int sfd;
+
+			setsid();
+			sfd = open(ptyname, O_RDWR);
+			if (sfd == -1) {
+				perror(ptyname);
+				_exit(1);
+			}
+			close(sfd);
+			close(sshfs.ptyslavefd);
+			close(sshfs.ptyfd);
+		}
 
 		execvp(sshfs.ssh_args.argv[0], sshfs.ssh_args.argv);
 		perror("execvp");
@@ -1030,6 +1155,20 @@ static int process_one_request(void)
 	return 0;
 }
 
+static void close_conn(void)
+{
+	close(sshfs.fd);
+	sshfs.fd = -1;
+	if (sshfs.ptyfd != -1) {
+		close(sshfs.ptyfd);
+		sshfs.ptyfd = -1;
+	}
+	if (sshfs.ptyslavefd != -1) {
+		close(sshfs.ptyslavefd);
+		sshfs.ptyslavefd = -1;
+	}
+}
+
 static void *process_requests(void *data_)
 {
 	(void) data_;
@@ -1045,8 +1184,7 @@ static void *process_requests(void *data_)
 	} else {
 		pthread_mutex_lock(&sshfs.lock);
 		sshfs.processing_thread_started = 0;
-		close(sshfs.fd);
-		sshfs.fd = -1;
+		close_conn();
 		g_hash_table_foreach_remove(sshfs.reqtab, (GHRFunc) clean_req,
 					    NULL);
 		sshfs.connver ++;
@@ -1117,6 +1255,10 @@ static int sftp_init()
 	buf_init(&buf, 0);
 	if (sftp_send_iov(SSH_FXP_INIT, PROTO_VERSION, NULL, 0) == -1)
 		goto out;
+
+	if (sshfs.password_stdin && pty_expect_loop() == -1)
+		goto out;
+
 	if (sftp_find_init_reply(&version) == -1)
 		goto out;
 
@@ -1272,6 +1414,9 @@ static int connect_remote(void)
 		err = start_ssh();
 	if (!err)
 		err = sftp_init();
+
+	if (err)
+		close_conn();
 
 	return err;
 }
@@ -2520,6 +2665,7 @@ static void usage(const char *progname)
 "    -o transform_symlinks  transform absolute symlinks to relative\n"
 "    -o follow_symlinks     follow symlinks on the server\n"
 "    -o no_check_root       don't check for existence of 'dir' on server\n"
+"    -o password_stdin      read password from stdin (only for pam_mount!)\n"
 "    -o SSHOPT=VAL          ssh options (see man ssh_config)\n"
 "\n", progname);
 }
@@ -2650,13 +2796,54 @@ static int fuse_opt_insert_arg(struct fuse_args *args, int pos,
 }
 #endif
 
-void check_large_read(struct fuse_args *args)
+static void check_large_read(struct fuse_args *args)
 {
 	struct utsname buf;
 	int err = uname(&buf);
 	if (!err && strcmp(buf.sysname, "Linux") == 0 &&
 	    strncmp(buf.release, "2.4.", 4) == 0)
 		fuse_opt_insert_arg(args, 1, "-olarge_read");
+}
+
+static int read_password(void)
+{
+	int size = getpagesize();
+	int max_password = 64;
+	int n;
+
+	sshfs.password = mmap(NULL, size, PROT_READ | PROT_WRITE,
+			      MAP_PRIVATE | MAP_ANONYMOUS | MAP_LOCKED,
+			      -1, 0);
+	if (sshfs.password == MAP_FAILED) {
+		perror("Failed to allocate locked page for password");
+		return -1;
+	}
+
+	/* Don't use fgets() because password might stay in memory */
+	for (n = 0; n < max_password; n++) {
+		int res;
+
+		res = read(0, &sshfs.password[n], 1);
+		if (res == -1) {
+			perror("Reading password");
+			return -1;
+		}
+		if (res == 0) {
+			sshfs.password[n] = '\n';
+			break;
+		}
+		if (sshfs.password[n] == '\n')
+			break;
+	}
+	if (n == max_password) {
+		fprintf(stderr, "Password too long\n");
+		return -1;
+	}
+	sshfs.password[n+1] = '\0';
+	ssh_add_arg("-oNumberOfPasswordPrompts=1");
+	ssh_add_arg("-oPreferredAuthentications=password,keyboard-interactive");
+
+	return 0;
 }
 
 int main(int argc, char *argv[])
@@ -2680,6 +2867,9 @@ int main(int argc, char *argv[])
 	sshfs.buflimit_workaround = 1;
 	sshfs.ssh_ver = 2;
 	sshfs.progname = argv[0];
+	sshfs.fd = -1;
+	sshfs.ptyfd = -1;
+	sshfs.ptyslavefd = -1;
 	ssh_add_arg("ssh");
 	ssh_add_arg("-x");
 	ssh_add_arg("-a");
@@ -2688,6 +2878,12 @@ int main(int argc, char *argv[])
 	if (fuse_opt_parse(&args, &sshfs, sshfs_opts, sshfs_opt_proc) == -1 ||
 	    parse_workarounds() == -1)
 		exit(1);
+
+	if (sshfs.password_stdin) {
+		res = read_password();
+		if (res == -1)
+			exit(1);
+	}
 
 	if (sshfs.buflimit_workaround)
 		/* Work around buggy sftp-server in OpenSSH.  Without this on
