@@ -1,3 +1,11 @@
+2008-03-31  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Support "posix-rename@openssh.com" extension available in
+	OpenSSH 4.9.  This allows rename to be atomic even when target
+	file or directory exists.  If available, the extension will be
+	used instead of the rename operation in the original protocol and
+	the "-oworkaround=rename" option will be ignored.
+
 2008-03-28  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Add support for password authentication with pam_mount.

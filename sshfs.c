@@ -91,6 +91,8 @@
 #define SSH_FXF_TRUNC           0x00000010
 #define SSH_FXF_EXCL            0x00000020
 
+#define SFTP_EXT_POSIX_RENAME "posix-rename@openssh.com"
+
 #define PROTO_VERSION 3
 
 #define MY_EOF 1
@@ -199,6 +201,7 @@ struct sshfs {
 	pthread_cond_t outstanding_cond;
 	int password_stdin;
 	char *password;
+	int ext_posix_rename;
 };
 
 static struct sshfs sshfs;
@@ -1213,10 +1216,30 @@ static int sftp_init_reply_ok(struct buffer *buf, uint32_t *version)
 	if (buf_get_uint32(buf, version) == -1)
 		return -1;
 
+	DEBUG("Server version: %u\n", *version);
+
 	if (len > 5) {
 		struct buffer buf2;
+
 		buf_init(&buf2, len - 5);
-		return do_read(&buf2);
+		if (do_read(&buf2) == -1)
+			return -1;
+
+		do {
+			char *ext;
+			char *extdata;
+
+			if (buf_get_string(&buf2, &ext) == -1 ||
+			    buf_get_string(&buf2, &extdata) == -1)
+				return -1;
+
+			DEBUG("Extension: %s <%s>\n", ext, extdata);
+
+			if (strcmp(ext, SFTP_EXT_POSIX_RENAME) == 0) {
+				sshfs.ext_posix_rename = 1;
+				sshfs.rename_workaround = 0;
+			}
+		} while (buf2.len < buf2.size);
 	}
 	return 0;
 }
@@ -1263,7 +1286,6 @@ static int sftp_init()
 		goto out;
 
 	sshfs.server_version = version;
-	DEBUG("Server version: %i\n", sshfs.server_version);
 	if (version > PROTO_VERSION) {
 		fprintf(stderr,
 			"Warning: server uses version: %i, we support: %i\n",
@@ -1856,6 +1878,19 @@ static int sshfs_do_rename(const char *from, const char *to)
 	return err;
 }
 
+static int sshfs_ext_posix_rename(const char *from, const char *to)
+{
+	int err;
+	struct buffer buf;
+	buf_init(&buf, 0);
+	buf_add_string(&buf, SFTP_EXT_POSIX_RENAME);
+	buf_add_path(&buf, from);
+	buf_add_path(&buf, to);
+	err = sftp_request(SSH_FXP_EXTENDED, &buf, SSH_FXP_STATUS, NULL);
+	buf_free(&buf);
+	return err;
+}
+
 static void random_string(char *str, int length)
 {
 	int i;
@@ -1867,7 +1902,10 @@ static void random_string(char *str, int length)
 static int sshfs_rename(const char *from, const char *to)
 {
 	int err;
-	err = sshfs_do_rename(from, to);
+	if (sshfs.ext_posix_rename)
+		err = sshfs_ext_posix_rename(from, to);
+	else
+		err = sshfs_do_rename(from, to);
 	if (err == -EPERM && sshfs.rename_workaround) {
 		size_t tolen = strlen(to);
 		if (tolen + RENAME_TEMP_CHARS < PATH_MAX) {
