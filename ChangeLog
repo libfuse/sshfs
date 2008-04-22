@@ -9,6 +9,9 @@
 
 	* Limit write requests to 64kB.
 
+	* Support "statvfs@openssh.com" extension, which will be available
+	in OpenSSH 5.1.
+
 2008-04-21  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Fix incorrect disk usage reported by 'du' for files of size 4GB

@@ -91,7 +91,12 @@
 #define SSH_FXF_TRUNC           0x00000010
 #define SSH_FXF_EXCL            0x00000020
 
+/* statvfs@openssh.com f_flag flags */
+#define SSH2_FXE_STATVFS_ST_RDONLY	0x00000001
+#define SSH2_FXE_STATVFS_ST_NOSUID	0x00000002
+
 #define SFTP_EXT_POSIX_RENAME "posix-rename@openssh.com"
+#define SFTP_EXT_STATVFS "statvfs@openssh.com"
 
 #define PROTO_VERSION 3
 
@@ -203,6 +208,7 @@ struct sshfs {
 	int password_stdin;
 	char *password;
 	int ext_posix_rename;
+	int ext_statvfs;
 
 	/* statistics */
 	uint64_t bytes_sent;
@@ -639,6 +645,48 @@ static int buf_get_attrs(struct buffer *buf, struct stat *stbuf, int *flagsp)
 	stbuf->st_gid = gid;
 	stbuf->st_atime = atime;
 	stbuf->st_ctime = stbuf->st_mtime = mtime;
+	return 0;
+}
+
+static int buf_get_statvfs(struct buffer *buf, struct statvfs *stbuf)
+{
+	uint32_t bsize;
+	uint32_t frsize;
+	uint64_t blocks;
+	uint64_t bfree;
+	uint64_t bavail;
+	uint64_t files;
+	uint64_t ffree;
+	uint64_t favail;
+	uint32_t fsid;
+	uint32_t flag;
+	uint32_t namemax;
+
+	if (buf_get_uint32(buf, &bsize) == -1 ||
+	    buf_get_uint32(buf, &frsize) == -1 ||
+	    buf_get_uint64(buf, &blocks) == -1 ||
+	    buf_get_uint64(buf, &bfree) == -1 ||
+	    buf_get_uint64(buf, &bavail) == -1 ||
+	    buf_get_uint64(buf, &files) == -1 ||
+	    buf_get_uint64(buf, &ffree) == -1 ||
+	    buf_get_uint64(buf, &favail) == -1 ||
+	    buf_get_uint32(buf, &fsid) == -1 ||
+	    buf_get_uint32(buf, &flag) == -1 ||
+	    buf_get_uint32(buf, &namemax) == -1) {
+		return -1;
+	}
+
+	memset(stbuf, 0, sizeof(struct statvfs));
+	stbuf->f_bsize = bsize;
+	stbuf->f_frsize = frsize;
+	stbuf->f_blocks = blocks;
+	stbuf->f_bfree = bfree;
+	stbuf->f_bavail = bavail;
+	stbuf->f_files = files;
+	stbuf->f_ffree = ffree;
+	stbuf->f_favail = favail;
+	stbuf->f_namemax = namemax;
+
 	return 0;
 }
 
@@ -1294,6 +1342,8 @@ static int sftp_init_reply_ok(struct buffer *buf, uint32_t *version)
 				sshfs.ext_posix_rename = 1;
 				sshfs.rename_workaround = 0;
 			}
+			if (strcmp(ext, SFTP_EXT_STATVFS) == 0)
+				sshfs.ext_statvfs = 1;
 		} while (buf2.len < buf2.size);
 	}
 	return 0;
@@ -2464,10 +2514,31 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
 	return err ? err : (int) size;
 }
 
+static int sshfs_ext_statvfs(const char *path, struct statvfs *stbuf)
+{
+	int err;
+	struct buffer buf;
+	struct buffer outbuf;
+	buf_init(&buf, 0);
+	buf_add_string(&buf, SFTP_EXT_STATVFS);
+	buf_add_path(&buf, path);
+	err = sftp_request(SSH_FXP_EXTENDED, &buf, SSH_FXP_EXTENDED_REPLY,
+			   &outbuf);
+	if (!err) {
+		if (buf_get_statvfs(&outbuf, stbuf) == -1)
+			err = -EIO;
+		buf_free(&outbuf);
+	}
+	buf_free(&buf);
+	return err;
+}
+
+
 #if FUSE_VERSION >= 25
 static int sshfs_statfs(const char *path, struct statvfs *buf)
 {
-	(void) path;
+	if (sshfs.ext_statvfs)
+		return sshfs_ext_statvfs(path, buf);
 
 	buf->f_namemax = 255;
 	buf->f_bsize = sshfs.blksize;
@@ -2484,7 +2555,22 @@ static int sshfs_statfs(const char *path, struct statvfs *buf)
 #else
 static int sshfs_statfs(const char *path, struct statfs *buf)
 {
-	(void) path;
+	if (sshfs.ext_statvfs) {
+		int err;
+		struct statvfs vbuf;
+
+		err = sshfs_ext_statvfs(path, &vbuf);
+		if (!err) {
+			buf->f_bsize = vbuf.f_bsize;
+			buf->f_blocks = vbuf.f_blocks;
+			buf->f_bfree = vbuf.f_bfree;
+			buf->f_bavail = vbuf.f_bavail;
+			buf->f_files = vbuf.f_files;
+			buf->f_ffree = vbuf.f_ffree;
+			buf->f_namelen = vbuf.f_namemax;
+		}
+		return err;
+	}
 
 	buf->f_namelen = 255;
 	buf->f_bsize = sshfs.blksize;
