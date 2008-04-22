@@ -1,3 +1,19 @@
+2008-04-22  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Add missing ssh options: ControlMaster, ControlPath,
+	KbdInteractiveAuthentication, KbdInteractiveDevices, LocalCommand,
+	RekeyLimit (Debian bug #430225).
+
+2008-04-21  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Fix incorrect disk usage reported by 'du' for files of size 4GB
+	or above.  Reported by Christian Boltz.
+
+2008-04-16  Miklos Szeredi <miklos@szeredi.hu>
+
+	* If debugging is enabled, print some statistics at exit about the
+	number of bytes transferred, etc..
+
 2008-03-31  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Support "posix-rename@openssh.com" extension available in

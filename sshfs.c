@@ -202,6 +202,16 @@ struct sshfs {
 	int password_stdin;
 	char *password;
 	int ext_posix_rename;
+
+	/* statistics */
+	uint64_t bytes_sent;
+	uint64_t bytes_received;
+	uint64_t num_sent;
+	uint64_t num_received;
+	unsigned int min_rtt;
+	unsigned int max_rtt;
+	uint64_t total_rtt;
+	unsigned int num_connect;
 };
 
 static struct sshfs sshfs;
@@ -218,6 +228,8 @@ static const char *ssh_opts[] = {
 	"CompressionLevel",
 	"ConnectionAttempts",
 	"ConnectTimeout",
+	"ControlMaster",
+	"ControlPath",
 	"GlobalKnownHostsFile",
 	"GSSAPIAuthentication",
 	"GSSAPIDelegateCredentials",
@@ -225,8 +237,11 @@ static const char *ssh_opts[] = {
 	"HostKeyAlgorithms",
 	"HostKeyAlias",
 	"HostName",
-	"IdentityFile",
 	"IdentitiesOnly",
+	"IdentityFile",
+	"KbdInteractiveAuthentication",
+	"KbdInteractiveDevices",
+	"LocalCommand",
 	"LogLevel",
 	"MACs",
 	"NoHostAuthenticationForLocalhost",
@@ -236,10 +251,11 @@ static const char *ssh_opts[] = {
 	"PreferredAuthentications",
 	"ProxyCommand",
 	"PubkeyAuthentication",
+	"RekeyLimit",
 	"RhostsRSAAuthentication",
 	"RSAAuthentication",
-	"ServerAliveInterval",
 	"ServerAliveCountMax",
+	"ServerAliveInterval",
 	"SmartcardDevice",
 	"StrictHostKeyChecking",
 	"TCPKeepAlive",
@@ -615,7 +631,7 @@ static int buf_get_attrs(struct buffer *buf, struct stat *stbuf, int *flagsp)
 	if (sshfs.blksize) {
 		stbuf->st_blksize = sshfs.blksize;
 		stbuf->st_blocks = ((size + sshfs.blksize - 1) &
-				    ~(sshfs.blksize - 1)) >> 9;
+			~((unsigned long long) sshfs.blksize - 1)) >> 9;
 	}
 	stbuf->st_uid = uid;
 	stbuf->st_gid = gid;
@@ -1132,12 +1148,21 @@ static int process_one_request(void)
 		if (sshfs.debug) {
 			struct timeval now;
 			unsigned int difftime;
+			unsigned msgsize = buf.size + 5;
+
 			gettimeofday(&now, NULL);
 			difftime = (now.tv_sec - req->start.tv_sec) * 1000;
 			difftime += (now.tv_usec - req->start.tv_usec) / 1000;
 			DEBUG("  [%05i] %14s %8ubytes (%ims)\n", id,
-			      type_name(type),
-			      (unsigned) buf.size + 5, difftime);
+			      type_name(type), msgsize, difftime);
+
+			if (difftime < sshfs.min_rtt || !sshfs.num_received)
+				sshfs.min_rtt = difftime;
+			if (difftime > sshfs.max_rtt)
+				sshfs.max_rtt = difftime;
+			sshfs.total_rtt += difftime;
+			sshfs.num_received++;
+			sshfs.bytes_received += msgsize;
 		}
 		req->reply = buf;
 		req->reply_type = type;
@@ -1439,6 +1464,8 @@ static int connect_remote(void)
 
 	if (err)
 		close_conn();
+	else
+		sshfs.num_connect++;
 
 	return err;
 }
@@ -1585,8 +1612,11 @@ static int sftp_request_send(uint8_t type, struct iovec *iov, size_t count,
 		pthread_cond_wait(&sshfs.outstanding_cond, &sshfs.lock);
 
 	g_hash_table_insert(sshfs.reqtab, GUINT_TO_POINTER(id), req);
-	if (sshfs.debug)
+	if (sshfs.debug) {
 		gettimeofday(&req->start, NULL);
+		sshfs.num_sent++;
+		sshfs.bytes_sent += req->len;
+	}
 	DEBUG("[%05i] %s\n", id, type_name(type));
 	pthread_mutex_unlock(&sshfs.lock);
 
@@ -2917,6 +2947,8 @@ int main(int argc, char *argv[])
 	    parse_workarounds() == -1)
 		exit(1);
 
+	DEBUG("SSHFS version %s\n", PACKAGE_VERSION);
+
 	if (sshfs.password_stdin) {
 		res = read_password();
 		if (res == -1)
@@ -3008,6 +3040,26 @@ int main(int argc, char *argv[])
 	g_free(fsname);
 	check_large_read(&args);
 	res = sshfs_fuse_main(&args);
+
+	if (sshfs.debug) {
+		unsigned int avg_rtt = 0;
+
+		if (sshfs.num_sent)
+			avg_rtt = sshfs.total_rtt / sshfs.num_sent;
+
+		DEBUG("\n"
+		      "sent:               %llu messages, %llu bytes\n"
+		      "received:           %llu messages, %llu bytes\n"
+		      "rtt min/max/avg:    %ums/%ums/%ums\n"
+		      "num connect:        %u\n",
+		      (unsigned long long) sshfs.num_sent,
+		      (unsigned long long) sshfs.bytes_sent,
+		      (unsigned long long) sshfs.num_received,
+		      (unsigned long long) sshfs.bytes_received,
+		      sshfs.min_rtt, sshfs.max_rtt, avg_rtt,
+		      sshfs.num_connect);
+	}
+
 	fuse_opt_free_args(&args);
 	fuse_opt_free_args(&sshfs.ssh_args);
 	free(sshfs.directport);
