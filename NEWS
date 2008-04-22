@@ -1,3 +1,14 @@
+What is new in 2.0
+------------------
+
+* Support password authentication with pam_mount
+
+* Support atomic renames if server is OpenSSH 4.9 or later
+
+* Support getting disk usage if server is OpenSSH 5.1 or later
+
+* Small enhancements and bug fixes
+
 What is new in 1.9
 ------------------
 

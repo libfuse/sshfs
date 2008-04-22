@@ -1,5 +1,9 @@
 2008-04-22  Miklos Szeredi <miklos@szeredi.hu>
 
+	* Released 2.0
+
+2008-04-22  Miklos Szeredi <miklos@szeredi.hu>
+
 	* Add missing ssh options: ControlMaster, ControlPath,
 	KbdInteractiveAuthentication, KbdInteractiveDevices, LocalCommand,
 	RekeyLimit (Debian bug #430225).
