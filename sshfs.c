@@ -817,6 +817,16 @@ static int pty_master(char **name)
 	return mfd;
 }
 
+static void replace_arg(char **argp, const char *newarg)
+{
+	free(*argp);
+	*argp = strdup(newarg);
+	if (*argp == NULL) {
+		fprintf(stderr, "sshfs: memory allocation failed\n");
+		abort();
+	}
+}
+
 static int start_ssh(void)
 {
 	char *ptyname = NULL;
@@ -857,11 +867,18 @@ static int start_ssh(void)
 #endif
 
 		if (sshfs.nodelaysrv_workaround) {
+			int i;
 			/*
 			 * Hack to work around missing TCP_NODELAY
 			 * setting in sshd
 			 */
-			sshfs.ssh_args.argv[1] = "-X";
+			for (i = 1; i < sshfs.ssh_args.argc; i++) {
+				if (strcmp(sshfs.ssh_args.argv[i], "-x") == 0) {
+					replace_arg(&sshfs.ssh_args.argv[i],
+						    "-X");
+					break;
+				}
+			}
 		}
 
 		devnull = open("/dev/null", O_WRONLY);
@@ -902,8 +919,19 @@ static int start_ssh(void)
 			close(sshfs.ptyfd);
 		}
 
+		if (sshfs.debug) {
+			int i;
+
+			fprintf(stderr, "executing");
+			for (i = 0; i < sshfs.ssh_args.argc; i++)
+				fprintf(stderr, " <%s>",
+					sshfs.ssh_args.argv[i]);
+			fprintf(stderr, "\n");
+		}
+
 		execvp(sshfs.ssh_args.argv[0], sshfs.ssh_args.argv);
-		perror("execvp");
+		fprintf(stderr, "failed to execute '%s': %s\n",
+			sshfs.ssh_args.argv[0], strerror(errno));
 		_exit(1);
 	}
 	waitpid(pid, NULL, 0);
@@ -2648,6 +2676,8 @@ static int sshfs_truncate_workaround(const char *path, off_t size,
 
 static int processing_init(void)
 {
+	signal(SIGPIPE, SIG_IGN);
+
 	pthread_mutex_init(&sshfs.lock, NULL);
 	pthread_mutex_init(&sshfs.lock_write, NULL);
 	pthread_cond_init(&sshfs.outstanding_cond, NULL);
@@ -2914,6 +2944,43 @@ static int read_password(void)
 	return 0;
 }
 
+static void set_ssh_command(void)
+{
+	char *s;
+	char *d;
+	int i = 0;
+	int end = 0;
+
+	d = sshfs.ssh_command;
+	s = sshfs.ssh_command;
+	while (!end) {
+		switch (*s) {
+		case '\0':
+			end = 1;
+		case ' ':
+			*d = '\0';
+			if (i == 0) {
+				replace_arg(&sshfs.ssh_args.argv[0],
+					    sshfs.ssh_command);
+			} else {
+				if (fuse_opt_insert_arg(&sshfs.ssh_args, i, 
+						sshfs.ssh_command) == -1)
+					_exit(1);
+			}
+			i++;
+			d = sshfs.ssh_command;
+			break;
+
+		case '\\':
+			if (s[1])
+				s++;
+		default:
+			*d++ = *s;
+		}
+		s++;
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	int res;
@@ -2977,10 +3044,8 @@ int main(int argc, char *argv[])
 	else
 		sshfs.base_path = g_strdup(base_path);
 
-	if (sshfs.ssh_command) {
-		free(sshfs.ssh_args.argv[0]);
-		sshfs.ssh_args.argv[0] = sshfs.ssh_command;
-	}
+	if (sshfs.ssh_command)
+		set_ssh_command();
 
 	tmp = g_strdup_printf("-%i", sshfs.ssh_ver);
 	ssh_add_arg(tmp);
