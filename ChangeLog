@@ -7,6 +7,8 @@
 	* Allow the '-ossh_command=CMD' command to contain parameters.
 	Escape charater is backslash.
 
+	* Limit write requests to 64kB.
+
 2008-04-21  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Fix incorrect disk usage reported by 'du' for files of size 4GB

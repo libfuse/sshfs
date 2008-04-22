@@ -172,6 +172,7 @@ struct sshfs {
 	int no_check_root;
 	int detect_uid;
 	unsigned max_read;
+	unsigned max_write;
 	unsigned ssh_ver;
 	int sync_write;
 	int sync_read;
@@ -280,6 +281,7 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("ssh_command=%s",    ssh_command, 0),
 	SSHFS_OPT("sftp_server=%s",    sftp_server, 0),
 	SSHFS_OPT("max_read=%u",       max_read, 0),
+	SSHFS_OPT("max_write=%u",      max_write, 0),
 	SSHFS_OPT("ssh_protocol=%u",   ssh_ver, 0),
 	SSHFS_OPT("-1",                ssh_ver, 1),
 	SSHFS_OPT("workaround=%s",     workarounds, 0),
@@ -2995,6 +2997,7 @@ int main(int argc, char *argv[])
 
 	sshfs.blksize = 4096;
 	sshfs.max_read = 65536;
+	sshfs.max_write = 65536;
 	sshfs.nodelay_workaround = 1;
 	sshfs.nodelaysrv_workaround = 0;
 	sshfs.rename_workaround = 0;
@@ -3087,10 +3090,14 @@ int main(int argc, char *argv[])
 
 	if (sshfs.max_read > 65536)
 		sshfs.max_read = 65536;
+	if (sshfs.max_write > 65536)
+		sshfs.max_write = 65536;
 
 	if (fuse_is_lib_option("ac_attr_timeout="))
 		fuse_opt_insert_arg(&args, 1, "-oauto_cache,ac_attr_timeout=0");
 	tmp = g_strdup_printf("-omax_read=%u", sshfs.max_read);
+	fuse_opt_insert_arg(&args, 1, tmp);
+	tmp = g_strdup_printf("-omax_write=%u", sshfs.max_write);
 	fuse_opt_insert_arg(&args, 1, tmp);
 	g_free(tmp);
 #if FUSE_VERSION >= 27
