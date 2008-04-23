@@ -14,7 +14,7 @@ sshfs_CPPFLAGS = -D_REENTRANT -DFUSE_USE_VERSION=26 -DLIBDIR=\"$(libdir)\"
 EXTRA_DIST = sshnodelay.c FAQ.txt
 CLEANFILES = sshnodelay.so
 
-man_MANS = sshfs.1
+dist_man_MANS = sshfs.1
 
 if SSH_NODELAY_SO
 all-local: sshnodelay.so

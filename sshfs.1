@@ -1,0 +1,214 @@
+.TH SSHFS "1" "April 2008" "SSHFS version 2.0" "User Commands"
+.SH NAME
+SSHFS \- filesystem client based on ssh
+.SH DESCRIPTION
+usage: sshfs [user@]host:[dir] mountpoint [options]
+.SS "general options:"
+.TP
+\fB\-o\fR opt,[opt...]
+mount options
+.TP
+\fB\-h\fR   \fB\-\-help\fR
+print help
+.TP
+\fB\-V\fR   \fB\-\-version\fR
+print version
+.SS "SSHFS options:"
+.TP
+\fB\-p\fR PORT
+equivalent to '\-o port=PORT'
+.TP
+\fB\-C\fR
+equivalent to '\-o compression=yes'
+.TP
+\fB\-1\fR
+equivalent to '\-o ssh_protocol=1'
+.TP
+\fB\-o\fR reconnect
+reconnect to server
+.TP
+\fB\-o\fR sshfs_sync
+synchronous writes
+.TP
+\fB\-o\fR no_readahead
+synchronous reads (no speculative readahead)
+.TP
+\fB\-o\fR sshfs_debug
+print some debugging information
+.TP
+\fB\-o\fR cache=YESNO
+enable caching {yes,no} (default: yes)
+.TP
+\fB\-o\fR cache_timeout=N
+sets timeout for caches in seconds (default: 20)
+.TP
+\fB\-o\fR cache_X_timeout=N
+sets timeout for {stat,dir,link} cache
+.TP
+\fB\-o\fR workaround=LIST
+colon separated list of workarounds
+.TP
+none
+no workarounds enabled
+.TP
+all
+all workarounds enabled
+.TP
+[no]rename
+fix renaming to existing file (default: off)
+.TP
+[no]nodelaysrv
+set nodelay tcp flag in ssh (default: off)
+.TP
+[no]truncate
+fix truncate for old servers (default: off)
+.TP
+[no]buflimit
+fix buffer fillup bug in server (default: on)
+.TP
+\fB\-o\fR idmap=TYPE
+user/group ID mapping, possible types are:
+.TP
+none
+no translation of the ID space (default)
+.TP
+user
+only translate UID of connecting user
+.TP
+\fB\-o\fR ssh_command=CMD
+execute CMD instead of 'ssh'
+.TP
+\fB\-o\fR ssh_protocol=N
+ssh protocol to use (default: 2)
+.TP
+\fB\-o\fR sftp_server=SERV
+path to sftp server or subsystem (default: sftp)
+.TP
+\fB\-o\fR directport=PORT
+directly connect to PORT bypassing ssh
+.TP
+\fB\-o\fR transform_symlinks
+transform absolute symlinks to relative
+.TP
+\fB\-o\fR follow_symlinks
+follow symlinks on the server
+.TP
+\fB\-o\fR no_check_root
+don't check for existence of 'dir' on server
+.TP
+\fB\-o\fR password_stdin
+read password from stdin (only for pam_mount!)
+.TP
+\fB\-o\fR SSHOPT=VAL
+ssh options (see man ssh_config)
+.SS "FUSE options:"
+.TP
+\fB\-d\fR   \fB\-o\fR debug
+enable debug output (implies \fB\-f\fR)
+.TP
+\fB\-f\fR
+foreground operation
+.TP
+\fB\-s\fR
+disable multi\-threaded operation
+.TP
+\fB\-o\fR allow_other
+allow access to other users
+.TP
+\fB\-o\fR allow_root
+allow access to root
+.TP
+\fB\-o\fR nonempty
+allow mounts over non\-empty file/dir
+.HP
+\fB\-o\fR default_permissions 
+enable permission checking by kernel
+.TP
+\fB\-o\fR fsname=NAME
+set filesystem name
+.TP
+\fB\-o\fR subtype=NAME
+set filesystem type
+.TP
+\fB\-o\fR large_read
+issue large read requests (2.4 only)
+.TP
+\fB\-o\fR max_read=N
+set maximum size of read requests
+.TP
+\fB\-o\fR hard_remove
+immediate removal (don't hide files)
+.TP
+\fB\-o\fR use_ino
+let filesystem set inode numbers
+.TP
+\fB\-o\fR readdir_ino
+try to fill in d_ino in readdir
+.TP
+\fB\-o\fR direct_io
+use direct I/O
+.TP
+\fB\-o\fR kernel_cache
+cache files in kernel
+.TP
+\fB\-o\fR [no]auto_cache
+enable caching based on modification times
+.TP
+\fB\-o\fR umask=M
+set file permissions (octal)
+.TP
+\fB\-o\fR uid=N
+set file owner
+.TP
+\fB\-o\fR gid=N
+set file group
+.TP
+\fB\-o\fR entry_timeout=T
+cache timeout for names (1.0s)
+.TP
+\fB\-o\fR negative_timeout=T
+cache timeout for deleted names (0.0s)
+.TP
+\fB\-o\fR attr_timeout=T
+cache timeout for attributes (1.0s)
+.TP
+\fB\-o\fR ac_attr_timeout=T
+auto cache timeout for attributes (attr_timeout)
+.TP
+\fB\-o\fR intr
+allow requests to be interrupted
+.TP
+\fB\-o\fR intr_signal=NUM
+signal to send on interrupt (10)
+.TP
+\fB\-o\fR modules=M1[:M2...]
+names of modules to push onto filesystem stack
+.TP
+\fB\-o\fR max_write=N
+set maximum size of write requests
+.TP
+\fB\-o\fR max_readahead=N
+set maximum readahead
+.TP
+\fB\-o\fR async_read
+perform reads asynchronously (default)
+.TP
+\fB\-o\fR sync_read
+perform reads synchronously
+.SS "Module options:"
+.TP 
+[subdir]
+.TP
+\fB\-o\fR subdir=DIR
+prepend this directory to all paths (mandatory)
+.TP
+\fB\-o\fR [no]rellinksa
+transform absolute symlinks to relative
+.TP 
+[iconv]
+.TP
+\fB\-o\fR from_code=CHARSET
+original encoding of file names (default: UTF-8)
+.TP
+\fB\-o\fR to_code=CHARSET
+new encoding of the file names (default: ISO-8859-2)
