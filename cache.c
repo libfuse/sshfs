@@ -28,6 +28,7 @@ struct cache {
 	GHashTable *table;
 	pthread_mutex_t lock;
 	time_t last_cleaned;
+	uint64_t write_ctr;
 };
 
 static struct cache cache;
@@ -47,6 +48,7 @@ struct fuse_cache_dirhandle {
 	fuse_dirh_t h;
 	fuse_dirfil_t filler;
 	GPtrArray *dir;
+	uint64_t wrctr;
 };
 
 static void free_node(gpointer node_)
@@ -108,6 +110,14 @@ void cache_invalidate(const char *path)
 	pthread_mutex_unlock(&cache.lock);
 }
 
+void cache_invalidate_write(const char *path)
+{
+	pthread_mutex_lock(&cache.lock);
+	cache_purge(path);
+	cache.write_ctr++;
+	pthread_mutex_unlock(&cache.lock);
+}
+
 static void cache_invalidate_dir(const char *path)
 {
 	pthread_mutex_lock(&cache.lock);
@@ -148,19 +158,21 @@ static struct node *cache_get(const char *path)
 	return node;
 }
 
-void cache_add_attr(const char *path, const struct stat *stbuf)
+void cache_add_attr(const char *path, const struct stat *stbuf, uint64_t wrctr)
 {
 	struct node *node;
 	time_t now;
 
 	pthread_mutex_lock(&cache.lock);
-	node = cache_get(path);
-	now = time(NULL);
-	node->stat = *stbuf;
-	node->stat_valid = time(NULL) + cache.stat_timeout;
-	if (node->stat_valid > node->valid)
-		node->valid = node->stat_valid;
-	cache_clean();
+	if (wrctr == cache.write_ctr) {
+		node = cache_get(path);
+		now = time(NULL);
+		node->stat = *stbuf;
+		node->stat_valid = time(NULL) + cache.stat_timeout;
+		if (node->stat_valid > node->valid)
+			node->valid = node->stat_valid;
+		cache_clean();
+	}
 	pthread_mutex_unlock(&cache.lock);
 }
 
@@ -222,13 +234,25 @@ static int cache_get_attr(const char *path, struct stat *stbuf)
 	return err;
 }
 
+uint64_t cache_get_write_ctr(void)
+{
+	uint64_t res;
+
+	pthread_mutex_lock(&cache.lock);
+	res = cache.write_ctr;
+	pthread_mutex_unlock(&cache.lock);
+
+	return res;
+}
+
 static int cache_getattr(const char *path, struct stat *stbuf)
 {
 	int err = cache_get_attr(path, stbuf);
 	if (err) {
+		uint64_t wrctr = cache_get_write_ctr();
 		err = cache.next_oper->oper.getattr(path, stbuf);
 		if (!err)
-			cache_add_attr(path, stbuf);
+			cache_add_attr(path, stbuf, wrctr);
 	}
 	return err;
 }
@@ -268,7 +292,7 @@ static int cache_dirfill(fuse_cache_dirh_t ch, const char *name,
 			const char *basepath = !ch->path[1] ? "" : ch->path;
 
 			fullpath = g_strdup_printf("%s/%s", basepath, name);
-			cache_add_attr(fullpath, stbuf);
+			cache_add_attr(fullpath, stbuf, ch->wrctr);
 			g_free(fullpath);
 		}
 	}
@@ -299,6 +323,7 @@ static int cache_getdir(const char *path, fuse_dirh_t h, fuse_dirfil_t filler)
 	ch.h = h;
 	ch.filler = filler;
 	ch.dir = g_ptr_array_new();
+	ch.wrctr = cache_get_write_ctr();
 	err = cache.next_oper->cache_getdir(path, &ch, cache_dirfill);
 	g_ptr_array_add(ch.dir, NULL);
 	dir = (char **) ch.dir->pdata;
@@ -421,7 +446,7 @@ static int cache_write(const char *path, const char *buf, size_t size,
 {
 	int res = cache.next_oper->oper.write(path, buf, size, offset, fi);
 	if (res >= 0)
-		cache_invalidate(path);
+		cache_invalidate_write(path);
 	return res;
 }
 
@@ -449,9 +474,10 @@ static int cache_fgetattr(const char *path, struct stat *stbuf,
 {
 	int err = cache_get_attr(path, stbuf);
 	if (err) {
+		uint64_t wrctr = cache_get_write_ctr();
 		err = cache.next_oper->oper.fgetattr(path, stbuf, fi);
 		if (!err)
-			cache_add_attr(path, stbuf);
+			cache_add_attr(path, stbuf, wrctr);
 	}
 	return err;
 }

@@ -24,6 +24,7 @@
 #include <netdb.h>
 #include <signal.h>
 #include <sys/uio.h>
+#include <sys/types.h>
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
@@ -35,6 +36,15 @@
 #include <glib.h>
 
 #include "cache.h"
+
+#ifndef MAP_LOCKED
+#define MAP_LOCKED 0
+#endif
+
+#if !defined(MAP_ANONYMOUS) && defined(MAP_ANON)
+#define MAP_ANONYMOUS MAP_ANON
+#endif
+
 
 #if FUSE_VERSION >= 23
 #define SSHFS_USE_INIT
@@ -2116,6 +2126,7 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	uint32_t pflags = 0;
 	struct iovec iov;
 	uint8_t type;
+	uint64_t wrctr = cache_get_write_ctr();
 
 	if ((fi->flags & O_ACCMODE) == O_RDONLY)
 		pflags = SSH_FXF_READ;
@@ -2171,7 +2182,7 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	}
 
 	if (!err) {
-		cache_add_attr(path, &stbuf);
+		cache_add_attr(path, &stbuf, wrctr);
 		buf_finish(&sf->handle);
 		fi->fh = (unsigned long) sf;
 	} else {

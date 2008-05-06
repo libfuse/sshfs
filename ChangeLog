@@ -1,3 +1,14 @@
+2008-05-06  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Fix bug in caching which could cause file corruption for append
+	mode writes.  Reported by Jose Alonso
+
+2008-05-05  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Fix compile on OS X.  Original patch from Michael G Schwern
+
+	* Fix compile on Solaris.  Reported by Jean-Jacques Sarton
+
 2008-04-23  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Released 2.0
