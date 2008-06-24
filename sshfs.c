@@ -288,6 +288,7 @@ enum {
 	KEY_HELP,
 	KEY_VERSION,
 	KEY_FOREGROUND,
+	KEY_CONFIGFILE,
 };
 
 #define SSHFS_OPT(t, p, v) { t, offsetof(struct sshfs, p), v }
@@ -321,6 +322,7 @@ static struct fuse_opt sshfs_opts[] = {
 	FUSE_OPT_KEY("debug",          KEY_FOREGROUND),
 	FUSE_OPT_KEY("-d",             KEY_FOREGROUND),
 	FUSE_OPT_KEY("-f",             KEY_FOREGROUND),
+	FUSE_OPT_KEY("-F ",            KEY_CONFIGFILE),
 	FUSE_OPT_END
 };
 
@@ -2834,6 +2836,7 @@ static void usage(const char *progname)
 "SSHFS options:\n"
 "    -p PORT                equivalent to '-o port=PORT'\n"
 "    -C                     equivalent to '-o compression=yes'\n"
+"    -F ssh_configfile      specifies alternative ssh configuration file\n"
 "    -1                     equivalent to '-o ssh_protocol=1'\n"
 "    -o reconnect           reconnect to server\n"
 "    -o sshfs_sync          synchronous writes\n"
@@ -2922,6 +2925,12 @@ static int sshfs_opt_proc(void *data, const char *arg, int key,
 
 	case KEY_COMPRESS:
 		ssh_add_arg("-oCompression=yes");
+		return 0;
+
+	case KEY_CONFIGFILE:
+		tmp = g_strdup_printf("-F%s", arg + 2);
+		ssh_add_arg(tmp);
+		g_free(tmp);
 		return 0;
 
 	case KEY_HELP:
