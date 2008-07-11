@@ -1,3 +1,15 @@
+2008-07-11  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Released 2.1
+
+2008-07-11  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Fix statvfs extension to match the current protocol in
+	opensshfs
+
+	* Check version numbers of extensions, so such changes wouldn't
+	cause stupid behavior
+
 2008-06-24  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Add '-F' option to specify the ssh config file.  Patch by Pat

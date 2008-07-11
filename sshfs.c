@@ -662,29 +662,29 @@ static int buf_get_attrs(struct buffer *buf, struct stat *stbuf, int *flagsp)
 
 static int buf_get_statvfs(struct buffer *buf, struct statvfs *stbuf)
 {
-	uint32_t bsize;
-	uint32_t frsize;
+	uint64_t bsize;
+	uint64_t frsize;
 	uint64_t blocks;
 	uint64_t bfree;
 	uint64_t bavail;
 	uint64_t files;
 	uint64_t ffree;
 	uint64_t favail;
-	uint32_t fsid;
-	uint32_t flag;
-	uint32_t namemax;
+	uint64_t fsid;
+	uint64_t flag;
+	uint64_t namemax;
 
-	if (buf_get_uint32(buf, &bsize) == -1 ||
-	    buf_get_uint32(buf, &frsize) == -1 ||
+	if (buf_get_uint64(buf, &bsize) == -1 ||
+	    buf_get_uint64(buf, &frsize) == -1 ||
 	    buf_get_uint64(buf, &blocks) == -1 ||
 	    buf_get_uint64(buf, &bfree) == -1 ||
 	    buf_get_uint64(buf, &bavail) == -1 ||
 	    buf_get_uint64(buf, &files) == -1 ||
 	    buf_get_uint64(buf, &ffree) == -1 ||
 	    buf_get_uint64(buf, &favail) == -1 ||
-	    buf_get_uint32(buf, &fsid) == -1 ||
-	    buf_get_uint32(buf, &flag) == -1 ||
-	    buf_get_uint32(buf, &namemax) == -1) {
+	    buf_get_uint64(buf, &fsid) == -1 ||
+	    buf_get_uint64(buf, &flag) == -1 ||
+	    buf_get_uint64(buf, &namemax) == -1) {
 		return -1;
 	}
 
@@ -1350,11 +1350,13 @@ static int sftp_init_reply_ok(struct buffer *buf, uint32_t *version)
 
 			DEBUG("Extension: %s <%s>\n", ext, extdata);
 
-			if (strcmp(ext, SFTP_EXT_POSIX_RENAME) == 0) {
+			if (strcmp(ext, SFTP_EXT_POSIX_RENAME) == 0 &&
+			    strcmp(extdata, "1") == 0) {
 				sshfs.ext_posix_rename = 1;
 				sshfs.rename_workaround = 0;
 			}
-			if (strcmp(ext, SFTP_EXT_STATVFS) == 0)
+			if (strcmp(ext, SFTP_EXT_STATVFS) == 0 &&
+			    strcmp(extdata, "2") == 0)
 				sshfs.ext_statvfs = 1;
 		} while (buf2.len < buf2.size);
 	}
