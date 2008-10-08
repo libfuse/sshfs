@@ -3091,6 +3091,36 @@ static void set_ssh_command(void)
 	}
 }
 
+static char *find_base_path(void)
+{
+	char *s = sshfs.host;
+	char *d = s;
+
+	for (; *s && *s != ':'; s++) {
+		if (*s == '[') {
+			/*
+			 * Handle IPv6 numerical address enclosed in square
+			 * brackets
+			 */
+			s++;
+			for (; *s != ']'; s++) {
+				if (!*s) {
+					fprintf(stderr,	"missing ']' in hostname\n");
+					exit(1);
+				}
+				*d++ = *s;
+			}
+		} else {
+			*d++ = *s;
+		}
+
+	}
+	*d++ = '\0';
+	s++;
+
+	return s;
+}
+
 int main(int argc, char *argv[])
 {
 	int res;
@@ -3148,8 +3178,7 @@ int main(int argc, char *argv[])
 	}
 
 	fsname = g_strdup(sshfs.host);
-	base_path = strchr(sshfs.host, ':');
-	*base_path++ = '\0';
+	base_path = find_base_path();
 	if (base_path[0] && base_path[strlen(base_path)-1] != '/')
 		sshfs.base_path = g_strdup_printf("%s/", base_path);
 	else
@@ -3208,6 +3237,22 @@ int main(int argc, char *argv[])
 	tmp = g_strdup_printf("-omax_write=%u", sshfs.max_write);
 	fuse_opt_insert_arg(&args, 1, tmp);
 	g_free(tmp);
+	/*
+	 * Remove commas from fsname, as it confuses the fuse option
+	 * parser.
+	 *
+	 * FIXME: escape commas instead.  Needs support in libfuse.
+	 */
+	if (strchr(fsname, ',') != NULL) {
+		char *s = fsname;
+		char *d = s;
+
+		for (; *s; s++) {
+			if (*s != ',')
+				*d++ = *s;
+		}
+		*d = *s;
+	}
 #if FUSE_VERSION >= 27
 	libver = fuse_version();
 	assert(libver >= 27);
