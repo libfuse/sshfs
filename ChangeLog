@@ -6,6 +6,8 @@
 	* Fix error if username contains a comma character.  Reported by
 	Yang Zhang
 
+	* Fix harmless glib assertations with "cache=no"
+
 2008-07-11  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Released 2.1

@@ -105,6 +105,9 @@ static void cache_purge_parent(const char *path)
 
 void cache_invalidate(const char *path)
 {
+	if (!cache.on)
+		return;
+
 	pthread_mutex_lock(&cache.lock);
 	cache_purge(path);
 	pthread_mutex_unlock(&cache.lock);
@@ -162,6 +165,9 @@ void cache_add_attr(const char *path, const struct stat *stbuf, uint64_t wrctr)
 {
 	struct node *node;
 	time_t now;
+
+	if (!cache.on)
+		return;
 
 	pthread_mutex_lock(&cache.lock);
 	if (wrctr == cache.write_ctr) {
