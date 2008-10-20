@@ -1,5 +1,9 @@
 2008-10-20  Miklos Szeredi <miklos@szeredi.hu>
 
+	* Released 2.2
+
+2008-10-20  Miklos Szeredi <miklos@szeredi.hu>
+
 	* Escape commas in fsname option if libfuse supports it
 
 2008-10-08  Miklos Szeredi <miklos@szeredi.hu>
