@@ -3121,6 +3121,42 @@ static char *find_base_path(void)
 	return s;
 }
 
+/*
+ * Remove commas from fsname, as it confuses the fuse option parser.
+ */
+static void fsname_remove_commas(char *fsname)
+{
+	if (strchr(fsname, ',') != NULL) {
+		char *s = fsname;
+		char *d = s;
+
+		for (; *s; s++) {
+			if (*s != ',')
+				*d++ = *s;
+		}
+		*d = *s;
+	}
+}
+
+#if FUSE_VERSION >= 27
+static char *fsname_escape_commas(char *fsnameold)
+{
+	char *fsname = g_malloc(strlen(fsnameold) * 2 + 1);
+	char *d = fsname;
+	char *s;
+
+	for (s = fsnameold; *s; s++) {
+		if (*s == '\\' || *s == ',')
+			*d++ = '\\';
+		*d++ = *s;
+	}
+	*d = '\0';
+	g_free(fsnameold);
+
+	return fsname;
+}
+#endif
+
 int main(int argc, char *argv[])
 {
 	int res;
@@ -3237,27 +3273,16 @@ int main(int argc, char *argv[])
 	tmp = g_strdup_printf("-omax_write=%u", sshfs.max_write);
 	fuse_opt_insert_arg(&args, 1, tmp);
 	g_free(tmp);
-	/*
-	 * Remove commas from fsname, as it confuses the fuse option
-	 * parser.
-	 *
-	 * FIXME: escape commas instead.  Needs support in libfuse.
-	 */
-	if (strchr(fsname, ',') != NULL) {
-		char *s = fsname;
-		char *d = s;
-
-		for (; *s; s++) {
-			if (*s != ',')
-				*d++ = *s;
-		}
-		*d = *s;
-	}
 #if FUSE_VERSION >= 27
 	libver = fuse_version();
 	assert(libver >= 27);
+	if (libver >= 28)
+		fsname = fsname_escape_commas(fsname);
+	else
+		fsname_remove_commas(fsname);
 	tmp = g_strdup_printf("-osubtype=sshfs,fsname=%s", fsname);
 #else
+	fsname_remove_commas(fsname);
 	tmp = g_strdup_printf("-ofsname=sshfs#%s", fsname);
 #endif
 	fuse_opt_insert_arg(&args, 1, tmp);
