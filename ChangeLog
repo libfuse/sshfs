@@ -1,3 +1,8 @@
+2009-01-27  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Print usage information and version to stdout, not stderr.
+	Libfuse also needs to be fixed up.  Reported by Kārlis Repsons
+
 2008-10-20  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Released 2.2

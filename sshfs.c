@@ -2827,7 +2827,7 @@ static struct fuse_cache_operations sshfs_oper = {
 
 static void usage(const char *progname)
 {
-	fprintf(stderr,
+	printf(
 "usage: %s [user@]host:[dir] mountpoint [options]\n"
 "\n"
 "general options:\n"
@@ -2844,7 +2844,7 @@ static void usage(const char *progname)
 "    -o sshfs_sync          synchronous writes\n"
 "    -o no_readahead        synchronous reads (no speculative readahead)\n"
 "    -o sshfs_debug         print some debugging information\n"
-"    -o cache=YESNO         enable caching {yes,no} (default: yes)\n"
+"    -o cache=BOOL          enable caching {yes,no} (default: yes)\n"
 "    -o cache_timeout=N     sets timeout for caches in seconds (default: 20)\n"
 "    -o cache_X_timeout=N   sets timeout for {stat,dir,link} cache\n"
 "    -o workaround=LIST     colon separated list of workarounds\n"
@@ -2942,7 +2942,7 @@ static int sshfs_opt_proc(void *data, const char *arg, int key,
 		exit(1);
 
 	case KEY_VERSION:
-		fprintf(stderr, "SSHFS version %s\n", PACKAGE_VERSION);
+		printf("SSHFS version %s\n", PACKAGE_VERSION);
 #if FUSE_VERSION >= 25
 		fuse_opt_add_arg(outargs, "--version");
 		sshfs_fuse_main(outargs);
