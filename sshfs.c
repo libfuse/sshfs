@@ -3156,6 +3156,26 @@ static char *fsname_escape_commas(char *fsnameold)
 }
 #endif
 
+static int ssh_connect(void)
+{
+	int res;
+
+	res = processing_init();
+	if (res == -1)
+		return -1;
+
+	if (!sshfs.delay_connect) {
+		if (connect_remote() == -1)
+			return -1;
+
+		if (!sshfs.no_check_root &&
+		    sftp_check_root(sshfs.base_path) == -1)
+			return -1;
+
+	}
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	int res;
@@ -3240,17 +3260,6 @@ int main(int argc, char *argv[])
 	ssh_add_arg(sftp_server);
 	free(sshfs.sftp_server);
 
-	res = processing_init();
-	if (res == -1)
-		exit(1);
-
-	if (!sshfs.delay_connect) {
-		if (connect_remote() == -1)
-			exit(1);
-
-		if (!sshfs.no_check_root && sftp_check_root(sshfs.base_path) == -1)
-			exit(1);
-	}
 
 	res = cache_parse_options(&args);
 	if (res == -1)
@@ -3267,6 +3276,7 @@ int main(int argc, char *argv[])
 		fuse_opt_insert_arg(&args, 1, "-oauto_cache,ac_attr_timeout=0");
 	tmp = g_strdup_printf("-omax_read=%u", sshfs.max_read);
 	fuse_opt_insert_arg(&args, 1, tmp);
+	g_free(tmp);
 	tmp = g_strdup_printf("-omax_write=%u", sshfs.max_write);
 	fuse_opt_insert_arg(&args, 1, tmp);
 	g_free(tmp);
@@ -3286,7 +3296,41 @@ int main(int argc, char *argv[])
 	g_free(tmp);
 	g_free(fsname);
 	check_large_read(&args);
+
+#if FUSE_VERSION >= 26
+	{
+		struct fuse *fuse;
+		char *mountpoint;
+		int multithreaded;
+
+		fuse = fuse_setup(args.argc, args.argv, cache_init(&sshfs_oper),
+				  sizeof(struct fuse_operations), &mountpoint,
+				  &multithreaded, NULL);
+		if (fuse == NULL)
+			exit(1);
+
+		res = ssh_connect();
+		if (res == -1)
+			exit(1);
+
+		if (multithreaded)
+			res = fuse_loop_mt(fuse);
+		else
+			res = fuse_loop(fuse);
+
+		fuse_teardown(fuse, mountpoint);
+		if (res == -1)
+			res = 1;
+		else
+			res = 0;
+	}
+#else
+	res = ssh_connect();
+	if (res == -1)
+		exit(1);
+
 	res = sshfs_fuse_main(&args);
+#endif
 
 	if (sshfs.debug) {
 		unsigned int avg_rtt = 0;
