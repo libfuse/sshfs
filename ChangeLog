@@ -4,6 +4,12 @@
 	session (debian bug #535333).  This is only supported if compiled
 	against libfuse-2.6 or later. Reported by Greg Kochanski
 
+	* Check that the remote path specified refers to the same type of
+	file as the mountpoint, i.e. both are directories or both are
+	non-directories (debian bug #535343).  Reported by Greg Kochanski
+
+	* Allow mounting a single non-directory from the server
+
 2008-07-15  Sebastian Dransfeld <sebastid@tango.flipp.net>
 
 	* Add option 'delay_connect': This will always create the sshfs mount,

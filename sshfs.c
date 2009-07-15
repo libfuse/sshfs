@@ -216,6 +216,7 @@ struct sshfs {
 	char *password;
 	int ext_posix_rename;
 	int ext_statvfs;
+	mode_t mnt_mode;
 
 	/* statistics */
 	uint64_t bytes_sent;
@@ -520,8 +521,26 @@ static inline void buf_add_path(struct buffer *buf, const char *path)
 {
 	char *realpath;
 
-	realpath = g_strdup_printf("%s%s", sshfs.base_path,
-				   path[1] ? path+1 : ".");
+	if (sshfs.base_path[0]) {
+		if (path[1]) {
+			if (sshfs.base_path[strlen(sshfs.base_path)-1] != '/') {
+				realpath = g_strdup_printf("%s/%s",
+							   sshfs.base_path,
+							   path + 1);
+			} else {
+				realpath = g_strdup_printf("%s%s",
+							   sshfs.base_path,
+							   path + 1);
+			}
+		} else {
+			realpath = g_strdup(sshfs.base_path);
+		}
+	} else {
+		if (path[1])
+			realpath = g_strdup(path + 1);
+		else
+			realpath = g_strdup(".");
+	}
 	buf_add_string(buf, realpath);
 	g_free(realpath);
 }
@@ -1530,9 +1549,14 @@ static int sftp_check_root(const char *base_path)
 	if (!(flags & SSH_FILEXFER_ATTR_PERMISSIONS))
 		goto out;
 
-	if (!S_ISDIR(stbuf.st_mode)) {
+	if (S_ISDIR(sshfs.mnt_mode) && !S_ISDIR(stbuf.st_mode)) {
 		fprintf(stderr, "%s:%s: Not a directory\n", sshfs.host,
 			remote_dir);
+		goto out;
+	}
+	if ((sshfs.mnt_mode ^ stbuf.st_mode) & S_IFMT) {
+		fprintf(stderr, "%s:%s: type of file differs from mountpoint\n",
+			sshfs.host, remote_dir);
 		goto out;
 	}
 
@@ -3182,7 +3206,6 @@ int main(int argc, char *argv[])
 	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
 	char *tmp;
 	char *fsname;
-	char *base_path;
 	const char *sftp_server;
 	int libver;
 
@@ -3234,11 +3257,7 @@ int main(int argc, char *argv[])
 	}
 
 	fsname = g_strdup(sshfs.host);
-	base_path = find_base_path();
-	if (base_path[0] && base_path[strlen(base_path)-1] != '/')
-		sshfs.base_path = g_strdup_printf("%s/", base_path);
-	else
-		sshfs.base_path = g_strdup(base_path);
+	sshfs.base_path = g_strdup(find_base_path());
 
 	if (sshfs.ssh_command)
 		set_ssh_command();
@@ -3300,14 +3319,44 @@ int main(int argc, char *argv[])
 #if FUSE_VERSION >= 26
 	{
 		struct fuse *fuse;
+		struct fuse_chan *ch;
 		char *mountpoint;
 		int multithreaded;
+		int foreground;
+		struct stat st;
 
-		fuse = fuse_setup(args.argc, args.argv, cache_init(&sshfs_oper),
-				  sizeof(struct fuse_operations), &mountpoint,
-				  &multithreaded, NULL);
-		if (fuse == NULL)
+		res = fuse_parse_cmdline(&args, &mountpoint, &multithreaded, 
+					 &foreground);
+		if (res == -1)
 			exit(1);
+
+		res = stat(mountpoint, &st);
+		if (res == -1) {
+			perror(mountpoint);
+			exit(1);
+		}
+		sshfs.mnt_mode = st.st_mode;
+
+		ch = fuse_mount(mountpoint, &args);
+		if (!ch)
+			exit(1);
+
+		fuse = fuse_new(ch, &args, cache_init(&sshfs_oper),
+				sizeof(struct fuse_operations), NULL);
+		if (fuse == NULL) {
+			fuse_unmount(mountpoint, ch);
+			exit(1);
+		}
+
+		res = fuse_daemonize(foreground);
+		if (res != -1)
+			res = fuse_set_signal_handlers(fuse_get_session(fuse));
+
+		if (res == -1) {
+			fuse_unmount(mountpoint, ch);
+			fuse_destroy(fuse);
+			exit(1);
+		}
 
 		res = ssh_connect();
 		if (res == -1) {
@@ -3320,11 +3369,15 @@ int main(int argc, char *argv[])
 		else
 			res = fuse_loop(fuse);
 
-		fuse_teardown(fuse, mountpoint);
 		if (res == -1)
 			res = 1;
 		else
 			res = 0;
+
+		fuse_remove_signal_handlers(fuse_get_session(fuse));
+		fuse_unmount(mountpoint, ch);
+		fuse_destroy(fuse);
+		free(mountpoint);
 	}
 #else
 	res = ssh_connect();
