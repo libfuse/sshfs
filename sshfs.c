@@ -3310,8 +3310,10 @@ int main(int argc, char *argv[])
 			exit(1);
 
 		res = ssh_connect();
-		if (res == -1)
+		if (res == -1) {
+			fuse_teardown(fuse, mountpoint);
 			exit(1);
+		}
 
 		if (multithreaded)
 			res = fuse_loop_mt(fuse);
