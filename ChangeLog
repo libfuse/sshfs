@@ -1,3 +1,8 @@
+2008-07-15  Sebastian Dransfeld <sebastid@tango.flipp.net>
+
+	* Add option 'delay_connect': This will always create the sshfs mount,
+	even if the connection to the server can't be established.
+
 2009-01-27  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Print usage information and version to stdout, not stderr.

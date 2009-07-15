@@ -37,7 +37,7 @@ fi
 AM_CONDITIONAL(SSH_NODELAY_SO, test "$enable_sshnodelay" = "yes")
 
 export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
-PKG_CHECK_MODULES(SSHFS, [fuse >= 2.2 glib-2.0 gthread-2.0])
+PKG_CHECK_MODULES(SSHFS, [fuse >= 2.3 glib-2.0 gthread-2.0])
 have_fuse_opt_parse=no
 oldlibs="$LIBS"
 LIBS="$LIBS $SSHFS_LIBS"

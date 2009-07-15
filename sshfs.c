@@ -46,10 +46,6 @@
 #endif
 
 
-#if FUSE_VERSION >= 23
-#define SSHFS_USE_INIT
-#endif
-
 #define SSH_FXP_INIT                1
 #define SSH_FXP_VERSION             2
 #define SSH_FXP_OPEN                3
@@ -194,6 +190,7 @@ struct sshfs {
 	int debug;
 	int foreground;
 	int reconnect;
+	int delay_connect;
 	char *host;
 	char *base_path;
 	GHashTable *reqtab;
@@ -312,6 +309,7 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("follow_symlinks",   follow_symlinks, 1),
 	SSHFS_OPT("no_check_root",     no_check_root, 1),
 	SSHFS_OPT("password_stdin",    password_stdin, 1),
+	SSHFS_OPT("delay_connect",     delay_connect, 1),
 
 	FUSE_OPT_KEY("-p ",            KEY_PORT),
 	FUSE_OPT_KEY("-C",             KEY_COMPRESS),
@@ -1580,6 +1578,11 @@ static int start_processing_thread(void)
 			return -EIO;
 	}
 
+	if (sshfs.detect_uid) {
+		sftp_detect_uid();
+		sshfs.detect_uid = 0;
+	}
+
 	sigemptyset(&newset);
 	sigaddset(&newset, SIGTERM);
 	sigaddset(&newset, SIGINT);
@@ -1597,11 +1600,10 @@ static int start_processing_thread(void)
 	return 0;
 }
 
-#ifdef SSHFS_USE_INIT
 #if FUSE_VERSION >= 26
 static void *sshfs_init(struct fuse_conn_info *conn)
 #else
-	static void *sshfs_init(void)
+static void *sshfs_init(void)
 #endif
 {
 #if FUSE_VERSION >= 26
@@ -1610,13 +1612,11 @@ static void *sshfs_init(struct fuse_conn_info *conn)
 		sshfs.sync_read = 1;
 #endif
 
-	if (sshfs.detect_uid)
-		sftp_detect_uid();
+	if (!sshfs.delay_connect)
+		start_processing_thread();
 
-	start_processing_thread();
 	return NULL;
 }
-#endif
 
 static int sftp_request_wait(struct request *req, uint8_t type,
                              uint8_t expect_type, struct buffer *outbuf)
@@ -2794,9 +2794,7 @@ static int processing_init(void)
 
 static struct fuse_cache_operations sshfs_oper = {
 	.oper = {
-#ifdef SSHFS_USE_INIT
 		.init       = sshfs_init,
-#endif
 		.getattr    = sshfs_getattr,
 		.readlink   = sshfs_readlink,
 		.mknod      = sshfs_mknod,
@@ -2841,6 +2839,7 @@ static void usage(const char *progname)
 "    -F ssh_configfile      specifies alternative ssh configuration file\n"
 "    -1                     equivalent to '-o ssh_protocol=1'\n"
 "    -o reconnect           reconnect to server\n"
+"    -o delay_connect       delay connection to server\n"
 "    -o sshfs_sync          synchronous writes\n"
 "    -o no_readahead        synchronous reads (no speculative readahead)\n"
 "    -o sshfs_debug         print some debugging information\n"
@@ -3182,6 +3181,7 @@ int main(int argc, char *argv[])
 	sshfs.fd = -1;
 	sshfs.ptyfd = -1;
 	sshfs.ptyslavefd = -1;
+	sshfs.delay_connect = 0;
 	ssh_add_arg("ssh");
 	ssh_add_arg("-x");
 	ssh_add_arg("-a");
@@ -3244,16 +3244,13 @@ int main(int argc, char *argv[])
 	if (res == -1)
 		exit(1);
 
-	if (connect_remote() == -1)
-		exit(1);
+	if (!sshfs.delay_connect) {
+		if (connect_remote() == -1)
+			exit(1);
 
-#ifndef SSHFS_USE_INIT
-	if (sshfs.detect_uid)
-		sftp_detect_uid();
-#endif
-
-	if (!sshfs.no_check_root && sftp_check_root(base_path) == -1)
-		exit(1);
+		if (!sshfs.no_check_root && sftp_check_root(sshfs.base_path) == -1)
+			exit(1);
+	}
 
 	res = cache_parse_options(&args);
 	if (res == -1)
