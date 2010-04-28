@@ -1,4 +1,10 @@
-2008-07-15  Miklos Szeredi <miklos@szeredi.hu>
+2010-03-16  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Set FD_CLOEXEC on fuse device.  This prevents deadlocks that
+	happen in some circumstances (bugzilla.kernel.org #12864).
+	Reported by Tim Connors
+
+2009-07-15  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Check mountpoint and fuse options before starting an ssh
 	session (debian bug #535333).  This is only supported if compiled
@@ -10,7 +16,7 @@
 
 	* Allow mounting a single non-directory from the server
 
-2008-07-15  Sebastian Dransfeld <sebastid@tango.flipp.net>
+2009-07-15  Sebastian Dransfeld <sebastid@tango.flipp.net>
 
 	* Add option 'delay_connect': This will always create the sshfs mount,
 	even if the connection to the server can't be established.

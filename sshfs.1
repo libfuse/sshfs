@@ -18,6 +18,9 @@ Userspace) kernel module. The practical effect of this is that the end user
 can seamlessly interact with remote files being securely served over SSH
 just as if they were local files on his/her computer. On the remote
 computer the SFTP subsystem of SSH is used.
+.PP
+If \fIhost\fP is a numeric IPv6 address, it needs to be enclosed in
+square brackets.
 .SH OPTIONS
 .SS "general options:"
 .TP
@@ -241,7 +244,7 @@ new encoding of the file names (default: ISO-8859-2)
 .PD
 .SH "AUTHORS"
 .LP
-SSHFS has been written by Miklos Seredi <miklos@szeredi.hu>.
+SSHFS has been written by Miklos Szeredi <miklos@szeredi.hu>.
 .LP
 This man page was written by Bartosz Fenski <fenio@debian.org> for the
 Debian GNU/Linux distribution (but it may be used by others).

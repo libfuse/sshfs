@@ -11,6 +11,7 @@
 
 #include <fuse.h>
 #include <fuse_opt.h>
+#include <fuse_lowlevel.h>
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -3341,10 +3342,21 @@ int main(int argc, char *argv[])
 		if (!ch)
 			exit(1);
 
+		res = fcntl(fuse_chan_fd(ch), F_SETFD, FD_CLOEXEC);
+		if (res == -1)
+			perror("WARNING: failed to set FD_CLOESEC on fuse device");
+
 		fuse = fuse_new(ch, &args, cache_init(&sshfs_oper),
 				sizeof(struct fuse_operations), NULL);
 		if (fuse == NULL) {
 			fuse_unmount(mountpoint, ch);
+			exit(1);
+		}
+
+		res = ssh_connect();
+		if (res == -1) {
+			fuse_unmount(mountpoint, ch);
+			fuse_destroy(fuse);
 			exit(1);
 		}
 
@@ -3355,12 +3367,6 @@ int main(int argc, char *argv[])
 		if (res == -1) {
 			fuse_unmount(mountpoint, ch);
 			fuse_destroy(fuse);
-			exit(1);
-		}
-
-		res = ssh_connect();
-		if (res == -1) {
-			fuse_teardown(fuse, mountpoint);
 			exit(1);
 		}
 
