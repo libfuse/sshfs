@@ -1314,17 +1314,16 @@ static void *process_requests(void *data_)
 			break;
 	}
 
+	pthread_mutex_lock(&sshfs.lock);
+	sshfs.processing_thread_started = 0;
+	close_conn();
+	g_hash_table_foreach_remove(sshfs.reqtab, (GHRFunc) clean_req, NULL);
+	sshfs.connver ++;
+	pthread_mutex_unlock(&sshfs.lock);
+
 	if (!sshfs.reconnect) {
 		/* harakiri */
 		kill(getpid(), SIGTERM);
-	} else {
-		pthread_mutex_lock(&sshfs.lock);
-		sshfs.processing_thread_started = 0;
-		close_conn();
-		g_hash_table_foreach_remove(sshfs.reqtab, (GHRFunc) clean_req,
-					    NULL);
-		sshfs.connver ++;
-		pthread_mutex_unlock(&sshfs.lock);
 	}
 	return NULL;
 }

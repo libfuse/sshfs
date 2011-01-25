@@ -1,0 +1,36 @@
+#
+# NOTE! Don't add files that are generated in specific
+# subdirectories here. Add them in the ".gitignore" file
+# in that subdirectory instead.
+#
+# NOTE! Please use 'git ls-files -i --exclude-standard'
+# command after changing this file, to see if there are
+# any tracked files which get ignored after the change.
+.*
+!.gitignore
+*.o
+*.lo
+*.la
+*.gz
+\#*#
+*.orig
+*~
+Makefile.in
+Makefile
+*.m4
+stamp-h*
+config.*
+/sshfs
+/ltmain.sh
+/configure
+/install-sh
+/mkinstalldirs
+/missing
+/*.cache
+/depcomp
+/compile
+/libtool
+/INSTALL
+/.pc
+/patches
+/m4

@@ -1,3 +1,8 @@
+2011-01-25  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Fix cleanup when ssh connection is terminated.  This prevents
+	sshfs hanging when the server is rebooted, for example.
+
 2010-03-16  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Set FD_CLOEXEC on fuse device.  This prevents deadlocks that
