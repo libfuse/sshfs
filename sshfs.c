@@ -1319,6 +1319,8 @@ static void *process_requests(void *data_)
 	close_conn();
 	g_hash_table_foreach_remove(sshfs.reqtab, (GHRFunc) clean_req, NULL);
 	sshfs.connver ++;
+	sshfs.outstanding_len = 0;
+	pthread_cond_broadcast(&sshfs.outstanding_cond);
 	pthread_mutex_unlock(&sshfs.lock);
 
 	if (!sshfs.reconnect) {
