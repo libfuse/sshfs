@@ -1,3 +1,15 @@
+What is new in 2.1, 2.2 and 2.3
+-------------------------------
+
+* Support hard link creation if server is OpenSSH 5.7 or later
+
+* Check mount point and options before connecting to ssh server
+
+* Handle commas in usernames
+
+* Small improvements and bug fixes
+
+
 What is new in 2.0
 ------------------
 
