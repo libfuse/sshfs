@@ -1,3 +1,8 @@
+2011-07-01  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Add hard link operation.  Works if the server supports the
+	"hardlink@openssh.com" protocol extension.
+
 2011-03-25  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Fix possible deadlock on reconnection.  Reported by Florian

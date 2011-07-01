@@ -104,6 +104,7 @@
 
 #define SFTP_EXT_POSIX_RENAME "posix-rename@openssh.com"
 #define SFTP_EXT_STATVFS "statvfs@openssh.com"
+#define SFTP_EXT_HARDLINK "hardlink@openssh.com"
 
 #define PROTO_VERSION 3
 
@@ -217,6 +218,7 @@ struct sshfs {
 	char *password;
 	int ext_posix_rename;
 	int ext_statvfs;
+	int ext_hardlink;
 	mode_t mnt_mode;
 
 	/* statistics */
@@ -1377,6 +1379,9 @@ static int sftp_init_reply_ok(struct buffer *buf, uint32_t *version)
 			if (strcmp(ext, SFTP_EXT_STATVFS) == 0 &&
 			    strcmp(extdata, "2") == 0)
 				sshfs.ext_statvfs = 1;
+			if (strcmp(ext, SFTP_EXT_HARDLINK) == 0 &&
+			    strcmp(extdata, "1") == 0)
+				sshfs.ext_hardlink = 1;
 		} while (buf2.len < buf2.size);
 	}
 	return 0;
@@ -2073,6 +2078,25 @@ static int sshfs_rename(const char *from, const char *to)
 			}
 		}
 	}
+	return err;
+}
+
+static int sshfs_link(const char *from, const char *to)
+{
+	int err = -ENOSYS;
+
+	if (sshfs.ext_hardlink) {
+		struct buffer buf;
+
+		buf_init(&buf, 0);
+		buf_add_string(&buf, SFTP_EXT_HARDLINK);
+		buf_add_path(&buf, from);
+		buf_add_path(&buf, to);
+		err = sftp_request(SSH_FXP_EXTENDED, &buf, SSH_FXP_STATUS,
+				   NULL);
+		buf_free(&buf);
+	}
+
 	return err;
 }
 
@@ -2829,6 +2853,7 @@ static struct fuse_cache_operations sshfs_oper = {
 		.unlink     = sshfs_unlink,
 		.rmdir      = sshfs_rmdir,
 		.rename     = sshfs_rename,
+		.link       = sshfs_link,
 		.chmod      = sshfs_chmod,
 		.chown      = sshfs_chown,
 		.truncate   = sshfs_truncate,
