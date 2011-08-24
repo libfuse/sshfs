@@ -206,6 +206,7 @@ struct sshfs {
 	int nodelaysrv_workaround;
 	int truncate_workaround;
 	int buflimit_workaround;
+	int fstat_workaround;
 	int transform_symlinks;
 	int follow_symlinks;
 	int no_check_root;
@@ -364,11 +365,13 @@ static struct fuse_opt workaround_opts[] = {
 	SSHFS_OPT("none",       nodelaysrv_workaround, 0),
 	SSHFS_OPT("none",       truncate_workaround, 0),
 	SSHFS_OPT("none",       buflimit_workaround, 0),
+	SSHFS_OPT("none",       fstat_workaround, 0),
 	SSHFS_OPT("all",        rename_workaround, 1),
 	SSHFS_OPT("all",        nodelay_workaround, 1),
 	SSHFS_OPT("all",        nodelaysrv_workaround, 1),
 	SSHFS_OPT("all",        truncate_workaround, 1),
 	SSHFS_OPT("all",        buflimit_workaround, 1),
+	SSHFS_OPT("all",        fstat_workaround, 1),
 	SSHFS_OPT("rename",     rename_workaround, 1),
 	SSHFS_OPT("norename",   rename_workaround, 0),
 	SSHFS_OPT("nodelay",    nodelay_workaround, 1),
@@ -379,6 +382,8 @@ static struct fuse_opt workaround_opts[] = {
 	SSHFS_OPT("notruncate", truncate_workaround, 0),
 	SSHFS_OPT("buflimit",   buflimit_workaround, 1),
 	SSHFS_OPT("nobuflimit", buflimit_workaround, 0),
+	SSHFS_OPT("fstat",      fstat_workaround, 1),
+	SSHFS_OPT("nofstat",    fstat_workaround, 0),
 	FUSE_OPT_END
 };
 
@@ -2807,6 +2812,9 @@ static int sshfs_fgetattr(const char *path, struct stat *stbuf,
 
 	if (!sshfs_file_is_conn(sf))
 		return -EIO;
+
+	if (sshfs.fstat_workaround)
+		return sshfs_getattr(path, stbuf);
 
 	buf_init(&buf, 0);
 	buf_add_buf(&buf, &sf->handle);

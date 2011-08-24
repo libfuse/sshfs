@@ -1,3 +1,8 @@
+2011-08-24  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Add "-oworkaround=fstat" for SFTP servers which don't support
+	the FSTAT message.  Patch by: Percy Jahn
+
 2011-07-01  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Released 2.3
