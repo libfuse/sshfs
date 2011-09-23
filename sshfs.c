@@ -2113,6 +2113,7 @@ static int sshfs_chmod(const char *path, mode_t mode)
 	buf_add_path(&buf, path);
 	buf_add_uint32(&buf, SSH_FILEXFER_ATTR_PERMISSIONS);
 	buf_add_uint32(&buf, mode);
+	/* FIXME: really needs LSETSTAT extension (debian Bug#640038) */
 	err = sftp_request(SSH_FXP_SETSTAT, &buf, SSH_FXP_STATUS, NULL);
 	buf_free(&buf);
 	return err;
