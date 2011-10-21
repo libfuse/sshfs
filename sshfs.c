@@ -3108,7 +3108,6 @@ static int read_password(void)
 	}
 	sshfs.password[n+1] = '\0';
 	ssh_add_arg("-oNumberOfPasswordPrompts=1");
-	ssh_add_arg("-oPreferredAuthentications=password,keyboard-interactive");
 
 	return 0;
 }
