@@ -1,3 +1,8 @@
+2011-10-21  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Remove "-oPreferredAuthentications" from ssh options if the
+	"password_stdin" option is used.  Reported by E. Kuemmerle
+
 2011-08-24  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Add "-oworkaround=fstat" for SFTP servers which don't support
