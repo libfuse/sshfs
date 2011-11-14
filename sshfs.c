@@ -2228,12 +2228,19 @@ static int sshfs_chown(const char *path, uid_t uid, gid_t gid)
 static int sshfs_truncate_workaround(const char *path, off_t size,
                                      struct fuse_file_info *fi);
 
+static void sshfs_inc_modifver(void)
+{
+	pthread_mutex_lock(&sshfs.lock);
+	sshfs.modifver++;
+	pthread_mutex_unlock(&sshfs.lock);
+}
+
 static int sshfs_truncate(const char *path, off_t size)
 {
 	int err;
 	struct buffer buf;
 
-	sshfs.modifver ++;
+	sshfs_inc_modifver();
 	if (size == 0 || sshfs.truncate_workaround)
 		return sshfs_truncate_workaround(path, size, NULL);
 
@@ -2262,7 +2269,13 @@ static int sshfs_utime(const char *path, struct utimbuf *ubuf)
 
 static inline int sshfs_file_is_conn(struct sshfs_file *sf)
 {
-	return sf->connver == sshfs.connver;
+	int ret;
+
+	pthread_mutex_lock(&sshfs.lock);
+	ret = (sf->connver == sshfs.connver);
+	pthread_mutex_unlock(&sshfs.lock);
+
+	return ret;
 }
 
 static int sshfs_open_common(const char *path, mode_t mode,
@@ -2308,8 +2321,10 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	sf->is_seq = 0;
 	sf->refs = 1;
 	sf->next_pos = 0;
+	pthread_mutex_lock(&sshfs.lock);
 	sf->modifver= sshfs.modifver;
 	sf->connver = sshfs.connver;
+	pthread_mutex_unlock(&sshfs.lock);
 	buf_init(&buf, 0);
 	buf_add_path(&buf, path);
 	buf_add_uint32(&buf, pflags);
@@ -2545,7 +2560,9 @@ static void submit_read(struct sshfs_file *sf, size_t size, off_t offset,
 	chunk->offset = offset;
 	chunk->size = size;
 	chunk->refs = 1;
+	pthread_mutex_lock(&sshfs.lock);	
 	chunk->modifver = sshfs.modifver;
+	pthread_mutex_unlock(&sshfs.lock);	
 	sshfs_send_async_read(sf, chunk);
 	pthread_mutex_lock(&sshfs.lock);
 	chunk_put(*chunkp);
@@ -2688,7 +2705,7 @@ static int sshfs_write(const char *path, const char *wbuf, size_t size,
 	if (!sshfs_file_is_conn(sf))
 		return -EIO;
 
-	sshfs.modifver ++;
+	sshfs_inc_modifver();
 	buf_init(&buf, 0);
 	buf_add_buf(&buf, handle);
 	buf_add_uint64(&buf, offset);
@@ -2794,7 +2811,7 @@ static int sshfs_ftruncate(const char *path, off_t size,
 	if (!sshfs_file_is_conn(sf))
 		return -EIO;
 
-	sshfs.modifver ++;
+	sshfs_inc_modifver();
 	if (sshfs.truncate_workaround)
 		return sshfs_truncate_workaround(path, size, fi);
 
