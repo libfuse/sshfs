@@ -1828,9 +1828,16 @@ static int sftp_request_send(uint8_t type, struct iovec *iov, size_t count,
 
 	err = -EIO;
 	if (sftp_send_iov(type, id, iov, count) == -1) {
+		gboolean rmed;
+
 		pthread_mutex_lock(&sshfs.lock);
-		g_hash_table_remove(sshfs.reqtab, GUINT_TO_POINTER(id));
+		rmed = g_hash_table_remove(sshfs.reqtab, GUINT_TO_POINTER(id));
 		pthread_mutex_unlock(&sshfs.lock);
+
+		if (!rmed && !want_reply) {
+			/* request already freed */
+			return err;
+		}
 		goto out;
 	}
 	if (want_reply)
@@ -1851,12 +1858,13 @@ out:
 static int sftp_request_iov(uint8_t type, struct iovec *iov, size_t count,
                             uint8_t expect_type, struct buffer *outbuf)
 {
+	int err;
 	struct request *req;
 
-	sftp_request_send(type, iov, count, NULL, NULL, expect_type, NULL,
-			  &req);
+	err = sftp_request_send(type, iov, count, NULL, NULL, expect_type, NULL,
+				&req);
 	if (expect_type == 0)
-		return 0;
+		return err;
 
 	return sftp_request_wait(req, type, expect_type, outbuf);
 }
