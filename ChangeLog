@@ -3,6 +3,8 @@
 	* Fix double free if reconnection races with request sending.
 	Patch by E. Kuemmerle
 
+	* Add locking around modifver and connver
+
 2011-10-21  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Remove "-oPreferredAuthentications" from ssh options if the
