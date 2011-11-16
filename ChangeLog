@@ -1,3 +1,11 @@
+2011-11-16  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Submit max 32k reads and writes to the sftp server.  Also don't
+	limit the kernel to 64k reads and writes, rather split into 32k
+	sized chunks and send them to the server all at once.  This is
+	more efficient and less demanding from the server.  Reported by
+	Ludovic Courtès.  Fix suggested by Niels Möller
+
 2011-11-14  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Fix double free if reconnection races with request sending.
