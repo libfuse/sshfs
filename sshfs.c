@@ -2150,6 +2150,10 @@ static int sshfs_chown(const char *path, uid_t uid, gid_t gid)
 {
 	int err;
 	struct buffer buf;
+
+	if (sshfs.remote_uid_detected && uid == sshfs.local_uid)
+		uid = sshfs.remote_uid;
+
 	buf_init(&buf, 0);
 	buf_add_path(&buf, path);
 	buf_add_uint32(&buf, SSH_FILEXFER_ATTR_UIDGID);
