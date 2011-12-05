@@ -2226,9 +2226,7 @@ static int sshfs_chown(const char *path, uid_t uid, gid_t gid)
 {
 	int err;
 	struct buffer buf;
-	buf_init(&buf, 0);
-	buf_add_path(&buf, path);
-	buf_add_uint32(&buf, SSH_FILEXFER_ATTR_UIDGID);
+
 #if __APPLE__
 	if (sshfs.remote_uid_detected) {
 		if (uid == sshfs.local_uid)
@@ -2236,7 +2234,14 @@ static int sshfs_chown(const char *path, uid_t uid, gid_t gid)
 		if (gid == sshfs.local_gid)
 			gid = sshfs.remote_gid;
 	}
-#endif /* __APPLE__ */
+#else /* !__APPLE__ */
+	if (sshfs.remote_uid_detected && uid == sshfs.local_uid)
+		uid = sshfs.remote_uid;
+#endif /* !__APPLE__ */
+
+	buf_init(&buf, 0);
+	buf_add_path(&buf, path);
+	buf_add_uint32(&buf, SSH_FILEXFER_ATTR_UIDGID);
 	buf_add_uint32(&buf, uid);
 	buf_add_uint32(&buf, gid);
 	err = sftp_request(SSH_FXP_SETSTAT, &buf, SSH_FXP_STATUS, NULL);
