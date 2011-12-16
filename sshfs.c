@@ -1454,16 +1454,20 @@ static int sftp_init_reply_ok(struct buffer *buf, uint32_t *version)
 		struct buffer buf2;
 
 		buf_init(&buf2, len - 5);
-		if (do_read(&buf2) == -1)
+		if (do_read(&buf2) == -1) {
+			buf_free(&buf2);
 			return -1;
+		}
 
 		do {
 			char *ext;
 			char *extdata;
 
 			if (buf_get_string(&buf2, &ext) == -1 ||
-			    buf_get_string(&buf2, &extdata) == -1)
+			    buf_get_string(&buf2, &extdata) == -1) {
+				buf_free(&buf2);
 				return -1;
+			}
 
 			DEBUG("Extension: %s <%s>\n", ext, extdata);
 
@@ -1479,6 +1483,7 @@ static int sftp_init_reply_ok(struct buffer *buf, uint32_t *version)
 			    strcmp(extdata, "1") == 0)
 				sshfs.ext_hardlink = 1;
 		} while (buf2.len < buf2.size);
+		buf_free(&buf2);
 	}
 	return 0;
 }
