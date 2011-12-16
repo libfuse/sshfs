@@ -3554,7 +3554,7 @@ int main(int argc, char *argv[])
 
 		res = fcntl(fuse_chan_fd(ch), F_SETFD, FD_CLOEXEC);
 		if (res == -1)
-			perror("WARNING: failed to set FD_CLOESEC on fuse device");
+			perror("WARNING: failed to set FD_CLOEXEC on fuse device");
 
 		fuse = fuse_new(ch, &args, cache_init(&sshfs_oper),
 				sizeof(struct fuse_operations), NULL);
