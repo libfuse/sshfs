@@ -1,3 +1,10 @@
+2011-12-16  Mike Kelly <mike@pair.com>
+
+	* Add -o idmap=file, -o uidmap=FILE, -o gidmap=FILE. These options
+	allow you to create a pair of local files, similar to /etc/passwd or
+	/etc/group files from the remote server, and use those to remap all
+	the given UIDs/GIDs.
+
 2011-11-25  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Make chown respect the UID mapping policy.  Reported and tested

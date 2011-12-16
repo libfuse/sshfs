@@ -102,6 +102,18 @@ no translation of the ID space (default)
 .TP
 user
 only translate UID of connecting user
+.TP
+file
+translate UIDs/GIDs based upon the contents of \fBuidfile \fR and
+\fBgidfile\fR
+.RE
+.TP
+\fB\-o\fR uidfile=FILE
+file containing username:uid mappings for \fBidmap=file\fR
+.RE
+.TP
+\fB\-o\fR gidfile=FILE
+file containing groupname:gid mappings for \fBidmap=file\fR
 .RE
 .TP
 \fB\-o\fR ssh_command=CMD

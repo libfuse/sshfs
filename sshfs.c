@@ -35,6 +35,8 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <glib.h>
+#include <pwd.h>
+#include <grp.h>
 
 #include "cache.h"
 
@@ -198,6 +200,13 @@ struct sshfs {
 	int follow_symlinks;
 	int no_check_root;
 	int detect_uid;
+	int idmap;
+	char *uid_file;
+	char *gid_file;
+	GHashTable *uid_map;
+	GHashTable *gid_map;
+	GHashTable *r_uid_map;
+	GHashTable *r_gid_map;
 	unsigned max_read;
 	unsigned max_write;
 	unsigned ssh_ver;
@@ -306,6 +315,12 @@ enum {
 	KEY_CONFIGFILE,
 };
 
+enum {
+	IDMAP_NONE,
+	IDMAP_USER,
+	IDMAP_FILE,
+};
+
 #define SSHFS_OPT(t, p, v) { t, offsetof(struct sshfs, p), v }
 
 static struct fuse_opt sshfs_opts[] = {
@@ -317,8 +332,11 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("ssh_protocol=%u",   ssh_ver, 0),
 	SSHFS_OPT("-1",                ssh_ver, 1),
 	SSHFS_OPT("workaround=%s",     workarounds, 0),
-	SSHFS_OPT("idmap=none",        detect_uid, 0),
-	SSHFS_OPT("idmap=user",        detect_uid, 1),
+	SSHFS_OPT("idmap=none",        idmap, IDMAP_NONE),
+	SSHFS_OPT("idmap=user",        idmap, IDMAP_USER),
+	SSHFS_OPT("idmap=file",        idmap, IDMAP_FILE),
+	SSHFS_OPT("uidfile=%s",        uid_file, 0),
+	SSHFS_OPT("gidfile=%s",        gid_file, 0),
 	SSHFS_OPT("sshfs_sync",        sync_write, 1),
 	SSHFS_OPT("no_readahead",      sync_read, 1),
 	SSHFS_OPT("sshfs_debug",       debug, 1),
@@ -442,6 +460,15 @@ static void list_del(struct list_head *entry)
 static int list_empty(const struct list_head *head)
 {
 	return head->next == head;
+}
+
+/* given a pointer to the uid/gid, and the mapping table, remap the
+ * uid/gid, if necessary */
+static inline void translate_id(uint32_t *id, GHashTable *map)
+{
+	gpointer id_p;
+	if (g_hash_table_lookup_extended(map, GUINT_TO_POINTER(*id), NULL, &id_p))
+		*id = GPOINTER_TO_UINT(id_p);
 }
 
 static inline void buf_init(struct buffer *buf, size_t size)
@@ -681,6 +708,10 @@ static int buf_get_attrs(struct buffer *buf, struct stat *stbuf, int *flagsp)
 
 	if (sshfs.remote_uid_detected && uid == sshfs.remote_uid)
 		uid = sshfs.local_uid;
+	if (sshfs.idmap == IDMAP_FILE && sshfs.uid_map)
+		translate_id(&uid, sshfs.uid_map);
+	if (sshfs.idmap == IDMAP_FILE && sshfs.gid_map)
+		translate_id(&gid, sshfs.gid_map);
 
 	memset(stbuf, 0, sizeof(struct stat));
 	stbuf->st_mode = mode;
@@ -2158,6 +2189,10 @@ static int sshfs_chown(const char *path, uid_t uid, gid_t gid)
 
 	if (sshfs.remote_uid_detected && uid == sshfs.local_uid)
 		uid = sshfs.remote_uid;
+	if (sshfs.idmap == IDMAP_FILE && sshfs.r_uid_map)
+		translate_id(&uid, sshfs.r_uid_map);
+	if (sshfs.idmap == IDMAP_FILE && sshfs.r_gid_map)
+		translate_id(&gid, sshfs.r_gid_map);
 
 	buf_init(&buf, 0);
 	buf_add_path(&buf, path);
@@ -3105,6 +3140,9 @@ static void usage(const char *progname)
 "    -o idmap=TYPE          user/group ID mapping, possible types are:\n"
 "             none             no translation of the ID space (default)\n"
 "             user             only translate UID of connecting user\n"
+"             file             translate UIDs/GIDs contained in uidfile/gidfile\n"
+"    -o uidfile=FILE        file containing username:remote_uid mappings\n"
+"    -o gidfile=FILE        file containing groupname:remote_gid mappings\n"
 "    -o ssh_command=CMD     execute CMD instead of 'ssh'\n"
 "    -o ssh_protocol=N      ssh protocol to use (default: 2)\n"
 "    -o sftp_server=SERV    path to sftp server or subsystem (default: sftp)\n"
@@ -3421,6 +3459,166 @@ static int ssh_connect(void)
 	return 0;
 }
 
+/* remove trailing '\n', like the perl func of the same name */
+static inline void chomp(char *line)
+{
+	char *p = line;
+	if ((p = strrchr(line, '\n')))
+		*p = '\0';
+}
+
+/* number of ':' separated fields in a passwd/group file that we care
+ * about */
+#define IDMAP_FIELDS 3
+
+/* given a line from a uidmap or gidmap, parse out the name and id */
+static void parse_idmap_line(char *line, const char* filename,
+		const unsigned int lineno, uint32_t *ret_id, char **ret_name)
+{
+	chomp(line);
+	char *tokens[IDMAP_FIELDS];
+	char *tok;
+	int i;
+	for (i = 0; (tok = strsep(&line, ":")) && (i < IDMAP_FIELDS) ; i++) {
+		tokens[i] = tok;
+	}
+
+	char *name_tok, *id_tok;
+	if (i == 2) {
+		/* assume name:id format */
+		name_tok = tokens[0];
+		id_tok = tokens[1];
+	} else if (i >= IDMAP_FIELDS) {
+		/* assume passwd/group file format */
+		name_tok = tokens[0];
+		id_tok = tokens[2];
+	} else {
+		fprintf(stderr, "Unknown format at line %u of '%s'\n",
+				lineno, filename);
+		exit(1);
+	}
+
+	errno = 0;
+	uint32_t remote_id = strtoul(id_tok, NULL, 10);
+	if (errno) {
+		fprintf(stderr, "Invalid id number on line %u of '%s': %s\n",
+				lineno, filename, strerror(errno));
+		exit(1);
+	}
+
+	*ret_name = strdup(name_tok);
+	*ret_id = remote_id;
+}
+
+/* read a uidmap or gidmap */
+static void read_id_map(char *file, uint32_t *(*map_fn)(char *),
+		const char *name_id, GHashTable **idmap, GHashTable **r_idmap)
+{
+	*idmap = g_hash_table_new(NULL, NULL);
+	*r_idmap = g_hash_table_new(NULL, NULL);
+	FILE *fp;
+	char *line = NULL;
+	size_t len = 0;
+	unsigned int lineno = 0;
+
+	fp = fopen(file, "r");
+	if (fp == NULL) {
+		fprintf(stderr, "failed to open '%s': %s\n",
+				file, strerror(errno));
+		exit(1);
+	}
+
+	while (getline(&line, &len, fp) != EOF) {
+		lineno++;
+		uint32_t remote_id;
+		char *name;
+
+		parse_idmap_line(line, file, lineno, &remote_id, &name);
+
+		uint32_t *local_id = map_fn(name);
+		if (local_id == NULL) {
+			/* not found */
+			DEBUG("%s(%u): no local %s\n", name, remote_id, name_id);
+			free(name);
+			continue;
+		}
+
+		DEBUG("%s: remote %s %u => local %s %u\n",
+				name, name_id, remote_id, name_id, *local_id);
+		g_hash_table_insert(*idmap, GUINT_TO_POINTER(remote_id), GUINT_TO_POINTER(*local_id));
+		g_hash_table_insert(*r_idmap, GUINT_TO_POINTER(*local_id), GUINT_TO_POINTER(remote_id));
+		free(name);
+		free(local_id);
+	}
+
+	if (fclose(fp) == EOF) {
+		fprintf(stderr, "failed to close '%s': %s",
+				file, strerror(errno));
+		exit(1);
+	}
+
+	if (line)
+		free(line);
+}
+
+/* given a username, return a pointer to its uid, or NULL if it doesn't
+ * exist on this system */
+static uint32_t *username_to_uid(char *name)
+{
+	errno = 0;
+	struct passwd *pw = getpwnam(name);
+	if (pw == NULL) {
+		if (errno == 0) {
+			/* "does not exist" */
+			return NULL;
+		}
+		fprintf(stderr, "Failed to look up user '%s': %s\n",
+				name, strerror(errno));
+		exit(1);
+	}
+	uint32_t *r = malloc(sizeof(uint32_t));
+	if (r == NULL) {
+		fprintf(stderr, "sshfs: memory allocation failed\n");
+		abort();
+	}
+	*r = pw->pw_uid;
+	return r;
+}
+
+/* given a groupname, return a pointer to its gid, or NULL if it doesn't
+ * exist on this system */
+static uint32_t *groupname_to_gid(char *name)
+{
+	errno = 0;
+	struct group *gr = getgrnam(name);
+	if (gr == NULL) {
+		if (errno == 0) {
+			/* "does not exist" */
+			return NULL;
+		}
+		fprintf(stderr, "Failed to look up group '%s': %s\n",
+				name, strerror(errno));
+		exit(1);
+	}
+	uint32_t *r = malloc(sizeof(uint32_t));
+	if (r == NULL) {
+		fprintf(stderr, "sshfs: memory allocation failed\n");
+		abort();
+	}
+	*r = gr->gr_gid;
+	return r;
+}
+
+static inline void load_uid_map(void)
+{
+	read_id_map(sshfs.uid_file, &username_to_uid, "uid", &sshfs.uid_map, &sshfs.r_uid_map);
+}
+
+static inline void load_gid_map(void)
+{
+	read_id_map(sshfs.gid_file, &groupname_to_gid, "gid", &sshfs.gid_map, &sshfs.r_gid_map);
+}
+
 int main(int argc, char *argv[])
 {
 	int res;
@@ -3447,6 +3645,8 @@ int main(int argc, char *argv[])
 	sshfs.ptyfd = -1;
 	sshfs.ptyslavefd = -1;
 	sshfs.delay_connect = 0;
+	sshfs.detect_uid = 0;
+	sshfs.idmap = IDMAP_NONE;
 	ssh_add_arg("ssh");
 	ssh_add_arg("-x");
 	ssh_add_arg("-a");
@@ -3455,6 +3655,25 @@ int main(int argc, char *argv[])
 	if (fuse_opt_parse(&args, &sshfs, sshfs_opts, sshfs_opt_proc) == -1 ||
 	    parse_workarounds() == -1)
 		exit(1);
+
+	if (sshfs.idmap == IDMAP_USER)
+		sshfs.detect_uid = 1;
+	else if (sshfs.idmap == IDMAP_FILE) {
+		sshfs.uid_map = NULL;
+		sshfs.gid_map = NULL;
+		sshfs.r_uid_map = NULL;
+		sshfs.r_gid_map = NULL;
+		if (!sshfs.uid_file && !sshfs.gid_file) {
+			fprintf(stderr, "need a uid_file or gid_file with idmap=file\n");
+			exit(1);
+		}
+		if (sshfs.uid_file)
+			load_uid_map();
+		if (sshfs.gid_file)
+			load_gid_map();
+	}
+	free(sshfs.uid_file);
+	free(sshfs.gid_file);
 
 	DEBUG("SSHFS version %s\n", PACKAGE_VERSION);
 
