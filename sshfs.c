@@ -42,6 +42,7 @@
 #include <glib.h>
 #include <pwd.h>
 #include <grp.h>
+#include <limits.h>
 #if __APPLE__
 #  include <strings.h>
 #  include <libgen.h>
@@ -3618,23 +3619,23 @@ static int ssh_connect(void)
 	return 0;
 }
 
-/* remove trailing '\n', like the perl func of the same name */
-static inline void chomp(char *line)
-{
-	char *p = line;
-	if ((p = strrchr(line, '\n')))
-		*p = '\0';
-}
-
 /* number of ':' separated fields in a passwd/group file that we care
  * about */
 #define IDMAP_FIELDS 3
 
 /* given a line from a uidmap or gidmap, parse out the name and id */
 static void parse_idmap_line(char *line, const char* filename,
-		const unsigned int lineno, uint32_t *ret_id, char **ret_name)
+		const unsigned int lineno, uint32_t *ret_id, char **ret_name,
+		const int eof)
 {
-	chomp(line);
+	/* chomp off the trailing newline */
+	char *p = line;
+	if ((p = strrchr(line, '\n')))
+		*p = '\0';
+	else if (!eof) {
+		fprintf(stderr, "%s:%u: line too long\n", filename, lineno);
+		exit(1);
+	}
 	char *tokens[IDMAP_FIELDS];
 	char *tok;
 	int i;
@@ -3652,8 +3653,7 @@ static void parse_idmap_line(char *line, const char* filename,
 		name_tok = tokens[0];
 		id_tok = tokens[2];
 	} else {
-		fprintf(stderr, "Unknown format at line %u of '%s'\n",
-				lineno, filename);
+		fprintf(stderr, "%s:%u: unknown format\n", filename, lineno);
 		exit(1);
 	}
 
@@ -3676,8 +3676,7 @@ static void read_id_map(char *file, uint32_t *(*map_fn)(char *),
 	*idmap = g_hash_table_new(NULL, NULL);
 	*r_idmap = g_hash_table_new(NULL, NULL);
 	FILE *fp;
-	char *line = NULL;
-	size_t len = 0;
+	char line[LINE_MAX];
 	unsigned int lineno = 0;
 
 	fp = fopen(file, "r");
@@ -3687,12 +3686,12 @@ static void read_id_map(char *file, uint32_t *(*map_fn)(char *),
 		exit(1);
 	}
 
-	while (getline(&line, &len, fp) != EOF) {
+	while (fgets(line, LINE_MAX, fp) != NULL) {
 		lineno++;
 		uint32_t remote_id;
 		char *name;
 
-		parse_idmap_line(line, file, lineno, &remote_id, &name);
+		parse_idmap_line(line, file, lineno, &remote_id, &name, feof(fp));
 
 		uint32_t *local_id = map_fn(name);
 		if (local_id == NULL) {
@@ -3715,9 +3714,6 @@ static void read_id_map(char *file, uint32_t *(*map_fn)(char *),
 				file, strerror(errno));
 		exit(1);
 	}
-
-	if (line)
-		free(line);
 }
 
 /* given a username, return a pointer to its uid, or NULL if it doesn't
