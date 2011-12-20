@@ -2384,8 +2384,8 @@ static void sshfs_read_end(struct request *req)
 			if (buf_get_uint32(&req->reply, &serr) != -1) {
 				if (serr == SSH_FX_EOF)
 					rreq->res = 0;
-			} else {
-				rreq->res = -sftp_error_to_errno(serr);
+				else
+					rreq->res = -sftp_error_to_errno(serr);
 			}
 		} else if (req->reply_type == SSH_FXP_DATA) {
 			uint32_t retsize;
