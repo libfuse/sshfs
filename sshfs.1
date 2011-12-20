@@ -116,6 +116,17 @@ file containing username:uid mappings for \fBidmap=file\fR
 file containing groupname:gid mappings for \fBidmap=file\fR
 .RE
 .TP
+\fB\-o\fR nomap=TYPE
+with idmap=file, how to handle missing mappings
+.RS 8
+.TP
+ignore
+don't do any re-mapping
+.TP
+error
+return an error (default)
+.RE
+.TP
 \fB\-o\fR ssh_command=CMD
 execute CMD instead of 'ssh'
 .TP

@@ -227,6 +227,7 @@ struct sshfs {
 	int no_check_root;
 	int detect_uid;
 	int idmap;
+	int nomap;
 	char *uid_file;
 	char *gid_file;
 	GHashTable *uid_map;
@@ -351,6 +352,11 @@ enum {
 	IDMAP_FILE,
 };
 
+enum {
+	NOMAP_IGNORE,
+	NOMAP_ERROR,
+};
+
 #define SSHFS_OPT(t, p, v) { t, offsetof(struct sshfs, p), v }
 
 static struct fuse_opt sshfs_opts[] = {
@@ -367,6 +373,8 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("idmap=file",        idmap, IDMAP_FILE),
 	SSHFS_OPT("uidfile=%s",        uid_file, 0),
 	SSHFS_OPT("gidfile=%s",        gid_file, 0),
+	SSHFS_OPT("nomap=ignore",      nomap, NOMAP_IGNORE),
+	SSHFS_OPT("nomap=error",       nomap, NOMAP_ERROR),
 	SSHFS_OPT("sshfs_sync",        sync_write, 1),
 	SSHFS_OPT("no_readahead",      sync_read, 1),
 	SSHFS_OPT("sshfs_debug",       debug, 1),
@@ -494,11 +502,20 @@ static int list_empty(const struct list_head *head)
 
 /* given a pointer to the uid/gid, and the mapping table, remap the
  * uid/gid, if necessary */
-static inline void translate_id(uint32_t *id, GHashTable *map)
+static inline int translate_id(uint32_t *id, GHashTable *map)
 {
 	gpointer id_p;
-	if (g_hash_table_lookup_extended(map, GUINT_TO_POINTER(*id), NULL, &id_p))
+	if (g_hash_table_lookup_extended(map, GUINT_TO_POINTER(*id), NULL, &id_p)) {
 		*id = GPOINTER_TO_UINT(id_p);
+		return 0;
+	}
+	switch (sshfs.nomap) {
+	case NOMAP_ERROR: return -1;
+	case NOMAP_IGNORE: return 0;
+	default:
+		fprintf(stderr, "internal error\n");
+		abort();
+	}
 }
 
 static inline void buf_init(struct buffer *buf, size_t size)
@@ -702,36 +719,36 @@ static int buf_get_attrs(struct buffer *buf, struct stat *stbuf, int *flagsp)
 	uint32_t mode = S_IFREG | 0777;
 
 	if (buf_get_uint32(buf, &flags) == -1)
-		return -1;
+		return -EIO;
 	if (flagsp)
 		*flagsp = flags;
 	if ((flags & SSH_FILEXFER_ATTR_SIZE) &&
 	    buf_get_uint64(buf, &size) == -1)
-		return -1;
+		return -EIO;
 	if ((flags & SSH_FILEXFER_ATTR_UIDGID) &&
 	    (buf_get_uint32(buf, &uid) == -1 ||
 	     buf_get_uint32(buf, &gid) == -1))
-		return -1;
+		return -EIO;
 	if ((flags & SSH_FILEXFER_ATTR_PERMISSIONS) &&
 	    buf_get_uint32(buf, &mode) == -1)
-		return -1;
+		return -EIO;
 	if ((flags & SSH_FILEXFER_ATTR_ACMODTIME)) {
 		if (buf_get_uint32(buf, &atime) == -1 ||
 		    buf_get_uint32(buf, &mtime) == -1)
-			return -1;
+			return -EIO;
 	}
 	if ((flags & SSH_FILEXFER_ATTR_EXTENDED)) {
 		uint32_t extcount;
 		unsigned i;
 		if (buf_get_uint32(buf, &extcount) == -1)
-			return -1;
+			return -EIO;
 		for (i = 0; i < extcount; i++) {
 			struct buffer tmp;
 			if (buf_get_data(buf, &tmp) == -1)
-				return -1;
+				return -EIO;
 			buf_free(&tmp);
 			if (buf_get_data(buf, &tmp) == -1)
-				return -1;
+				return -EIO;
 			buf_free(&tmp);
 		}
 	}
@@ -748,9 +765,11 @@ static int buf_get_attrs(struct buffer *buf, struct stat *stbuf, int *flagsp)
 		uid = sshfs.local_uid;
 #endif /* !__APPLE__ */
 	if (sshfs.idmap == IDMAP_FILE && sshfs.uid_map)
-		translate_id(&uid, sshfs.uid_map);
+		if (translate_id(&uid, sshfs.uid_map) == -1)
+			return -EPERM;
 	if (sshfs.idmap == IDMAP_FILE && sshfs.gid_map)
-		translate_id(&gid, sshfs.gid_map);
+		if (translate_id(&gid, sshfs.gid_map) == -1)
+			return -EPERM;
 
 	memset(stbuf, 0, sizeof(struct stat));
 	stbuf->st_mode = mode;
@@ -817,7 +836,7 @@ static int buf_get_entries(struct buffer *buf, fuse_cache_dirh_t h,
 	unsigned i;
 
 	if (buf_get_uint32(buf, &count) == -1)
-		return -1;
+		return -EIO;
 
 	for (i = 0; i < count; i++) {
 		int err = -1;
@@ -825,16 +844,16 @@ static int buf_get_entries(struct buffer *buf, fuse_cache_dirh_t h,
 		char *longname;
 		struct stat stbuf;
 		if (buf_get_string(buf, &name) == -1)
-			return -1;
+			return -EIO;
 		if (buf_get_string(buf, &longname) != -1) {
 			free(longname);
-			if (buf_get_attrs(buf, &stbuf, NULL) != -1) {
+			err = buf_get_attrs(buf, &stbuf, NULL);
+			if (!err) {
 				if (sshfs.follow_symlinks &&
 				    S_ISLNK(stbuf.st_mode)) {
 					stbuf.st_mode = 0;
 				}
 				filler(h, name, &stbuf);
-				err = 0;
 			}
 		}
 		free(name);
@@ -1624,7 +1643,7 @@ static void sftp_detect_uid()
 		fprintf(stderr, "failed to stat home directory (%i)\n", serr);
 		goto out;
 	}
-	if (buf_get_attrs(&buf, &stbuf, &flags) == -1)
+	if (buf_get_attrs(&buf, &stbuf, &flags) != 0)
 		goto out;
 
 	if (!(flags & SSH_FILEXFER_ATTR_UIDGID))
@@ -1686,8 +1705,12 @@ static int sftp_check_root(const char *base_path)
 
 		goto out;
 	}
-	if (buf_get_attrs(&buf, &stbuf, &flags) == -1)
+
+	int err2 = buf_get_attrs(&buf, &stbuf, &flags);
+	if (err2) {
+		err = err2;
 		goto out;
+	}
 
 	if (!(flags & SSH_FILEXFER_ATTR_PERMISSIONS))
 		goto out;
@@ -1943,8 +1966,7 @@ static int sshfs_getattr(const char *path, struct stat *stbuf)
 	err = sftp_request(sshfs.follow_symlinks ? SSH_FXP_STAT : SSH_FXP_LSTAT,
 			   &buf, SSH_FXP_ATTRS, &outbuf);
 	if (!err) {
-		if (buf_get_attrs(&outbuf, stbuf, NULL) == -1)
-			err = -EIO;
+		err = buf_get_attrs(&outbuf, stbuf, NULL);
 		buf_free(&outbuf);
 	}
 	buf_free(&buf);
@@ -2066,8 +2088,7 @@ static int sshfs_getdir(const char *path, fuse_cache_dirh_t h,
 			struct buffer name;
 			err = sftp_request(SSH_FXP_READDIR, &handle, SSH_FXP_NAME, &name);
 			if (!err) {
-				if (buf_get_entries(&name, h, filler) == -1)
-					err = -EIO;
+				err = buf_get_entries(&name, h, filler);
 				buf_free(&name);
 			}
 		} while (!err);
@@ -2274,10 +2295,12 @@ static int sshfs_chown(const char *path, uid_t uid, gid_t gid)
 	if (sshfs.remote_uid_detected && uid == sshfs.local_uid)
 		uid = sshfs.remote_uid;
 #endif /* !__APPLE__ */
-    if (sshfs.idmap == IDMAP_FILE && sshfs.r_uid_map)
-		translate_id(&uid, sshfs.r_uid_map);
+	if (sshfs.idmap == IDMAP_FILE && sshfs.r_uid_map)
+		if(translate_id(&uid, sshfs.r_uid_map) == -1)
+			return -EPERM;
 	if (sshfs.idmap == IDMAP_FILE && sshfs.r_gid_map)
-		translate_id(&gid, sshfs.r_gid_map);
+		if (translate_id(&gid, sshfs.r_gid_map) == -1)
+			return -EPERM;
 
 	buf_init(&buf, 0);
 	buf_add_path(&buf, path);
@@ -2402,8 +2425,7 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	type = sshfs.follow_symlinks ? SSH_FXP_STAT : SSH_FXP_LSTAT;
 	err2 = sftp_request(type, &buf, SSH_FXP_ATTRS, &outbuf);
 	if (!err2) {
-		if (buf_get_attrs(&outbuf, &stbuf, NULL) == -1)
-			err2 = -EIO;
+		err2 = buf_get_attrs(&outbuf, &stbuf, NULL);
 		buf_free(&outbuf);
 	}
 	err = sftp_request_wait(open_req, SSH_FXP_OPEN, SSH_FXP_HANDLE,
@@ -3043,8 +3065,7 @@ static int sshfs_fgetattr(const char *path, struct stat *stbuf,
 	buf_add_buf(&buf, &sf->handle);
 	err = sftp_request(SSH_FXP_FSTAT, &buf, SSH_FXP_ATTRS, &outbuf);
 	if (!err) {
-		if (buf_get_attrs(&outbuf, stbuf, NULL) == -1)
-			err = -EIO;
+		err = buf_get_attrs(&outbuf, stbuf, NULL);
 		buf_free(&outbuf);
 	}
 	buf_free(&buf);
@@ -3264,6 +3285,9 @@ static void usage(const char *progname)
 "             file             translate UIDs/GIDs contained in uidfile/gidfile\n"
 "    -o uidfile=FILE        file containing username:remote_uid mappings\n"
 "    -o gidfile=FILE        file containing groupname:remote_gid mappings\n"
+"    -o nomap=TYPE          with idmap=file, how to handle missing mappings\n"
+"             ignore           don't do any re-mapping\n"
+"             error            return an error (default)\n"
 "    -o ssh_command=CMD     execute CMD instead of 'ssh'\n"
 "    -o ssh_protocol=N      ssh protocol to use (default: 2)\n"
 "    -o sftp_server=SERV    path to sftp server or subsystem (default: sftp)\n"
@@ -3587,7 +3611,7 @@ static int ssh_connect(void)
 			return -1;
 
 		if (!sshfs.no_check_root &&
-		    sftp_check_root(sshfs.base_path) == -1)
+		    sftp_check_root(sshfs.base_path) != 0)
 			return -1;
 
 	}
@@ -3802,6 +3826,7 @@ int main(int argc, char *argv[])
 #else
 	sshfs.idmap = IDMAP_NONE;
 #endif
+	sshfs.nomap = NOMAP_ERROR;
 	ssh_add_arg("ssh");
 	ssh_add_arg("-x");
 	ssh_add_arg("-a");
