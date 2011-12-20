@@ -3556,6 +3556,10 @@ static void read_id_map(char *file, uint32_t *(*map_fn)(char *),
 		uint32_t remote_id;
 		char *name;
 
+		/* skip blank lines */
+		if (line[0] == '\n' || line[0] == '\0')
+			continue;
+
 		parse_idmap_line(line, file, lineno, &remote_id, &name, feof(fp));
 
 		uint32_t *local_id = map_fn(name);
