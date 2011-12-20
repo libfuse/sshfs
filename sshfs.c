@@ -3689,7 +3689,7 @@ int main(int argc, char *argv[])
 		sshfs.r_uid_map = NULL;
 		sshfs.r_gid_map = NULL;
 		if (!sshfs.uid_file && !sshfs.gid_file) {
-			fprintf(stderr, "need a uid_file or gid_file with idmap=file\n");
+			fprintf(stderr, "need a uidfile or gidfile with idmap=file\n");
 			exit(1);
 		}
 		if (sshfs.uid_file)
