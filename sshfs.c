@@ -2625,7 +2625,7 @@ static struct read_chunk *sshfs_send_read(struct sshfs_file *sf, size_t size,
 		buf_add_uint64(&buf, offset);
 		buf_add_uint32(&buf, bsize);
 		buf_to_iov(&buf, &iov[0]);
-		err = sftp_request_send(SSH_FXP_READ, iov, 1, 
+		err = sftp_request_send(SSH_FXP_READ, iov, 1,
 					sshfs_read_begin,
 					sshfs_read_end,
 					0, rreq, NULL);
@@ -2714,7 +2714,7 @@ static void submit_read(struct sshfs_file *sf, size_t size, off_t offset,
 	struct read_chunk *chunk;
 
 	chunk = sshfs_send_read(sf, size, offset);
-	pthread_mutex_lock(&sshfs.lock);	
+	pthread_mutex_lock(&sshfs.lock);
 	chunk->modifver = sshfs.modifver;
 	chunk_put(*chunkp);
 	*chunkp = chunk;
@@ -3515,7 +3515,7 @@ static void set_ssh_command(void)
 				replace_arg(&sshfs.ssh_args.argv[0],
 					    sshfs.ssh_command);
 			} else {
-				if (fuse_opt_insert_arg(&sshfs.ssh_args, i, 
+				if (fuse_opt_insert_arg(&sshfs.ssh_args, i,
 						sshfs.ssh_command) == -1)
 					_exit(1);
 			}
@@ -3940,7 +3940,7 @@ int main(int argc, char *argv[])
 		int foreground;
 		struct stat st;
 
-		res = fuse_parse_cmdline(&args, &mountpoint, &multithreaded, 
+		res = fuse_parse_cmdline(&args, &mountpoint, &multithreaded,
 					 &foreground);
 		if (res == -1)
 			exit(1);
