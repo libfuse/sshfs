@@ -225,7 +225,8 @@ struct sshfs {
 	pthread_mutex_t lock_write;
 	int processing_thread_started;
 	unsigned int randseed;
-	int fd;
+	int rfd;
+	int wfd;
 	int ptyfd;
 	int ptyslavefd;
 	int connver;
@@ -891,7 +892,7 @@ static int pty_expect_loop(void)
 	while (1) {
 		struct pollfd fds[2];
 
-		fds[0].fd = sshfs.fd;
+		fds[0].fd = sshfs.rfd;
 		fds[0].events = POLLIN;
 		fds[1].fd = sshfs.ptyfd;
 		fds[1].events = POLLIN;
@@ -999,7 +1000,8 @@ static int start_ssh(void)
 		perror("failed to create socket pair");
 		return -1;
 	}
-	sshfs.fd = sockpair[0];
+	sshfs.rfd = sockpair[0];
+	sshfs.wfd = sockpair[0];
 
 	pid = fork();
 	if (pid == -1) {
@@ -1124,7 +1126,8 @@ static int connect_to(char *host, char *port)
 
 	freeaddrinfo(ai);
 
-	sshfs.fd = sock;
+	sshfs.rfd = sock;
+	sshfs.wfd = sock;
 	return 0;
 }
 
@@ -1132,7 +1135,7 @@ static int do_write(struct iovec *iov, size_t count)
 {
 	int res;
 	while (count) {
-		res = writev(sshfs.fd, iov, count);
+		res = writev(sshfs.wfd, iov, count);
 		if (res == -1) {
 			perror("write");
 			return -1;
@@ -1209,7 +1212,7 @@ static int do_read(struct buffer *buf)
 	uint8_t *p = buf->p;
 	size_t size = buf->size;
 	while (size) {
-		res = read(sshfs.fd, p, size);
+		res = read(sshfs.rfd, p, size);
 		if (res == -1) {
 			perror("read");
 			return -1;
@@ -1370,8 +1373,11 @@ static int process_one_request(void)
 
 static void close_conn(void)
 {
-	close(sshfs.fd);
-	sshfs.fd = -1;
+	close(sshfs.rfd);
+	if (sshfs.rfd != sshfs.wfd)
+		close(sshfs.wfd);
+	sshfs.rfd = -1;
+	sshfs.wfd = -1;
 	if (sshfs.ptyfd != -1) {
 		close(sshfs.ptyfd);
 		sshfs.ptyfd = -1;
@@ -1687,7 +1693,7 @@ static int start_processing_thread(void)
 	if (sshfs.processing_thread_started)
 		return 0;
 
-	if (sshfs.fd == -1) {
+	if (sshfs.rfd == -1) {
 		err = connect_remote();
 		if (err)
 			return -EIO;
@@ -3665,7 +3671,8 @@ int main(int argc, char *argv[])
 	sshfs.buflimit_workaround = 1;
 	sshfs.ssh_ver = 2;
 	sshfs.progname = argv[0];
-	sshfs.fd = -1;
+	sshfs.rfd = -1;
+	sshfs.wfd = -1;
 	sshfs.ptyfd = -1;
 	sshfs.ptyslavefd = -1;
 	sshfs.delay_connect = 0;
