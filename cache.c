@@ -164,7 +164,6 @@ static struct node *cache_get(const char *path)
 void cache_add_attr(const char *path, const struct stat *stbuf, uint64_t wrctr)
 {
 	struct node *node;
-	time_t now;
 
 	if (!cache.on)
 		return;
@@ -172,7 +171,6 @@ void cache_add_attr(const char *path, const struct stat *stbuf, uint64_t wrctr)
 	pthread_mutex_lock(&cache.lock);
 	if (wrctr == cache.write_ctr) {
 		node = cache_get(path);
-		now = time(NULL);
 		node->stat = *stbuf;
 		node->stat_valid = time(NULL) + cache.stat_timeout;
 		if (node->stat_valid > node->valid)
@@ -185,11 +183,9 @@ void cache_add_attr(const char *path, const struct stat *stbuf, uint64_t wrctr)
 static void cache_add_dir(const char *path, char **dir)
 {
 	struct node *node;
-	time_t now;
 
 	pthread_mutex_lock(&cache.lock);
 	node = cache_get(path);
-	now = time(NULL);
 	g_strfreev(node->dir);
 	node->dir = dir;
 	node->dir_valid = time(NULL) + cache.dir_timeout;
@@ -209,11 +205,9 @@ static size_t my_strnlen(const char *s, size_t maxsize)
 static void cache_add_link(const char *path, const char *link, size_t size)
 {
 	struct node *node;
-	time_t now;
 
 	pthread_mutex_lock(&cache.lock);
 	node = cache_get(path);
-	now = time(NULL);
 	g_free(node->link);
 	node->link = g_strndup(link, my_strnlen(link, size-1));
 	node->link_valid = time(NULL) + cache.link_timeout;
