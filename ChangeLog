@@ -1,3 +1,8 @@
+2012-02-08  Chris Wolfe <cwolfe@chromium.org>
+
+	* Add -o slave. This option routes the sftp communication over stdin
+	and stdout, bypassing SSH and network.
+
 2011-12-16  Mike Kelly <mike@pair.com>
 
 	* Add -o idmap=file, -o uidmap=FILE, -o gidmap=FILE. These options

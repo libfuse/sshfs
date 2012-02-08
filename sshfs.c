@@ -218,6 +218,7 @@ struct sshfs {
 	int foreground;
 	int reconnect;
 	int delay_connect;
+	int slave;
 	char *host;
 	char *base_path;
 	GHashTable *reqtab;
@@ -356,6 +357,7 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("no_check_root",     no_check_root, 1),
 	SSHFS_OPT("password_stdin",    password_stdin, 1),
 	SSHFS_OPT("delay_connect",     delay_connect, 1),
+	SSHFS_OPT("slave",             slave, 1),
 
 	FUSE_OPT_KEY("-p ",            KEY_PORT),
 	FUSE_OPT_KEY("-C",             KEY_COMPRESS),
@@ -1092,6 +1094,13 @@ static int start_ssh(void)
 	return 0;
 }
 
+static int connect_slave()
+{
+	sshfs.rfd = STDIN_FILENO;
+	sshfs.wfd = STDOUT_FILENO;
+	return 0;
+}
+
 static int connect_to(char *host, char *port)
 {
 	int err;
@@ -1668,7 +1677,9 @@ static int connect_remote(void)
 {
 	int err;
 
-	if (sshfs.directport)
+	if (sshfs.slave)
+		err = connect_slave();
+	else if (sshfs.directport)
 		err = connect_to(sshfs.host, sshfs.directport);
 	else
 		err = start_ssh();
@@ -3178,6 +3189,7 @@ static void usage(const char *progname)
 "    -o ssh_protocol=N      ssh protocol to use (default: 2)\n"
 "    -o sftp_server=SERV    path to sftp server or subsystem (default: sftp)\n"
 "    -o directport=PORT     directly connect to PORT bypassing ssh\n"
+"    -o slave               communicate over stdin and stdout bypassing network\n"
 "    -o transform_symlinks  transform absolute symlinks to relative\n"
 "    -o follow_symlinks     follow symlinks on the server\n"
 "    -o no_check_root       don't check for existence of 'dir' on server\n"
@@ -3676,6 +3688,7 @@ int main(int argc, char *argv[])
 	sshfs.ptyfd = -1;
 	sshfs.ptyslavefd = -1;
 	sshfs.delay_connect = 0;
+	sshfs.slave = 0;
 	sshfs.detect_uid = 0;
 	sshfs.idmap = IDMAP_NONE;
 	sshfs.nomap = NOMAP_ERROR;
@@ -3708,6 +3721,16 @@ int main(int argc, char *argv[])
 	free(sshfs.gid_file);
 
 	DEBUG("SSHFS version %s\n", PACKAGE_VERSION);
+
+	if (sshfs.slave) {
+		/* Force sshfs to the foreground when using stdin+stdout */
+		sshfs.foreground = 1;
+	}
+
+	if (sshfs.slave && sshfs.password_stdin) {
+		fprintf(stderr, "the password_stdin and slave options cannot both be specified\n");
+		exit(1);
+	}
 
 	if (sshfs.password_stdin) {
 		res = read_password();
@@ -3796,6 +3819,11 @@ int main(int argc, char *argv[])
 					 &foreground);
 		if (res == -1)
 			exit(1);
+
+		if (sshfs.slave) {
+			/* Force sshfs to the foreground when using stdin+stdout */
+			foreground = 1;
+		}
 
 		res = stat(mountpoint, &st);
 		if (res == -1) {
