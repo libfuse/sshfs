@@ -3696,11 +3696,27 @@ static void read_id_map(char *file, uint32_t *(*map_fn)(char *),
 	FILE *fp;
 	char line[LINE_MAX];
 	unsigned int lineno = 0;
+	uid_t local_uid = getuid();
 
 	fp = fopen(file, "r");
 	if (fp == NULL) {
 		fprintf(stderr, "failed to open '%s': %s\n",
 				file, strerror(errno));
+		exit(1);
+	}
+	struct stat st;
+	if (fstat(fileno(fp), &st) == -1) {
+		fprintf(stderr, "failed to stat '%s': %s\n", file,
+				strerror(errno));
+		exit(1);
+	}
+	if (st.st_uid != local_uid) {
+		fprintf(stderr, "'%s' is not owned by uid %lu\n", file,
+				(unsigned long)local_uid);
+		exit(1);
+	}
+	if (st.st_mode & S_IWGRP || st.st_mode & S_IWOTH) {
+		fprintf(stderr, "'%s' is writable by other users\n", file);
 		exit(1);
 	}
 

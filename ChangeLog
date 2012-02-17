@@ -1,3 +1,9 @@
+2012-03-08  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Make sure idmap files aren't writable by others otherwise, other
+	local users could change the mapping, and gain access to things
+	they shouldn't.  Patch by Mike Kelly
+
 2012-02-08  Chris Wolfe <cwolfe@chromium.org>
 
 	* Add -o slave. This option routes the sftp communication over stdin
