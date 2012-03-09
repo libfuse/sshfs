@@ -3254,8 +3254,13 @@ static void usage(const char *progname)
 "             [no]truncate     fix truncate for old servers (default: off)\n"
 "             [no]buflimit     fix buffer fillup bug in server (default: on)\n"
 "    -o idmap=TYPE          user/group ID mapping, possible types are:\n"
+#if __APPLE__
+"             none             no translation of the ID space\n"
+"             user             only translate UID/GID of connecting user (default)\n"
+#else
 "             none             no translation of the ID space (default)\n"
 "             user             only translate UID of connecting user\n"
+#endif
 "             file             translate UIDs/GIDs contained in uidfile/gidfile\n"
 "    -o uidfile=FILE        file containing username:remote_uid mappings\n"
 "    -o gidfile=FILE        file containing groupname:remote_gid mappings\n"
@@ -3791,12 +3796,12 @@ int main(int argc, char *argv[])
 	sshfs.ptyfd = -1;
 	sshfs.ptyslavefd = -1;
 	sshfs.delay_connect = 0;
-#if __APPLE__
-	sshfs.detect_uid = 1;
-#else
 	sshfs.detect_uid = 0;
-#endif
+#if __APPLE__
+	sshfs.idmap = IDMAP_USER;
+#else
 	sshfs.idmap = IDMAP_NONE;
+#endif
 	ssh_add_arg("ssh");
 	ssh_add_arg("-x");
 	ssh_add_arg("-a");
