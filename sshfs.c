@@ -51,7 +51,7 @@
 #include "cache.h"
 
 #ifdef __APPLE__
-#  define OSXFUSE_SSHFS_VERSION "2.4.0"
+#  define OSXFUSE_SSHFS_VERSION "2.4.1"
 #endif
 
 #ifndef MAP_LOCKED
