@@ -1620,7 +1620,7 @@ static int sftp_check_root(const char *base_path)
 	buf_init(&buf, 0);
 	buf_add_string(&buf, remote_dir);
 	buf_to_iov(&buf, &iov[0]);
-	if (sftp_send_iov(SSH_FXP_STAT, id, iov, 1) == -1)
+	if (sftp_send_iov(SSH_FXP_LSTAT, id, iov, 1) == -1)
 		goto out;
 	buf_clear(&buf);
 	if (sftp_read(&type, &buf) == -1)
