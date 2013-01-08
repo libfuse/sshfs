@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2006-2008 Amit Singh/Google Inc.
  * Copyright (c) 2012 Anatol Pomozov
- * Copyright (c) 2011-2012 Benjamin Fleischer
+ * Copyright (c) 2011-2013 Benjamin Fleischer
  */
 
 #include "darwin_compat.h"
