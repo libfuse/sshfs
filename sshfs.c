@@ -23,7 +23,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <errno.h>
-#if !__APPLE__
+#ifndef __APPLE__
 #  include <semaphore.h>
 #endif
 #include <pthread.h>
@@ -46,6 +46,7 @@
 #ifdef __APPLE__
 #  include <strings.h>
 #  include <libgen.h>
+#  include <darwin_compat.h>
 #endif
 
 #include "cache.h"

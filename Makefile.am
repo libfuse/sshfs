@@ -6,6 +6,9 @@ sshfs_SOURCES = sshfs.c cache.c cache.h
 if FUSE_OPT_COMPAT
 sshfs_SOURCES += compat/fuse_opt.c compat/fuse_opt.h
 endif
+if DARWIN_COMPAT
+sshfs_SOURCES += compat/darwin_compat.c compat/darwin_compat.h
+endif
 
 sshfs_LDADD = $(SSHFS_LIBS)
 sshfs_CFLAGS = $(SSHFS_CFLAGS)
