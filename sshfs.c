@@ -3863,6 +3863,10 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 
+		/*
+		 * FIXME: trim $PATH so it doesn't contain anything inside the
+		 * mountpoint, which would deadlock.
+		 */
 		res = ssh_connect();
 		if (res == -1) {
 			fuse_unmount(mountpoint, ch);
