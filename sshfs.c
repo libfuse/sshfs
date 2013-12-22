@@ -121,6 +121,10 @@
 
 #define SSHNODELAY_SO "sshnodelay.so"
 
+/* Asynchronous readdir parameters */
+#define READDIR_START 2
+#define READDIR_MAX 32
+
 struct buffer {
 	uint8_t *p;
 	size_t len;
@@ -139,6 +143,7 @@ struct request {
 	unsigned int want_reply;
 	sem_t ready;
 	uint8_t reply_type;
+	uint32_t id;
 	int replied;
 	int error;
 	struct buffer reply;
@@ -215,6 +220,7 @@ struct sshfs {
 	unsigned ssh_ver;
 	int sync_write;
 	int sync_read;
+	int sync_readdir;
 	int debug;
 	int foreground;
 	int reconnect;
@@ -351,6 +357,7 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("nomap=error",       nomap, NOMAP_ERROR),
 	SSHFS_OPT("sshfs_sync",        sync_write, 1),
 	SSHFS_OPT("no_readahead",      sync_read, 1),
+	SSHFS_OPT("sync_readdir",      sync_readdir, 1),
 	SSHFS_OPT("sshfs_debug",       debug, 1),
 	SSHFS_OPT("reconnect",         reconnect, 1),
 	SSHFS_OPT("transform_symlinks", transform_symlinks, 1),
@@ -1836,6 +1843,7 @@ static int sftp_request_send(uint8_t type, struct iovec *iov, size_t count,
 	if (begin_func)
 		begin_func(req);
 	id = sftp_get_id();
+	req->id = id;
 	err = start_processing_thread();
 	if (err) {
 		pthread_mutex_unlock(&sshfs.lock);
@@ -2023,6 +2031,113 @@ static int sshfs_readlink(const char *path, char *linkbuf, size_t size)
 	return err;
 }
 
+static int sftp_readdir_send(struct request **req, struct buffer *handle)
+{
+	struct iovec iov;
+
+	buf_to_iov(handle, &iov);
+	return sftp_request_send(SSH_FXP_READDIR, &iov, 1, NULL, NULL,
+				 SSH_FXP_NAME, NULL, req);
+}
+
+static int sshfs_req_pending(struct request *req)
+{
+	if (g_hash_table_lookup(sshfs.reqtab, GUINT_TO_POINTER(req->id)))
+		return 1;
+	else
+		return 0;
+}
+
+static int sftp_readdir_async(struct buffer *handle, fuse_cache_dirh_t h,
+			      fuse_cache_dirfil_t filler)
+{
+	int err = 0;
+	int outstanding = 0;
+	int max = READDIR_START;
+	GList *list = NULL;
+
+	int done = 0;
+
+	while (!done || outstanding) {
+		struct request *req;
+		struct buffer name;
+		int tmperr;
+
+		while (!done && outstanding < max) {
+			tmperr = sftp_readdir_send(&req, handle);
+
+			if (tmperr && !done) {
+				err = tmperr;
+				done = 1;
+				break;
+			}
+
+			list = g_list_append(list, req);
+			outstanding++;
+		}
+
+		if (outstanding) {
+			GList *first;
+			/* wait for response to next request */
+			first = g_list_first(list);
+			req = first->data;
+			list = g_list_delete_link(list, first);
+			outstanding--;
+
+			if (done) {
+				pthread_mutex_lock(&sshfs.lock);
+				if (sshfs_req_pending(req))
+					req->want_reply = 0;
+				pthread_mutex_unlock(&sshfs.lock);
+				if (!req->want_reply)
+					continue;
+			}
+
+			tmperr = sftp_request_wait(req, SSH_FXP_READDIR,
+						    SSH_FXP_NAME, &name);
+
+			if (tmperr && !done) {
+				err = tmperr;
+				if (err == MY_EOF)
+					err = 0;
+				done = 1;
+			}
+			if (!done) {
+				err = buf_get_entries(&name, h, filler);
+				buf_free(&name);
+
+				/* increase number of outstanding requests */
+				if (max < READDIR_MAX)
+					max++;
+
+				if (err)
+					done = 1;
+			}
+		}
+	}
+	assert(list == NULL);
+
+	return err;
+}
+
+static int sftp_readdir_sync(struct buffer *handle, fuse_cache_dirh_t h,
+			     fuse_cache_dirfil_t filler)
+{
+	int err;
+	do {
+		struct buffer name;
+		err = sftp_request(SSH_FXP_READDIR, handle, SSH_FXP_NAME, &name);
+		if (!err) {
+			err = buf_get_entries(&name, h, filler);
+			buf_free(&name);
+		}
+	} while (!err);
+	if (err == MY_EOF)
+		err = 0;
+
+	return err;
+}
+
 static int sshfs_getdir(const char *path, fuse_cache_dirh_t h,
                         fuse_cache_dirfil_t filler)
 {
@@ -2035,16 +2150,11 @@ static int sshfs_getdir(const char *path, fuse_cache_dirh_t h,
 	if (!err) {
 		int err2;
 		buf_finish(&handle);
-		do {
-			struct buffer name;
-			err = sftp_request(SSH_FXP_READDIR, &handle, SSH_FXP_NAME, &name);
-			if (!err) {
-				err = buf_get_entries(&name, h, filler);
-				buf_free(&name);
-			}
-		} while (!err);
-		if (err == MY_EOF)
-			err = 0;
+
+		if (sshfs.sync_readdir)
+			err = sftp_readdir_sync(&handle, h, filler);
+		else
+			err = sftp_readdir_async(&handle, h, filler);
 
 		err2 = sftp_request(SSH_FXP_CLOSE, &handle, 0, NULL);
 		if (!err)
@@ -3171,6 +3281,7 @@ static void usage(const char *progname)
 "    -o delay_connect       delay connection to server\n"
 "    -o sshfs_sync          synchronous writes\n"
 "    -o no_readahead        synchronous reads (no speculative readahead)\n"
+"    -o sync_readdir        synchronous readdir\n"
 "    -o sshfs_debug         print some debugging information\n"
 "    -o cache=BOOL          enable caching {yes,no} (default: yes)\n"
 "    -o cache_timeout=N     sets timeout for caches in seconds (default: 20)\n"

@@ -3,6 +3,10 @@
 	* Add -o disable_hardlink option (debian bug #670926).  Reported
 	by Louis-David Mitterrand
 
+	* Optimize readdir by sending multiple requests in parallel.  Add
+	-o sync_readdir to restore old behavior.  Patch by Alexander
+	Neumann
+
 2014-01-07  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Map SSH2_FX_FAILURE to ENOTEMPTY for rmdir.  Reported by Ross
