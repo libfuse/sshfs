@@ -1790,6 +1790,13 @@ static int sftp_request_wait(struct request *req, uint8_t type,
 				err = -EIO;
 			break;
 
+		case SSH_FX_FAILURE:
+			if (type == SSH_FXP_RMDIR)
+				err = -ENOTEMPTY;
+			else
+				err = -EPERM;
+			break;
+
 		default:
 			err = -sftp_error_to_errno(serr);
 		}

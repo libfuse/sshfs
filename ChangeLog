@@ -1,3 +1,8 @@
+2014-01-07  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Map SSH2_FX_FAILURE to ENOTEMPTY for rmdir.  Reported by Ross
+	Lagerwall
+
 2012-05-14  Miklos Szeredi <miklos@szeredi.hu>
 
 	* When checking root directory use LSTAT not STAT.  This prevents
