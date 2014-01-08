@@ -203,6 +203,7 @@ struct sshfs {
 	int detect_uid;
 	int idmap;
 	int nomap;
+	int disable_hardlink;
 	char *uid_file;
 	char *gid_file;
 	GHashTable *uid_map;
@@ -358,6 +359,7 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("password_stdin",    password_stdin, 1),
 	SSHFS_OPT("delay_connect",     delay_connect, 1),
 	SSHFS_OPT("slave",             slave, 1),
+	SSHFS_OPT("disable_hardlink",  disable_hardlink, 1),
 
 	FUSE_OPT_KEY("-p ",            KEY_PORT),
 	FUSE_OPT_KEY("-C",             KEY_COMPRESS),
@@ -2199,7 +2201,7 @@ static int sshfs_link(const char *from, const char *to)
 {
 	int err = -ENOSYS;
 
-	if (sshfs.ext_hardlink) {
+	if (sshfs.ext_hardlink && !sshfs.disable_hardlink) {
 		struct buffer buf;
 
 		buf_init(&buf, 0);
@@ -3197,6 +3199,7 @@ static void usage(const char *progname)
 "    -o sftp_server=SERV    path to sftp server or subsystem (default: sftp)\n"
 "    -o directport=PORT     directly connect to PORT bypassing ssh\n"
 "    -o slave               communicate over stdin and stdout bypassing network\n"
+"    -o disable_hardlink    link(2) will return with errno set to ENOSYS\n"
 "    -o transform_symlinks  transform absolute symlinks to relative\n"
 "    -o follow_symlinks     follow symlinks on the server\n"
 "    -o no_check_root       don't check for existence of 'dir' on server\n"

@@ -1,3 +1,8 @@
+2014-01-08  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Add -o disable_hardlink option (debian bug #670926).  Reported
+	by Louis-David Mitterrand
+
 2014-01-07  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Map SSH2_FX_FAILURE to ENOTEMPTY for rmdir.  Reported by Ross
