@@ -1,3 +1,7 @@
+2014-01-14  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Released 2.5
+
 2014-01-08  Miklos Szeredi <miklos@szeredi.hu>
 
 	* Add -o disable_hardlink option (debian bug #670926).  Reported
