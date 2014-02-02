@@ -1,3 +1,21 @@
+2014-01-14  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Released 2.5
+
+2014-01-08  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Add -o disable_hardlink option (debian bug #670926).  Reported
+	by Louis-David Mitterrand
+
+	* Optimize readdir by sending multiple requests in parallel.  Add
+	-o sync_readdir to restore old behavior.  Patch by Alexander
+	Neumann
+
+2014-01-07  Miklos Szeredi <miklos@szeredi.hu>
+
+	* Map SSH2_FX_FAILURE to ENOTEMPTY for rmdir.  Reported by Ross
+	Lagerwall
+
 2012-05-14  Miklos Szeredi <miklos@szeredi.hu>
 
 	* When checking root directory use LSTAT not STAT.  This prevents

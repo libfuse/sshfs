@@ -62,6 +62,9 @@ synchronous writes
 \fB\-o\fR no_readahead
 synchronous reads (no speculative readahead)
 .TP
+\fB\-o\fR sync_readdir
+synchronous readdir
+.TP
 \fB\-o\fR sshfs_debug
 print some debugging information
 .TP
@@ -155,6 +158,11 @@ communicate over stdin and stdout bypassing network
 .TP
 \fB\-o\fR slave
 communicate over stdin and stdout bypassing network
+.TP
+\fB\-o\fR disable_hardlink
+link(2) will return with errno set to ENOSYS.  Hard links don't currently work
+perfectly on sshfs, and this confuses some programs.  If that happens try
+disabling hard links with this option.
 .TP
 \fB\-o\fR transform_symlinks
 transform absolute symlinks to relative
@@ -271,7 +279,7 @@ perform reads synchronously
 \fB\-o\fR subdir=DIR
 prepend this directory to all paths (mandatory)
 .TP
-\fB\-o\fR [no]rellinksa
+\fB\-o\fR [no]rellinks
 transform absolute symlinks to relative
 .TP
 [iconv]
