@@ -10,17 +10,15 @@
 
 /* Semaphores */
 
-struct __local_sem_t
-{
-    unsigned int    count;
-    pthread_mutex_t count_lock;
-    pthread_cond_t  count_cond;
-};
-
-typedef struct fuse_sem {
+typedef struct darwin_sem {
     int id;
     union {
-        struct __local_sem_t local;
+        struct
+        {
+            unsigned int    count;
+            pthread_mutex_t count_lock;
+            pthread_cond_t  count_cond;
+        } local;
     } __data;
 } darwin_sem_t;
 
