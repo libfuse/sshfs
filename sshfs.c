@@ -254,6 +254,7 @@ struct sshfs {
 	int ext_statvfs;
 	int ext_hardlink;
 	mode_t mnt_mode;
+	struct fuse_operations *op;
 
 	/* statistics */
 	uint64_t bytes_sent;
@@ -1932,6 +1933,22 @@ static int sshfs_getattr(const char *path, struct stat *stbuf)
 	return err;
 }
 
+static int sshfs_access(const char *path, int mask)
+{
+	struct stat stbuf;
+	int err = 0;
+
+	if (mask & X_OK) {
+		err = sshfs.op->getattr(path, &stbuf);
+		if (!err) {
+			if (S_ISREG(stbuf.st_mode) &&
+			    !(stbuf.st_mode & (S_IXUSR|S_IXGRP|S_IXOTH)))
+				err = -EACCES;
+		}
+	}
+	return err;
+}
+
 static int count_components(const char *p)
 {
 	int ctr;
@@ -3234,6 +3251,7 @@ static struct fuse_cache_operations sshfs_oper = {
 	.oper = {
 		.init       = sshfs_init,
 		.getattr    = sshfs_getattr,
+		.access     = sshfs_access,
 		.readlink   = sshfs_readlink,
 		.mknod      = sshfs_mknod,
 		.mkdir      = sshfs_mkdir,
@@ -3336,10 +3354,11 @@ static int is_ssh_opt(const char *arg)
 
 static int sshfs_fuse_main(struct fuse_args *args)
 {
+	sshfs.op = cache_init(&sshfs_oper);
 #if FUSE_VERSION >= 26
-	return fuse_main(args->argc, args->argv, cache_init(&sshfs_oper), NULL);
+	return fuse_main(args->argc, args->argv, sshfs.op, NULL);
 #else
-	return fuse_main(args->argc, args->argv, cache_init(&sshfs_oper));
+	return fuse_main(args->argc, args->argv, sshfs.op);
 #endif
 }
 
@@ -3977,7 +3996,8 @@ int main(int argc, char *argv[])
 		if (res == -1)
 			perror("WARNING: failed to set FD_CLOEXEC on fuse device");
 
-		fuse = fuse_new(ch, &args, cache_init(&sshfs_oper),
+		sshfs.op = cache_init(&sshfs_oper);
+		fuse = fuse_new(ch, &args, sshfs.op,
 				sizeof(struct fuse_operations), NULL);
 		if (fuse == NULL) {
 			fuse_unmount(mountpoint, ch);
