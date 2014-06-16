@@ -11,7 +11,7 @@ The idea of sshfs was taken from the SSHFS filesystem distributed with
 LUFS, which I found very useful.  There were some limitations of that
 codebase, so I rewrote it.  Features of this implementation are:
 
-  - Based on FUSE (the best userspace filesystem framework for Linux ;)
+  - Based on FUSE (the best userspace filesystem framework for Linux ;))
 
   - Multithreading: more than one request can be on it's way to the
     server
