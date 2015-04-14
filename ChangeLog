@@ -1,3 +1,8 @@
+2015-04-14  Miklos Szeredi <miklos@szeredi.hu>
+
+	* sshfs: Increase the maximum length of the password read from
+	stdin to 1024 characters. Reported by: Mario A. Valdez-Ramirez.
+
 2014-02-10  Miklos Szeredi <miklos@szeredi.hu>
 
 	* sshfs: return the correct X_OK access.  Reported by: Alkis

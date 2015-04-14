@@ -125,6 +125,8 @@
 #define READDIR_START 2
 #define READDIR_MAX 32
 
+#define MAX_PASSWORD 1024
+
 struct buffer {
 	uint8_t *p;
 	size_t len;
@@ -3482,7 +3484,7 @@ static void check_large_read(struct fuse_args *args)
 static int read_password(void)
 {
 	int size = getpagesize();
-	int max_password = 64;
+	int max_password = MIN(MAX_PASSWORD, size - 1);
 	int n;
 
 	sshfs.password = mmap(NULL, size, PROT_READ | PROT_WRITE,
