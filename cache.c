@@ -21,12 +21,12 @@
 
 struct cache {
 	int on;
-	unsigned stat_timeout_secs;
-	unsigned dir_timeout_secs;
-	unsigned link_timeout_secs;
-	unsigned max_size;
-	unsigned clean_interval_secs;
-	unsigned min_clean_interval_secs;
+	unsigned int stat_timeout_secs;
+	unsigned int dir_timeout_secs;
+	unsigned int link_timeout_secs;
+	unsigned int max_size;
+	unsigned int clean_interval_secs;
+	unsigned int min_clean_interval_secs;
 	struct fuse_cache_operations *next_oper;
 	GHashTable *table;
 	pthread_mutex_t lock;
