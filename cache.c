@@ -16,8 +16,8 @@
 
 #define DEFAULT_CACHE_TIMEOUT_SECS 20
 #define DEFAULT_MAX_CACHE_SIZE 10000
-#define MIN_CACHE_CLEAN_INTERVAL 5
-#define CACHE_CLEAN_INTERVAL 60
+#define DEFAULT_CACHE_CLEAN_INTERVAL_SECS 60
+#define DEFAULT_MIN_CACHE_CLEAN_INTERVAL_SECS 5
 
 struct cache {
 	int on;
@@ -25,6 +25,8 @@ struct cache {
 	unsigned dir_timeout_secs;
 	unsigned link_timeout_secs;
 	unsigned max_size;
+	unsigned clean_interval_secs;
+	unsigned min_clean_interval_secs;
 	struct fuse_cache_operations *next_oper;
 	GHashTable *table;
 	pthread_mutex_t lock;
@@ -71,9 +73,9 @@ static int cache_clean_entry(void *key_, struct node *node, time_t *now)
 static void cache_clean(void)
 {
 	time_t now = time(NULL);
-	if (now > cache.last_cleaned + MIN_CACHE_CLEAN_INTERVAL &&
+	if (now > cache.last_cleaned + cache.min_clean_interval_secs &&
 	    (g_hash_table_size(cache.table) > cache.max_size ||
-	     now > cache.last_cleaned + CACHE_CLEAN_INTERVAL)) {
+	     now > cache.last_cleaned + cache.clean_interval_secs)) {
 		g_hash_table_foreach_remove(cache.table,
 					    (GHRFunc) cache_clean_entry, &now);
 		cache.last_cleaned = now;
@@ -578,6 +580,10 @@ static const struct fuse_opt cache_opts[] = {
 	{ "cache_dir_timeout=%u", offsetof(struct cache, dir_timeout_secs), 0 },
 	{ "cache_link_timeout=%u", offsetof(struct cache, link_timeout_secs), 0 },
 	{ "cache_max_size=%u", offsetof(struct cache, max_size), 0 },
+	{ "cache_clean_interval=%u", offsetof(struct cache,
+	                                      clean_interval_secs), 0 },
+	{ "cache_min_clean_interval=%u", offsetof(struct cache,
+	                                          min_clean_interval_secs), 0 },
 	FUSE_OPT_END
 };
 
@@ -587,6 +593,8 @@ int cache_parse_options(struct fuse_args *args)
 	cache.dir_timeout_secs = DEFAULT_CACHE_TIMEOUT_SECS;
 	cache.link_timeout_secs = DEFAULT_CACHE_TIMEOUT_SECS;
 	cache.max_size = DEFAULT_MAX_CACHE_SIZE;
+	cache.clean_interval_secs = DEFAULT_CACHE_CLEAN_INTERVAL_SECS;
+	cache.min_clean_interval_secs = DEFAULT_MIN_CACHE_CLEAN_INTERVAL_SECS;
 	cache.on = 1;
 
 	return fuse_opt_parse(args, &cache, cache_opts, NULL);
