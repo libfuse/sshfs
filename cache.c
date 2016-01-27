@@ -14,16 +14,16 @@
 #include <glib.h>
 #include <pthread.h>
 
-#define DEFAULT_CACHE_TIMEOUT 20
+#define DEFAULT_CACHE_TIMEOUT_SECS 20
 #define MAX_CACHE_SIZE 10000
 #define MIN_CACHE_CLEAN_INTERVAL 5
 #define CACHE_CLEAN_INTERVAL 60
 
 struct cache {
 	int on;
-	unsigned stat_timeout;
-	unsigned dir_timeout;
-	unsigned link_timeout;
+	unsigned stat_timeout_secs;
+	unsigned dir_timeout_secs;
+	unsigned link_timeout_secs;
 	struct fuse_cache_operations *next_oper;
 	GHashTable *table;
 	pthread_mutex_t lock;
@@ -172,7 +172,7 @@ void cache_add_attr(const char *path, const struct stat *stbuf, uint64_t wrctr)
 	if (wrctr == cache.write_ctr) {
 		node = cache_get(path);
 		node->stat = *stbuf;
-		node->stat_valid = time(NULL) + cache.stat_timeout;
+		node->stat_valid = time(NULL) + cache.stat_timeout_secs;
 		if (node->stat_valid > node->valid)
 			node->valid = node->stat_valid;
 		cache_clean();
@@ -188,7 +188,7 @@ static void cache_add_dir(const char *path, char **dir)
 	node = cache_get(path);
 	g_strfreev(node->dir);
 	node->dir = dir;
-	node->dir_valid = time(NULL) + cache.dir_timeout;
+	node->dir_valid = time(NULL) + cache.dir_timeout_secs;
 	if (node->dir_valid > node->valid)
 		node->valid = node->dir_valid;
 	cache_clean();
@@ -210,7 +210,7 @@ static void cache_add_link(const char *path, const char *link, size_t size)
 	node = cache_get(path);
 	g_free(node->link);
 	node->link = g_strndup(link, my_strnlen(link, size-1));
-	node->link_valid = time(NULL) + cache.link_timeout;
+	node->link_valid = time(NULL) + cache.link_timeout_secs;
 	if (node->link_valid > node->valid)
 		node->valid = node->link_valid;
 	cache_clean();
@@ -570,20 +570,20 @@ struct fuse_operations *cache_init(struct fuse_cache_operations *oper)
 static const struct fuse_opt cache_opts[] = {
 	{ "cache=yes", offsetof(struct cache, on), 1 },
 	{ "cache=no", offsetof(struct cache, on), 0 },
-	{ "cache_timeout=%u", offsetof(struct cache, stat_timeout), 0 },
-	{ "cache_timeout=%u", offsetof(struct cache, dir_timeout), 0 },
-	{ "cache_timeout=%u", offsetof(struct cache, link_timeout), 0 },
-	{ "cache_stat_timeout=%u", offsetof(struct cache, stat_timeout), 0 },
-	{ "cache_dir_timeout=%u", offsetof(struct cache, dir_timeout), 0 },
-	{ "cache_link_timeout=%u", offsetof(struct cache, link_timeout), 0 },
+	{ "cache_timeout=%u", offsetof(struct cache, stat_timeout_secs), 0 },
+	{ "cache_timeout=%u", offsetof(struct cache, dir_timeout_secs), 0 },
+	{ "cache_timeout=%u", offsetof(struct cache, link_timeout_secs), 0 },
+	{ "cache_stat_timeout=%u", offsetof(struct cache, stat_timeout_secs), 0 },
+	{ "cache_dir_timeout=%u", offsetof(struct cache, dir_timeout_secs), 0 },
+	{ "cache_link_timeout=%u", offsetof(struct cache, link_timeout_secs), 0 },
 	FUSE_OPT_END
 };
 
 int cache_parse_options(struct fuse_args *args)
 {
-	cache.stat_timeout = DEFAULT_CACHE_TIMEOUT;
-	cache.dir_timeout = DEFAULT_CACHE_TIMEOUT;
-	cache.link_timeout = DEFAULT_CACHE_TIMEOUT;
+	cache.stat_timeout_secs = DEFAULT_CACHE_TIMEOUT_SECS;
+	cache.dir_timeout_secs = DEFAULT_CACHE_TIMEOUT_SECS;
+	cache.link_timeout_secs = DEFAULT_CACHE_TIMEOUT_SECS;
 	cache.on = 1;
 
 	return fuse_opt_parse(args, &cache, cache_opts, NULL);
