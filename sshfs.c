@@ -3377,6 +3377,7 @@ static void usage(const char *progname)
 "    -o sync_readdir        synchronous readdir\n"
 "    -o sshfs_debug         print some debugging information\n"
 "    -o cache=BOOL          enable caching {yes,no} (default: yes)\n"
+"    -o cache_max_size=N    sets the maximum size of the cache (default: 10000)\n"
 "    -o cache_timeout=N     sets timeout for caches in seconds (default: 20)\n"
 "    -o cache_X_timeout=N   sets timeout for {stat,dir,link} cache\n"
 "    -o workaround=LIST     colon separated list of workarounds\n"

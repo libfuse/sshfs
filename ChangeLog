@@ -3,6 +3,8 @@ Draft notes for upcoming release
 
 * Integrated osxfuse's copy of sshfs, which means that sshfs now works
   on OS X out of the box.
+* Added -o cache_max_size=N option to let users tune the maximum size of
+  the cache in number of entries.
 
 Release 2.7 (2015-01-28)
 ------------------------
