@@ -11,7 +11,7 @@ sshfs_LDADD = $(SSHFS_LIBS)
 sshfs_CFLAGS = $(SSHFS_CFLAGS)
 sshfs_CPPFLAGS = -D_REENTRANT -DFUSE_USE_VERSION=26 -DLIBDIR=\"$(libdir)\"
 
-EXTRA_DIST = sshnodelay.c FAQ.txt
+EXTRA_DIST = sshnodelay.c
 CLEANFILES = sshnodelay.so
 
 dist_man_MANS = sshfs.1
