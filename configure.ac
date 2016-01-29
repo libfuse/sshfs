@@ -1,5 +1,5 @@
 AC_INIT(sshfs-fuse, 2.5)
-AM_INIT_AUTOMAKE([foreign])
+AM_INIT_AUTOMAKE([foreign subdir-objects])
 AM_CONFIG_HEADER(config.h)
 
 AC_PROG_CC
