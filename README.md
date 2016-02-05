@@ -50,7 +50,7 @@ sftp(1) and ssh_config(5)), including the remote port number
 
 To unmount the filesystem:
 
-    fusermount -u moutpoint
+    fusermount -u mountpoint
 
 
 Installing
