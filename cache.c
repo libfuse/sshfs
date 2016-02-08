@@ -554,9 +554,6 @@ struct fuse_operations *cache_init(struct fuse_cache_operations *oper)
 	cache.next_oper = oper;
 
 	cache_unity_fill(oper, &cache_oper);
-#if __APPLE__
-	cache_enabled = cache.on;
-#endif
 	if (cache.on) {
 		cache_fill(oper, &cache_oper);
 		pthread_mutex_init(&cache.lock, NULL);
@@ -591,7 +588,3 @@ int cache_parse_options(struct fuse_args *args)
 
 	return fuse_opt_parse(args, &cache, cache_opts, NULL);
 }
-
-#if __APPLE__
-int cache_enabled;
-#endif

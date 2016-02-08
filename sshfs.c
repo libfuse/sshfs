@@ -2591,21 +2591,11 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	}
 
 	if (!err) {
-#ifdef __APPLE__
-		if (cache_enabled)
-			cache_add_attr(path, &stbuf, wrctr);
-#else
 		cache_add_attr(path, &stbuf, wrctr);
-#endif
 		buf_finish(&sf->handle);
 		fi->fh = (unsigned long) sf;
 	} else {
-#ifdef __APPLE__
-		if (cache_enabled)
-			cache_invalidate(path);
-#else
 		cache_invalidate(path);
-#endif
 		g_free(sf);
 	}
 	buf_free(&buf);
