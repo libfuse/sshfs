@@ -7,7 +7,11 @@ SSHFS \- filesystem client based on ssh
 \fBsshfs\fP [\fIuser\fP@]\fBhost\fP:[\fIdir\fP] \fBmountpoint\fP [\fIoptions\fP]
 .SS unmounting
 .TP
+#ifdef __APPLE__
+\fBumount mountpoint\fP
+#else
 \fBfusermount -u mountpoint\fP
+#endif
 .SH DESCRIPTION
 SSHFS (Secure SHell FileSystem) is a file system for Linux (and other
 operating systems with a FUSE implementation, such as Mac OS X or FreeBSD)
@@ -101,10 +105,18 @@ user/group ID mapping, possible types are:
 .RS 8
 .TP
 none
+#ifdef __APPLE__
+no translation of the ID space
+#else
 no translation of the ID space (default)
+#endif
 .TP
 user
+#ifdef __APPLE__
+only translate UID/GID of connecting user (default)
+#else
 only translate UID of connecting user
+#endif
 .TP
 file
 translate UIDs/GIDs based upon the contents of \fBuidfile \fR and
@@ -141,6 +153,8 @@ path to sftp server or subsystem (default: sftp)
 .TP
 \fB\-o\fR directport=PORT
 directly connect to PORT bypassing ssh
+\fB\-o\fR slave
+communicate over stdin and stdout bypassing network
 .TP
 \fB\-o\fR slave
 communicate over stdin and stdout bypassing network
@@ -282,5 +296,3 @@ SSHFS has been written by Miklos Szeredi <miklos@szeredi.hu>.
 .LP
 This man page was written by Bartosz Fenski <fenio@debian.org> for the
 Debian GNU/Linux distribution (but it may be used by others).
-
-

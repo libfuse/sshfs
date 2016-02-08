@@ -1,4 +1,5 @@
 AC_INIT(sshfs, 2.6)
+AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 AM_CONFIG_HEADER(config.h)
 
@@ -10,6 +11,14 @@ AC_SEARCH_LIBS(dlsym, [dl])
 sshnodelay_libs=$LIBS
 AC_SUBST(sshnodelay_libs)
 LIBS=
+
+case $target_os in
+     *linux*)	arch=linux;;
+     *netbsd*)  arch=netbsd;;
+     *bsd*)	arch=bsd;;
+     *darwin*)	arch=darwin;;
+     *)		arch=unknown;;
+esac
 
 AC_ARG_ENABLE(sshnodelay,
 	[  --disable-sshnodelay    Don't compile NODELAY workaround for ssh])
@@ -43,10 +52,11 @@ oldlibs="$LIBS"
 LIBS="$LIBS $SSHFS_LIBS"
 AC_CHECK_FUNC([fuse_opt_parse], [have_fuse_opt_parse=yes])
 LIBS="$oldlibs"
-if test "$have_fuse_opt_parse" = no; then
+if test "$have_fuse_opt_parse" = no -o "$arch" = darwin; then
 	CFLAGS="$CFLAGS -Icompat"
 fi
 AM_CONDITIONAL(FUSE_OPT_COMPAT, test "$have_fuse_opt_parse" = no)
+AM_CONDITIONAL(DARWIN_COMPAT, test "$arch" = darwin)
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT
