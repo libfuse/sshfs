@@ -12,12 +12,10 @@ sshnodelay_libs=$LIBS
 AC_SUBST(sshnodelay_libs)
 LIBS=
 
-case $target_os in
-     *linux*)	arch=linux;;
-     *netbsd*)  arch=netbsd;;
-     *bsd*)	arch=bsd;;
-     *darwin*)	arch=darwin;;
-     *)		arch=unknown;;
+case "$target_os" in
+    *linux*) osname=linux;;
+    *darwin*) osname=darwin;;
+    *) osname=unknown;;
 esac
 
 AC_ARG_ENABLE(sshnodelay,
@@ -52,11 +50,11 @@ oldlibs="$LIBS"
 LIBS="$LIBS $SSHFS_LIBS"
 AC_CHECK_FUNC([fuse_opt_parse], [have_fuse_opt_parse=yes])
 LIBS="$oldlibs"
-if test "$have_fuse_opt_parse" = no -o "$arch" = darwin; then
+if test "$have_fuse_opt_parse" = no -o "$osname" = darwin; then
 	CFLAGS="$CFLAGS -Icompat"
 fi
 AM_CONDITIONAL(FUSE_OPT_COMPAT, test "$have_fuse_opt_parse" = no)
-AM_CONDITIONAL(DARWIN_COMPAT, test "$arch" = darwin)
+AM_CONDITIONAL(DARWIN_COMPAT, test "$osname" = darwin)
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT
