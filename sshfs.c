@@ -138,13 +138,7 @@
 #define MAX_PASSWORD 1024
 
 #ifdef __APPLE__
-
-#ifndef LIBDIR
-#  define LIBDIR "/usr/local/lib"
-#endif
-
 static char sshfs_program_path[PATH_MAX] = { 0 };
-
 #endif /* __APPLE__ */
 
 struct buffer {
