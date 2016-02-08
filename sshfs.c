@@ -51,10 +51,6 @@
 
 #include "cache.h"
 
-#ifdef __APPLE__
-#  define OSXFUSE_SSHFS_VERSION "2.5.0"
-#endif
-
 #ifndef MAP_LOCKED
 #define MAP_LOCKED 0
 #endif
@@ -3532,12 +3528,7 @@ static int sshfs_opt_proc(void *data, const char *arg, int key,
 		exit(1);
 
 	case KEY_VERSION:
-#ifdef __APPLE__
-		printf("SSHFS version %s (OSXFUSE SSHFS %s)\n",
-               PACKAGE_VERSION, OSXFUSE_SSHFS_VERSION);
-#else
 		printf("SSHFS version %s\n", PACKAGE_VERSION);
-#endif
 #if FUSE_VERSION >= 25
 		fuse_opt_add_arg(outargs, "--version");
 		sshfs_fuse_main(outargs);
