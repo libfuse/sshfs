@@ -51,7 +51,7 @@ LIBS="$LIBS $SSHFS_LIBS"
 AC_CHECK_FUNC([fuse_opt_parse], [have_fuse_opt_parse=yes])
 LIBS="$oldlibs"
 if test "$have_fuse_opt_parse" = no -o "$osname" = darwin; then
-	CFLAGS="$CFLAGS -Icompat"
+	CFLAGS="$CFLAGS -I${srcdir}/compat"
 fi
 AM_CONDITIONAL(FUSE_OPT_COMPAT, test "$have_fuse_opt_parse" = no)
 AM_CONDITIONAL(DARWIN_COMPAT, test "$osname" = darwin)
