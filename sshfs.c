@@ -204,9 +204,6 @@ struct sshfs_file {
 	int connver;
 	int modifver;
 	int refs;
-#ifdef __APPLE__
-	pthread_mutex_t file_lock;
-#endif
 };
 
 struct sshfs {
@@ -2548,9 +2545,6 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	sf = g_new0(struct sshfs_file, 1);
 	list_init(&sf->write_reqs);
 	pthread_cond_init(&sf->write_finished, NULL);
-#ifdef __APPLE__
-	pthread_mutex_init(&sf->file_lock, NULL);
-#endif
 	/* Assume random read after open */
 	sf->is_seq = 0;
 	sf->refs = 1;
@@ -2644,32 +2638,14 @@ static int sshfs_fsync(const char *path, int isdatasync,
 
 static void sshfs_file_put(struct sshfs_file *sf)
 {
-#ifdef __APPLE__
-	pthread_mutex_lock(&sf->file_lock);
-#endif
 	sf->refs--;
-#ifdef __APPLE__
-	if (!sf->refs) {
-		pthread_mutex_unlock(&sf->file_lock);
-		g_free(sf);
-	} else {
-		pthread_mutex_unlock(&sf->file_lock);
-	}
-#else /* !__APPLE__ */
 	if (!sf->refs)
 		g_free(sf);
-#endif /* __APPLE__ */
 }
 
 static void sshfs_file_get(struct sshfs_file *sf)
 {
-#ifdef __APPLE__
-	pthread_mutex_lock(&sf->file_lock);
-#endif
 	sf->refs++;
-#ifdef __APPLE__
-	pthread_mutex_unlock(&sf->file_lock);
-#endif
 }
 
 static int sshfs_release(const char *path, struct fuse_file_info *fi)
