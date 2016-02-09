@@ -7,11 +7,7 @@ SSHFS \- filesystem client based on ssh
 \fBsshfs\fP [\fIuser\fP@]\fBhost\fP:[\fIdir\fP] \fBmountpoint\fP [\fIoptions\fP]
 .SS unmounting
 .TP
-#ifdef __APPLE__
-\fBumount mountpoint\fP
-#else
-\fBfusermount -u mountpoint\fP
-#endif
+\fB__UNMOUNT_COMMAND__ mountpoint\fP
 .SH DESCRIPTION
 SSHFS (Secure SHell FileSystem) is a file system for Linux (and other
 operating systems with a FUSE implementation, such as Mac OS X or FreeBSD)
@@ -101,22 +97,14 @@ fix buffer fillup bug in server (default: on)
 .RE
 .TP
 \fB\-o\fR idmap=TYPE
-user/group ID mapping, possible types are:
+user/group ID mapping (default: __IDMAP_DEFAULT__)
 .RS 8
 .TP
 none
-#ifdef __APPLE__
 no translation of the ID space
-#else
-no translation of the ID space (default)
-#endif
 .TP
 user
-#ifdef __APPLE__
-only translate UID/GID of connecting user (default)
-#else
-only translate UID of connecting user
-#endif
+only translate UID/GID of connecting user
 .TP
 file
 translate UIDs/GIDs based upon the contents of \fBuidfile \fR and

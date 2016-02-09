@@ -56,5 +56,16 @@ fi
 AM_CONDITIONAL(FUSE_OPT_COMPAT, test "$have_fuse_opt_parse" = no)
 AM_CONDITIONAL(DARWIN_COMPAT, test "$osname" = darwin)
 
+AC_CHECK_PROG(UNMOUNT_COMMAND, fusermount, fusermount -u, umount)
+
+# TODO: Figure out why we special-case this in Darwin.  Would be nice if
+# the default setting was consistent across platforms so we wouldn't need
+# to care about it here.
+case "$osname" in
+    darwin) IDMAP_DEFAULT=user ;;
+    *) IDMAP_DEFAULT=none ;;
+esac
+AC_SUBST(IDMAP_DEFAULT)
+
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT

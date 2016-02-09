@@ -3413,14 +3413,9 @@ static void usage(const char *progname)
 "             [no]nodelaysrv   set nodelay tcp flag in sshd (default: off)\n"
 "             [no]truncate     fix truncate for old servers (default: off)\n"
 "             [no]buflimit     fix buffer fillup bug in server (default: on)\n"
-"    -o idmap=TYPE          user/group ID mapping, possible types are:\n"
-#ifdef __APPLE__
+"    -o idmap=TYPE          user/group ID mapping (default: " IDMAP_DEFAULT ")\n"
 "             none             no translation of the ID space\n"
-"             user             only translate UID/GID of connecting user (default)\n"
-#else
-"             none             no translation of the ID space (default)\n"
-"             user             only translate UID of connecting user\n"
-#endif
+"             user             only translate UID/GID of connecting user\n"
 "             file             translate UIDs/GIDs contained in uidfile/gidfile\n"
 "    -o uidfile=FILE        file containing username:remote_uid mappings\n"
 "    -o gidfile=FILE        file containing groupname:remote_gid mappings\n"
@@ -3975,11 +3970,15 @@ int main(int argc, char *argv[])
 	sshfs.delay_connect = 0;
 	sshfs.slave = 0;
 	sshfs.detect_uid = 0;
-#ifdef __APPLE__
-	sshfs.idmap = IDMAP_USER;
-#else
-	sshfs.idmap = IDMAP_NONE;
-#endif
+	if (strcmp(IDMAP_DEFAULT, "none") == 0) {
+		sshfs.idmap = IDMAP_NONE;
+	} else if (strcmp(IDMAP_DEFAULT, "user") == 0) {
+		sshfs.idmap = IDMAP_USER;
+	} else {
+		fprintf(stderr, "bad idmap default value built into sshfs; "
+		    "assuming none (bad logic in configure script?)\n");
+		sshfs.idmap = IDMAP_NONE;
+	}
 	sshfs.nomap = NOMAP_ERROR;
 	ssh_add_arg("ssh");
 	ssh_add_arg("-x");

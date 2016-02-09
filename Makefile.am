@@ -12,7 +12,8 @@ endif
 
 sshfs_LDADD = $(SSHFS_LIBS)
 sshfs_CFLAGS = $(SSHFS_CFLAGS)
-sshfs_CPPFLAGS = -D_REENTRANT -DFUSE_USE_VERSION=26 -DLIBDIR=\"$(libdir)\"
+sshfs_CPPFLAGS = -D_REENTRANT -DFUSE_USE_VERSION=26 -DLIBDIR=\"$(libdir)\" \
+                 -DIDMAP_DEFAULT="\"$(IDMAP_DEFAULT)\""
 
 EXTRA_DIST = sshnodelay.c sshfs.1.in
 CLEANFILES = sshnodelay.so sshfs.1 sshfs.1.tmp
@@ -20,8 +21,10 @@ CLEANFILES = sshnodelay.so sshfs.1 sshfs.1.tmp
 dist_man_MANS = sshfs.1
 
 sshfs.1: sshfs.1.in
-	$(AM_V_GEN)$(CPP) $(CPPFLAGS) -P -xassembler-with-cpp sshfs.1.in \
-	    | sed -e '/^$$/d' >sshfs.1.tmp || exit 1; \
+	$(AM_V_GEN)sed \
+	    -e 's,__IDMAP_DEFAULT__,$(IDMAP_DEFAULT),g' \
+	    -e 's,__UNMOUNT_COMMAND__,$(UNMOUNT_COMMAND),g' \
+	    <sshfs.1.in >sshfs.1.tmp || exit 1; \
 	mv sshfs.1.tmp sshfs.1
 
 if SSH_NODELAY_SO
