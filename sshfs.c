@@ -3567,7 +3567,6 @@ static int read_password(void)
 		perror("Failed to allocate locked page for password");
 		return -1;
 	}
-#ifdef __APPLE__
 	if (mlock(sshfs.password, size) != 0) {
 		memset(sshfs.password, 0, size);
 		munmap(sshfs.password, size);
@@ -3575,7 +3574,6 @@ static int read_password(void)
 		perror("Failed to allocate locked page for password");
 		return -1;
 	}
-#endif /* __APPLE__ */
 
 	/* Don't use fgets() because password might stay in memory */
 	for (n = 0; n < max_password; n++) {
