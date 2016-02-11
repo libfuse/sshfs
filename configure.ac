@@ -1,4 +1,5 @@
 AC_INIT(sshfs, 2.6)
+AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 AM_CONFIG_HEADER(config.h)
 
@@ -10,6 +11,12 @@ AC_SEARCH_LIBS(dlsym, [dl])
 sshnodelay_libs=$LIBS
 AC_SUBST(sshnodelay_libs)
 LIBS=
+
+case "$target_os" in
+    *linux*) osname=linux;;
+    *darwin*) osname=darwin;;
+    *) osname=unknown;;
+esac
 
 AC_ARG_ENABLE(sshnodelay,
 	[  --disable-sshnodelay    Don't compile NODELAY workaround for ssh])
@@ -43,10 +50,22 @@ oldlibs="$LIBS"
 LIBS="$LIBS $SSHFS_LIBS"
 AC_CHECK_FUNC([fuse_opt_parse], [have_fuse_opt_parse=yes])
 LIBS="$oldlibs"
-if test "$have_fuse_opt_parse" = no; then
-	CFLAGS="$CFLAGS -Icompat"
+if test "$have_fuse_opt_parse" = no -o "$osname" = darwin; then
+	CFLAGS="$CFLAGS -I${srcdir}/compat"
 fi
 AM_CONDITIONAL(FUSE_OPT_COMPAT, test "$have_fuse_opt_parse" = no)
+AM_CONDITIONAL(DARWIN_COMPAT, test "$osname" = darwin)
+
+AC_CHECK_PROG(UNMOUNT_COMMAND, fusermount, fusermount -u, umount)
+
+# TODO: Figure out why we special-case this in Darwin.  Would be nice if
+# the default setting was consistent across platforms so we wouldn't need
+# to care about it here.
+case "$osname" in
+    darwin) IDMAP_DEFAULT=user ;;
+    *) IDMAP_DEFAULT=none ;;
+esac
+AC_SUBST(IDMAP_DEFAULT)
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT
