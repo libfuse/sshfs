@@ -3923,9 +3923,6 @@ int main(int argc, char *argv[])
 	if (!realpath(*exec_path, sshfs_program_path)) {
 		memset(sshfs_program_path, 0, PATH_MAX);
 	}
-
-	/* Until this gets fixed somewhere else. */
-	g_slice_set_config(G_SLICE_CONFIG_ALWAYS_MALLOC, TRUE);
 #endif /* __APPLE__ */
 	g_thread_init(NULL);
 
