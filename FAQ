@@ -1,0 +1,263 @@
+SSHFS FAQ
+=========
+
+1.     I've found a bug and there's no solution in this FAQ, what
+       should I do?
+2.     Advantage of sshfs over NFS and Samba
+3.     Create the device node
+4.     mv fails with "Operation not permitted"
+5.     cvs fails with "cvs [status aborted]: cannot get working
+       directory: No such file or directory" in a sshfs mounted directory
+6.     Changes on the server are not immediately visible in the
+       mounted directory.
+7.     Configuring the ssh connection
+8.     What are the no_readahead and sshfs_sync options for?
+9.    Why does df return strange values on partitions mounted via
+       sshfs?
+10.    How do I specify the remote mount point (since the example
+       defaults to the home directory)
+11.    sshfs hangs after a while
+12.    Following symlinks on the server side
+13.    Making absolute symlinks work
+14.    Mounting as root
+15.    Exporting via NFS
+16.    Automatical mounting using /etc/fstab
+17.    Why does SVN (etc...) fail with permission denied?
+18.    Why does SVN (etc...) fail to rename files?
+19.    Is there some neat way to do it in reverse?
+20.    Might it be reasonable to disallow loops?
+21.    How to mount through an intermediary ssh server, eg:
+       localhost -> A -> B; mount B from localhost
+22.    Alternative Solution
+23.    I seem to have successfully mounted a remote directory, but
+       performing an `ls -l` on the directory above the mount point shows
+       the mount point's attributes as `? ? ? ? ? ?`. Nothing shows up in
+       the directory either. What am I doing wrong?
+
+--------------------------------------------------------------------------
+
+1. I've found a bug and there's no solution in this FAQ, what should I do?
+
+   Please report the bug in the Github issue tracker:
+   https://github.com/libfuse/sshfs/issues
+
+   Also logs with debugging output can be useful for diagnosing the
+   problem. Try running sshfs with the following options:
+     sshfs -odebug,sshfs_debug,loglevel=debug ...
+
+   Doing strace on the application which fails may also sometimes help:
+     strace -f -o /tmp/strace application args ...
+
+   Note that large messages (over 40k) will be rejected from the mailing
+   list. So try to keep the logs as short as possible.
+
+
+2. Advantage of sshfs over NFS and Samba
+
+   Users can mount remote resources they already have ssh access to,
+   without requiring the remote machine to export the resource.
+
+   The remote resource can be mounted when it is needed in a location
+   that is convenient for the user at that time, without needing to rely
+   on a central, root-controlled file system table.
+
+   Automatic mounting, if desired, can be added to a shell script such as
+   .bashrc (provided authentication is done using RSA/DSA keys).
+
+   Resources can be mounted over slow and unreliable (distant)
+   connections.
+
+3. Create the device node
+
+   If you don't use udev, you may get this error message:
+
+   fusermount: failed to open /dev/fuse: No such device or address
+
+   Before loading the fuse kernel module, create the device node
+   manually:
+
+     mknod -m 666 /dev/fuse c 10 229
+
+4. mv fails with "Operation not permitted".
+
+   Use -o workaround=rename (requires sshfs version >= 1.3).
+
+5. cvs fails with "cvs status aborted?: cannot get working directory: No such
+   file or directory" in a sshfs mounted directory
+
+   Use the -oreaddir_ino option. Example:
+     sshfs -oreaddir_ino hostname:remote_dir mount_point
+
+6. Changes on the server are not immediately visible in the mounted directory.
+
+   By default, sshfs caches things for 20 seconds, use -o cache_timeout=N
+   to change the default cache timeout (in seconds) or -o cache=no for
+   disabling the cache.
+
+   You can also control cache timeouts for directory listing etc with
+   -o cache_stat_timeout=N,
+   -o cache_dir_timout=N, and
+   -o cache_link_timout=N.
+
+7. Configuring the ssh connection
+
+   In addition to flags like -C, -p, and -o SSHOPT...=, you may find it
+   easier to edit your /.ssh/config file. You can add an entry with any
+   customization you want, test it with ssh, and finally use it with
+   sshfs. As a bonus, you get a short mnemonic for your configuration.
+
+8. What are the no_readahead and sshfs_sync options for?
+
+   These disable read and write optimizations respectively. They don't
+   really make sense unless you're doing something special.
+
+9. Why does df return strange values on partitions mounted via sshfs?
+
+   Because the SFTP protocol doesn't have a statfs operation this is
+   currently not possible to display proper usage on remote partition.
+
+10. How do I specfy the remote mount point (since the example defaults to the
+    home directory)
+
+    The example shows:
+      sshfs hostname: mountpoint
+
+    To specify a remote mount point use:
+      sshfs hostname:remotemountpoint mountpoint
+
+    This might be obvious to others, but I ended up looking up the
+    interface to sftp to see if I could learn how to specify the remote
+    mount point, then thought about the way that scp specifies the remote
+    directory, and it worked.
+
+11. sshfs hangs after a while
+
+    Mounting works fine, I can use the files in Mountpoint as good as any
+    other files on my system, but after bit of time, changing nothing on
+    the remote files sshfs crashes. This means, I can not cd into the
+    Mountpoint (xterm hangs, nautilus hangs... every program trying to
+    access the Mountpoint gets stuck, and won't return).
+
+    Solution: add
+      ServerAliveInterval 15
+
+    in your .ssh/config (or use -o ServerAliveInterval=15 on the sshfs
+    command line but I did not test that solution). This will force the
+    ssh connection to stay alive even if you have no activity.
+
+12. Following symlinks on the server side
+
+    The -o follow_symlinks option will enable this.
+
+13. Making absolute symlinks work
+
+    Use the -o transform_symlinks option, which will transform absolute
+    symlinks (ones which point somewhere inside the mount) into relative
+    ones.
+
+14. Mounting as root
+
+    Generally it's not possible to use an sshfs mount as a "real"
+    filesystem shared between multiple users. Some of this functionality
+    can be enabled with the -o allow_other and -o default_permissions
+    options, but files will not be created with the correct ownership,
+    etc...
+
+15. Exporting via NFS
+
+    Use the userspace NFS daemon http://sourceforge.net/projects/unfs
+
+16. Automatical mounting using /etc/fstab
+
+    A line in /etc/fstab has the following format:
+      sshfs#USERNAME@REMOTE_HOST:REMOTE_PATH MOUNT_POINT fuse SSHFS_OPTIONS 0 0
+
+    eg.
+      sshfs#guest@guest.login.com:data /mnt/guest fuse \
+        uid=1003,gid=100,umask=0,allow_other 0 0
+
+17. Why does SVN (etc...) fail with permission denied?
+
+    This is a bug that happens when an application creates a read-only
+    file opened for writing (e.g. open("foo", O_WRONLY|O_CREAT, 0444))
+
+    It has been fixed in sshfs version 1.3, but also requires FUSE version
+    >=2.5.X and Linux kernel version >=2.6.15.
+
+18. Why does SVN (etc...) fail to rename files?
+
+    $ svn co svn://anonsvn.kde.org/home/kde/trunk/KDE/kdelibs
+    svn: Can't move 'kdelibs/.svn/tmp/entries' to 'kdelibs/.svn/entries':
+    Operation not permitted
+
+    The reason is that SFTP protocol version 3 (which is implemented by
+    OpenSSH's sftp-server) defines the rename operation slightly
+    differently than POSIX. The difference is that renaming to an existing
+    file or directory will fail instead of atomically replacing the old
+    file.
+
+    The -o workaround=rename option will try to emulate POSIX rename
+    semantics, but it cannot guarantee atomicity. In most of the cases
+    this doesn't matter, and things will work fine with this option.
+
+19. Is there some neat way to do it in reverse?
+
+    You want to mount a USB thumb drive onto a file server that is rather
+    remote.
+
+    Assuming this is difficult because the laptop with the thumb drive is
+    sitting behind NAT, firewalls, etc. then you need to create a
+    port-forward:
+      client$ ssh -R 2222:localhost:22 server
+      server$ sshfs -p 2222 localhost:/media/usb1 myusb1
+
+    (Now, is there is there a smarter way that does not involve port
+    opening login permissions in an undesireable direction?)
+
+20. Might it be reasonable to disallow loops?
+
+    sshfs localhost:/mnt /mnt
+
+    This seems to produce undesirable results. --JoshuaRodman
+
+21. How to mount through an intermediary ssh server, eg: localhost -> A -> B;
+    mount B from localhost
+
+    Start by mounting the folder you need that is on "a" to a folder on
+    "b" then mount the new folder that is on "a" to a folder on localhost.
+
+    IE: (These are NOT real commands, but a sequence of steps.
+    A mounts B:/home/x on /mnt/Bx
+    localhost mounts A:/mnt/Bx on ~/mydir
+
+22. Alternative Solution:
+
+    1) Create a shell script to wrap the tunneling of one ssh command over
+    another,
+      $ cat >Atunnel <<EOF
+      #!/bin/bash
+      ssh -q A ssh -q "$@"
+      EOF
+      $ chmod u+x Atunnel
+
+    N.B. make sure to put this somewhere on your path. 2) sshfs mount as
+    normal but using this script as the ssh command.
+      $ sshfs -o ssh_command='Atunnel' B: ~/mydir
+
+23. I seem to have successfully mounted a remote directory, but performing an
+    `ls -l` on the directory above the mount point shows the mount point's
+    attributes as `? ? ? ? ? ?`. Nothing shows up in the directory either. What
+    am I doing wrong?
+
+    You probably specified a remote path with the tilde (~) in it. This
+    doesn't seem to work. Instead, specify an absolute remote path:
+      sshfs username@remote.host:/home/username/whatever my/mount
+
+    What options do i use to make playing media files (music) over sshfs more
+    efficient?
+
+    MacFUSE doesn't seem to let me move files from one directory to another. It
+    first asks for my local user password (i.e. the password on my Macbook Pro)
+    and then produces the error message "The operation cannot be completed
+    because one or more required items cannot be found. (Error code -120).
+
