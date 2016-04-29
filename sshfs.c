@@ -218,6 +218,7 @@ struct sshfs {
 	int truncate_workaround;
 	int buflimit_workaround;
 	int fstat_workaround;
+	int openrw_workaround;
 	int transform_symlinks;
 	int follow_symlinks;
 	int no_check_root;
@@ -409,12 +410,14 @@ static struct fuse_opt workaround_opts[] = {
 	SSHFS_OPT("none",       truncate_workaround, 0),
 	SSHFS_OPT("none",       buflimit_workaround, 0),
 	SSHFS_OPT("none",       fstat_workaround, 0),
+	SSHFS_OPT("none",       openrw_workaround, 0),
 	SSHFS_OPT("all",        rename_workaround, 1),
 	SSHFS_OPT("all",        nodelay_workaround, 1),
 	SSHFS_OPT("all",        nodelaysrv_workaround, 1),
 	SSHFS_OPT("all",        truncate_workaround, 1),
 	SSHFS_OPT("all",        buflimit_workaround, 1),
 	SSHFS_OPT("all",        fstat_workaround, 1),
+	SSHFS_OPT("all",        openrw_workaround, 1),
 	SSHFS_OPT("rename",     rename_workaround, 1),
 	SSHFS_OPT("norename",   rename_workaround, 0),
 	SSHFS_OPT("nodelay",    nodelay_workaround, 1),
@@ -427,6 +430,8 @@ static struct fuse_opt workaround_opts[] = {
 	SSHFS_OPT("nobuflimit", buflimit_workaround, 0),
 	SSHFS_OPT("fstat",      fstat_workaround, 1),
 	SSHFS_OPT("nofstat",    fstat_workaround, 0),
+	SSHFS_OPT("openrw",     openrw_workaround, 1),
+	SSHFS_OPT("noopenrw",   openrw_workaround, 0),
 	FUSE_OPT_END
 };
 
@@ -2571,6 +2576,16 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	}
 	err = sftp_request_wait(open_req, SSH_FXP_OPEN, SSH_FXP_HANDLE,
 				&sf->handle);
+	if (err && sshfs.openrw_workaround && (pflags & SSH_FXF_WRITE)) {
+		/* Retry without write flag */
+		buf_clear(&buf);
+		buf_add_path(&buf, path);
+		buf_add_uint32(&buf, pflags & ~SSH_FXF_WRITE);
+		buf_add_uint32(&buf, SSH_FILEXFER_ATTR_PERMISSIONS);
+		buf_add_uint32(&buf, mode);
+		err = sftp_request(SSH_FXP_OPEN, &buf, SSH_FXP_HANDLE,
+				   &sf->handle);
+	}
 	if (!err && err2) {
 		buf_finish(&sf->handle);
 		sftp_request(SSH_FXP_CLOSE, &sf->handle, 0, NULL);
@@ -3390,6 +3405,7 @@ static void usage(const char *progname)
 "             none             no workarounds enabled\n"
 "             all              all workarounds enabled\n"
 "             [no]rename       fix renaming to existing file (default: off)\n"
+"             [no]openrw       fake r/w open if read-only (default: off)\n"
 #ifdef SSH_NODELAY_WORKAROUND
 "             [no]nodelay      set nodelay tcp flag in ssh (default: on)\n"
 #endif
