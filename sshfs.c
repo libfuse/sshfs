@@ -3373,6 +3373,10 @@ static struct fuse_cache_operations sshfs_oper = {
 		.ftruncate  = sshfs_ftruncate,
 		.fgetattr   = sshfs_fgetattr,
 #endif
+#if FUSE_VERSION >= 29
+		.flag_nullpath_ok = 1,
+		.flag_nopath = 1,
+#endif
 	},
 	.cache_getdir = sshfs_getdir,
 };
