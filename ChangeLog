@@ -2,6 +2,7 @@ Unreleased Changes
 ------------------
 
 * Added support for the "fsync" extension.
+* Fixed a build problem with bitbake	
 
 Release 2.6 (2015-03-01)
 ------------------------
