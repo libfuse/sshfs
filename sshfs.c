@@ -11,7 +11,9 @@
 
 #include <fuse.h>
 #include <fuse_opt.h>
+#if !defined(__CYGWIN__)
 #include <fuse_lowlevel.h>
+#endif
 #ifdef __APPLE__
 #  include <fuse_darwin.h>
 #endif
@@ -4108,7 +4110,9 @@ int main(int argc, char *argv[])
 		char *mountpoint;
 		int multithreaded;
 		int foreground;
+#if !defined(__CYGWIN__)
 		struct stat st;
+#endif
 
 		res = fuse_parse_cmdline(&args, &mountpoint, &multithreaded,
 					 &foreground);
@@ -4120,20 +4124,26 @@ int main(int argc, char *argv[])
 			foreground = 1;
 		}
 
+#if !defined(__CYGWIN__)
 		res = stat(mountpoint, &st);
 		if (res == -1) {
 			perror(mountpoint);
 			exit(1);
 		}
 		sshfs.mnt_mode = st.st_mode;
+#elif defined(__CYGWIN__)
+		sshfs.mnt_mode = S_IFDIR | 0755;
+#endif
 
 		ch = fuse_mount(mountpoint, &args);
 		if (!ch)
 			exit(1);
 
+#if !defined(__CYGWIN__)
 		res = fcntl(fuse_chan_fd(ch), F_SETFD, FD_CLOEXEC);
 		if (res == -1)
 			perror("WARNING: failed to set FD_CLOEXEC on fuse device");
+#endif
 
 		sshfs.op = cache_init(&sshfs_oper);
 		fuse = fuse_new(ch, &args, sshfs.op,
