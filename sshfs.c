@@ -2640,7 +2640,7 @@ static int sshfs_fsync(const char *path, int isdatasync,
 	int err;
 	(void) isdatasync;
 
-	if (err = sshfs_flush(path, fi))
+	if ((err = sshfs_flush(path, fi)))
 		return err;
 
 	if (!sshfs.ext_fsync)
