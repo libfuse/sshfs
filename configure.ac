@@ -1,4 +1,4 @@
-AC_INIT(sshfs, 2.7)
+AC_INIT(sshfs, 2.8)
 AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 AM_CONFIG_HEADER(config.h)
