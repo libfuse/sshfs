@@ -24,7 +24,7 @@ sshfs.1: sshfs.1.in
 	$(AM_V_GEN)sed \
 	    -e 's,__IDMAP_DEFAULT__,$(IDMAP_DEFAULT),g' \
 	    -e 's,__UNMOUNT_COMMAND__,$(UNMOUNT_COMMAND),g' \
-	    <sshfs.1.in >sshfs.1.tmp || exit 1; \
+	    <$(srcdir)/sshfs.1.in >sshfs.1.tmp || exit 1; \
 	mv sshfs.1.tmp sshfs.1
 
 if SSH_NODELAY_SO
