@@ -3996,6 +3996,14 @@ int main(int argc, char *argv[])
 	    parse_workarounds() == -1)
 		exit(1);
 
+#if FUSE_VERSION >= 29
+	// These workarounds require the "path" argument.
+	if (sshfs.truncate_workaround || sshfs.fstat_workaround) {
+		sshfs_oper.oper.flag_nullpath_ok = 0;
+		sshfs_oper.oper.flag_nopath = 0;
+	}
+#endif
+
 	if (sshfs.idmap == IDMAP_USER)
 		sshfs.detect_uid = 1;
 	else if (sshfs.idmap == IDMAP_FILE) {
