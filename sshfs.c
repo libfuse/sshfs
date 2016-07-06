@@ -2640,6 +2640,9 @@ static int sshfs_fsync(const char *path, int isdatasync,
 	int err;
 	(void) isdatasync;
 
+	/* A double parentheses statement tells compiler that the assignment
+	 * in the if () statement is intended as it is. This suppress warning
+	 */
 	if ((err = sshfs_flush(path, fi)))
 		return err;
 
