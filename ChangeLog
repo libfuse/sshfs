@@ -1,10 +1,10 @@
-Release 2.7 (2016-06-22)
+Release 2.8 (2016-06-22)
 ------------------------
 
 * Added support for the "fsync" extension.
-* Fixed a build problem with bitbake	
+* Fixed a build problem with bitbake
 
-Release 2.6 (2016-03-01)
+Release 2.7 (2016-03-01)
 ------------------------
 
 * Integrated osxfuse's copy of sshfs, which means that sshfs now works
