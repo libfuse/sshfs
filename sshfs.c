@@ -11,7 +11,9 @@
 
 #include <fuse.h>
 #include <fuse_opt.h>
+#if !defined(__CYGWIN__)
 #include <fuse_lowlevel.h>
+#endif
 #ifdef __APPLE__
 #  include <fuse_darwin.h>
 #endif
@@ -295,6 +297,7 @@ static const char *ssh_opts[] = {
 	"AddressFamily",
 	"BatchMode",
 	"BindAddress",
+	"CertificateFile",
 	"ChallengeResponseAuthentication",
 	"CheckHostIP",
 	"Cipher",
@@ -305,28 +308,40 @@ static const char *ssh_opts[] = {
 	"ConnectTimeout",
 	"ControlMaster",
 	"ControlPath",
+	"ControlPersist",
+	"FingerprintHash",
 	"GlobalKnownHostsFile",
 	"GSSAPIAuthentication",
 	"GSSAPIDelegateCredentials",
 	"HostbasedAuthentication",
+	"HostbasedKeyTypes",
 	"HostKeyAlgorithms",
 	"HostKeyAlias",
 	"HostName",
 	"IdentitiesOnly",
 	"IdentityFile",
+	"IdentityAgent",
+	"IPQoS",
 	"KbdInteractiveAuthentication",
 	"KbdInteractiveDevices",
+	"KexAlgorithms",
 	"LocalCommand",
 	"LogLevel",
 	"MACs",
 	"NoHostAuthenticationForLocalhost",
 	"NumberOfPasswordPrompts",
 	"PasswordAuthentication",
+	"PermitLocalCommand",
+	"PKCS11Provider",
 	"Port",
 	"PreferredAuthentications",
 	"ProxyCommand",
+	"ProxyJump",
+	"ProxyUseFdpass",
+	"PubkeyAcceptedKeyTypes"
 	"PubkeyAuthentication",
 	"RekeyLimit",
+	"RevokedHostKeys",
 	"RhostsRSAAuthentication",
 	"RSAAuthentication",
 	"ServerAliveCountMax",
@@ -334,9 +349,11 @@ static const char *ssh_opts[] = {
 	"SmartcardDevice",
 	"StrictHostKeyChecking",
 	"TCPKeepAlive",
+	"UpdateHostKeys",
 	"UsePrivilegedPort",
 	"UserKnownHostsFile",
 	"VerifyHostKeyDNS",
+	"VisualHostKey",
 	NULL,
 };
 
@@ -3953,9 +3970,6 @@ int main(int argc, char *argv[])
 	if (!realpath(*exec_path, sshfs_program_path)) {
 		memset(sshfs_program_path, 0, PATH_MAX);
 	}
-
-	/* Until this gets fixed somewhere else. */
-	g_slice_set_config(G_SLICE_CONFIG_ALWAYS_MALLOC, TRUE);
 #endif /* __APPLE__ */
 	g_thread_init(NULL);
 
@@ -4120,7 +4134,9 @@ int main(int argc, char *argv[])
 		char *mountpoint;
 		int multithreaded;
 		int foreground;
+#if !defined(__CYGWIN__)
 		struct stat st;
+#endif
 
 		res = fuse_parse_cmdline(&args, &mountpoint, &multithreaded,
 					 &foreground);
@@ -4132,20 +4148,26 @@ int main(int argc, char *argv[])
 			foreground = 1;
 		}
 
+#if !defined(__CYGWIN__)
 		res = stat(mountpoint, &st);
 		if (res == -1) {
 			perror(mountpoint);
 			exit(1);
 		}
 		sshfs.mnt_mode = st.st_mode;
+#elif defined(__CYGWIN__)
+		sshfs.mnt_mode = S_IFDIR | 0755;
+#endif
 
 		ch = fuse_mount(mountpoint, &args);
 		if (!ch)
 			exit(1);
 
+#if !defined(__CYGWIN__)
 		res = fcntl(fuse_chan_fd(ch), F_SETFD, FD_CLOEXEC);
 		if (res == -1)
 			perror("WARNING: failed to set FD_CLOEXEC on fuse device");
+#endif
 
 		sshfs.op = cache_init(&sshfs_oper);
 		fuse = fuse_new(ch, &args, sshfs.op,

@@ -1,10 +1,22 @@
-Release 2.7 (2016-06-22)
+Unreleased Changes
+------------------
+
+* Added support for more SSH options.
+
+
+Release 2.9 (2017-04-17)
+------------------------
+
+* Improved support for Cygwin.
+* Various small bugfixes.
+
+Release 2.8 (2016-06-22)
 ------------------------
 
 * Added support for the "fsync" extension.
-* Fixed a build problem with bitbake	
+* Fixed a build problem with bitbake
 
-Release 2.6 (2016-03-01)
+Release 2.7 (2016-03-01)
 ------------------------
 
 * Integrated osxfuse's copy of sshfs, which means that sshfs now works

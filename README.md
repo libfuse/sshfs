@@ -52,6 +52,9 @@ To unmount the filesystem:
 
     fusermount -u mountpoint
 
+On macOS, to unmount the filesystem:
+
+    umount mountpoint
 
 Installing
 ==========
