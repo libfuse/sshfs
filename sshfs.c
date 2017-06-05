@@ -4173,6 +4173,13 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 
+                res = fuse_set_signal_handlers(fuse_get_session(fuse));
+		if (res == -1) {
+			fuse_unmount(mountpoint, ch);
+			fuse_destroy(fuse);
+			exit(1);
+		}
+
 		/*
 		 * FIXME: trim $PATH so it doesn't contain anything inside the
 		 * mountpoint, which would deadlock.
@@ -4185,9 +4192,6 @@ int main(int argc, char *argv[])
 		}
 
 		res = fuse_daemonize(foreground);
-		if (res != -1)
-			res = fuse_set_signal_handlers(fuse_get_session(fuse));
-
 		if (res == -1) {
 			fuse_unmount(mountpoint, ch);
 			fuse_destroy(fuse);
