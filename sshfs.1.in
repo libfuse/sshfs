@@ -7,7 +7,7 @@ SSHFS \- filesystem client based on ssh
 \fBsshfs\fP [\fIuser\fP@]\fBhost\fP:[\fIdir\fP] \fBmountpoint\fP [\fIoptions\fP]
 .SS unmounting
 .TP
-\fB__UNMOUNT_COMMAND__ mountpoint\fP
+\fB@UNMOUNT_COMMAND@ mountpoint\fP
 .SH DESCRIPTION
 SSHFS (Secure SHell FileSystem) is a file system for Linux (and other
 operating systems with a FUSE implementation, such as Mac OS X or FreeBSD)
@@ -97,7 +97,7 @@ fix buffer fillup bug in server (default: on)
 .RE
 .TP
 \fB\-o\fR idmap=TYPE
-user/group ID mapping (default: __IDMAP_DEFAULT__)
+user/group ID mapping (default: @IDMAP_DEFAULT@)
 .RS 8
 .TP
 none

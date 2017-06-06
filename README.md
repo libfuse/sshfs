@@ -49,14 +49,44 @@ instead. Finally, you need the
 (which should be available from your operating system's package
 manager).
 
-To compile and install SSHFS, extract the tarball and run:
+To build and install, we recommend to use
+[Meson](http://mesonbuild.com/) (version 0.38 or newer) and
+[Ninja](https://ninja-build.org).  After extracting the sshfs tarball,
+create a (temporary) build directory and run Meson and Ninja:
+
+    $ md build; cd build
+    $ meson ..
+    $ ninja
+    $ sudo ninja install
+
+Normally, the default build options will work fine. If you
+nevertheless want to adjust them, you can do so with the *mesonconf*
+command:
+
+    $ mesonconf                  # list options 
+    $ mesonconf -D strip=true    # set an option
+    $ ninja                      # rebuild
+
+
+Alternate Installation
+----------------------
+
+If you are not able to use Meson and Ninja, please report this to the
+sshfs mailing list. Until the problem is resolved, you may fall back
+to an in-source build using autotools:
+
+    $ ./configure
+    $ make
+    $ sudo make install
+
+Note that support for building with autotools may disappear at some
+point, so if you depend on using autotools for some reason please let
+the sshfs developers know!
+
 
     ./configure
     make
     sudo make install
-
-When checking out from git (instead of using a release tarball), you
-will need to run `autoreconf -i` before `./configure`.
 
 Getting Help
 ------------

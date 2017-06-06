@@ -1,6 +1,7 @@
 Unreleased Changes
 ------------------
 
+* Added support for building with Meson.
 * Added support for more SSH options.
 * Dropped support for the *nodelay* workaround.
 	
