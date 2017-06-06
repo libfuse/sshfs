@@ -3,9 +3,12 @@ Unreleased Changes
 
 * Added support for building with Meson.
 * Added support for more SSH options.
-* Dropped support for the *nodelay* workaround.
-	
-          
+* Dropped support for the *nodelay* workaround - the last OpenSSH
+  version for which this was useful was released in 2006.
+* Dropped support for the *nodelaysrv* workaround. The same effect
+  (enabling NODELAY on the server side *and* enabling X11 forwarding)
+  can be achieved by explicitly passing `-o ForwardX11`
+
 Release 2.9 (2017-04-17)
 ------------------------
 
