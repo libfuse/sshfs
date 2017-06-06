@@ -1,10 +1,9 @@
-=======
- SSHFS
-=======
+SSHFS
+=====
 
 
 About
-=====
+-----
 
 SSHFS allows you to mount a remote filesystem using SFTP. Most SSH
 servers support and enable this SFTP access by default, so SSHFS is
@@ -12,7 +11,7 @@ very simple to use - there's nothing to do on the server-side.
 
 
 How to use
-==========
+----------
 
 Once sshfs is installed (see next section) running it is very simple:
 
@@ -39,7 +38,7 @@ On BSD and OS-X, to unmount the filesystem:
 
 
 Installation
-============
+------------
 
 First, download the latest SSHFS release from
 https://github.com/libfuse/sshfs/releases. On Linux and BSD, you will
@@ -60,7 +59,7 @@ When checking out from git (instead of using a release tarball), you
 will need to run `autoreconf -i` before `./configure`.
 
 Getting Help
-============
+------------
 
 If you need help, please ask on the [SSHFS mailing
 list](http://groups.google.com/group/sshfs). To post to the list,
