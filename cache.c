@@ -527,6 +527,7 @@ static void cache_unity_fill(struct fuse_cache_operations *oper,
 	cache_oper->flag_nullpath_ok = oper->oper.flag_nullpath_ok;
 	cache_oper->flag_nopath  = oper->oper.flag_nopath;
 #endif
+	cache_oper->flock = oper->oper.flock;
 }
 
 static void cache_fill(struct fuse_cache_operations *oper,
