@@ -3871,7 +3871,6 @@ int main(int argc, char *argv[])
 		memset(sshfs_program_path, 0, PATH_MAX);
 	}
 #endif /* __APPLE__ */
-	g_thread_init(NULL);
 
 	sshfs.blksize = 4096;
 	/* SFTP spec says all servers should allow at least 32k I/O */
