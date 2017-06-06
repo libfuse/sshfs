@@ -132,8 +132,6 @@
 
 #define SFTP_SERVER_PATH "/usr/lib/sftp-server"
 
-#define SSHNODELAY_SO "sshnodelay.so"
-
 /* Asynchronous readdir parameters */
 #define READDIR_START 2
 #define READDIR_MAX 32
@@ -216,7 +214,6 @@ struct sshfs {
 	struct fuse_args ssh_args;
 	char *workarounds;
 	int rename_workaround;
-	int nodelay_workaround;
 	int nodelaysrv_workaround;
 	int truncate_workaround;
 	int buflimit_workaround;
@@ -423,21 +420,17 @@ static struct fuse_opt sshfs_opts[] = {
 
 static struct fuse_opt workaround_opts[] = {
 	SSHFS_OPT("none",       rename_workaround, 0),
-	SSHFS_OPT("none",       nodelay_workaround, 0),
 	SSHFS_OPT("none",       nodelaysrv_workaround, 0),
 	SSHFS_OPT("none",       truncate_workaround, 0),
 	SSHFS_OPT("none",       buflimit_workaround, 0),
 	SSHFS_OPT("none",       fstat_workaround, 0),
 	SSHFS_OPT("all",        rename_workaround, 1),
-	SSHFS_OPT("all",        nodelay_workaround, 1),
 	SSHFS_OPT("all",        nodelaysrv_workaround, 1),
 	SSHFS_OPT("all",        truncate_workaround, 1),
 	SSHFS_OPT("all",        buflimit_workaround, 1),
 	SSHFS_OPT("all",        fstat_workaround, 1),
 	SSHFS_OPT("rename",     rename_workaround, 1),
 	SSHFS_OPT("norename",   rename_workaround, 0),
-	SSHFS_OPT("nodelay",    nodelay_workaround, 1),
-	SSHFS_OPT("nonodelay",  nodelay_workaround, 0),
 	SSHFS_OPT("nodelaysrv", nodelaysrv_workaround, 1),
 	SSHFS_OPT("nonodelaysrv", nodelaysrv_workaround, 0),
 	SSHFS_OPT("truncate",   truncate_workaround, 1),
@@ -892,85 +885,6 @@ static void ssh_add_arg(const char *arg)
 		_exit(1);
 }
 
-#ifdef SSH_NODELAY_WORKAROUND
-static int do_ssh_nodelay_workaround(void)
-{
-#ifdef __APPLE__
-	char *oldpreload = getenv("DYLD_INSERT_LIBRARIES");
-#else
-	char *oldpreload = getenv("LD_PRELOAD");
-#endif
-	char *newpreload;
-	char sopath[PATH_MAX];
-	int res;
-
-#ifdef __APPLE__
-	char *sshfs_program_path_base = NULL;
-	if (!sshfs_program_path[0]) {
-		goto nobundle;
-	}
-	sshfs_program_path_base = dirname(sshfs_program_path);
-	if (!sshfs_program_path_base) {
-		goto nobundle;
-	}
-	snprintf(sopath, sizeof(sopath), "%s/%s", sshfs_program_path_base,
-             SSHNODELAY_SO);
-	res = access(sopath, R_OK);
-	if (res == -1) {
-		goto nobundle;
-	}
-	goto pathok;
-
-nobundle:
-#endif /* __APPLE__ */
-
-	snprintf(sopath, sizeof(sopath), "%s/%s", LIBDIR, SSHNODELAY_SO);
-	res = access(sopath, R_OK);
-	if (res == -1) {
-		char *s;
-		if (!realpath(sshfs.progname, sopath))
-			return -1;
-
-		s = strrchr(sopath, '/');
-		if (!s)
-			s = sopath;
-		else
-			s++;
-
-		if (s + strlen(SSHNODELAY_SO) >= sopath + sizeof(sopath))
-			return -1;
-
-		strcpy(s, SSHNODELAY_SO);
-		res = access(sopath, R_OK);
-		if (res == -1) {
-			fprintf(stderr, "sshfs: cannot find %s\n",
-				SSHNODELAY_SO);
-			return -1;
-		}
-	}
-
-#ifdef __APPLE__
-pathok:
-#endif
-
-	newpreload = g_strdup_printf("%s%s%s",
-				     oldpreload ? oldpreload : "",
-				     oldpreload ? " " : "",
-				     sopath);
-
-#ifdef __APPLE__
-	if (!newpreload || setenv("DYLD_INSERT_LIBRARIES", newpreload, 1) == -1)
-		fprintf(stderr, "warning: failed set DYLD_INSERT_LIBRARIES for ssh nodelay workaround\n");
-#else /* !__APPLE__ */
-	if (!newpreload || setenv("LD_PRELOAD", newpreload, 1) == -1) {
-		fprintf(stderr, "warning: failed set LD_PRELOAD "
-			"for ssh nodelay workaround\n");
-	}
-#endif /* __APPLE__ */
-	g_free(newpreload);
-	return 0;
-}
-#endif
 
 static int pty_expect_loop(void)
 {
@@ -1103,14 +1017,6 @@ static int start_ssh(void)
 		return -1;
 	} else if (pid == 0) {
 		int devnull;
-
-#ifdef SSH_NODELAY_WORKAROUND
-		if (sshfs.nodelay_workaround &&
-		    do_ssh_nodelay_workaround() == -1) {
-			fprintf(stderr,
-				"warning: ssh nodelay workaround disabled\n");
-		}
-#endif
 
 		if (sshfs.nodelaysrv_workaround) {
 			int i;
@@ -3433,9 +3339,6 @@ static void usage(const char *progname)
 "             none             no workarounds enabled\n"
 "             all              all workarounds enabled\n"
 "             [no]rename       fix renaming to existing file (default: off)\n"
-#ifdef SSH_NODELAY_WORKAROUND
-"             [no]nodelay      set nodelay tcp flag in ssh (default: on)\n"
-#endif
 "             [no]nodelaysrv   set nodelay tcp flag in sshd (default: off)\n"
 "             [no]truncate     fix truncate for old servers (default: off)\n"
 "             [no]buflimit     fix buffer fillup bug in server (default: on)\n"
@@ -3973,7 +3876,6 @@ int main(int argc, char *argv[])
 	/* SFTP spec says all servers should allow at least 32k I/O */
 	sshfs.max_read = 32768;
 	sshfs.max_write = 32768;
-	sshfs.nodelay_workaround = 1;
 	sshfs.nodelaysrv_workaround = 0;
 #ifdef __APPLE__
 	sshfs.rename_workaround = 1;
