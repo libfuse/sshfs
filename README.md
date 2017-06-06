@@ -1,75 +1,72 @@
-Abstract
-========
-
-This is a filesystem client based on the SSH File Transfer Protocol.
-Since most SSH servers already support this protocol it is very easy
-to set up: i.e. on the server side there's nothing to do.  On the
-client side mounting the filesystem is as easy as logging into the
-server with ssh.
-
-The idea of sshfs was taken from the SSHFS filesystem distributed with
-LUFS, which I found very useful.  There were some limitations of that
-codebase, so I rewrote it.  Features of this implementation are:
-
-  - Based on FUSE (the best userspace filesystem framework for Linux ;)
-
-  - Multithreading: more than one request can be on it's way to the
-    server
-
-  - Allowing large reads (max 64k)
-
-  - Caching directory contents
-
-  - Reconnect on failure
-
-Latest version
-==============
-
-The latest version and more information can be found on
-http://github.com/libfuse/sshfs
+=======
+ SSHFS
+=======
 
 
-How to mount a filesystem
-=========================
+About
+=====
+
+SSHFS allows you to mount a remote filesystem using SFTP. Most SSH
+servers support and enable this SFTP access by default, so SSHFS is
+very simple to use - there's nothing to do on the server-side.
+
+
+How to use
+==========
 
 Once sshfs is installed (see next section) running it is very simple:
 
-    sshfs hostname: mountpoint
+    sshfs [user@]hostname:[directory] mountpoint
 
-Note, that it's recommended to run it as user, not as root.  For this
-to work the mountpoint must be owned by the user.  If the username is
-different on the host you are connecting to, then use the
-"username@host:" form.  If you need to enter a password sshfs will ask
-for it (actually it just runs ssh which ask for the password if
-needed).  You can also specify a directory after the ":".  The default
-is the home directory.
+It is recommended to run SSHFS as regular user (not as root).  For
+this to work the mountpoint must be owned by the user.  If username is
+omitted SSHFS will use the local username. If the directory is
+omitted, SSHFS will mount the (remote) home directory.  If you need to
+enter a password sshfs will ask for it (actually it just runs ssh
+which ask for the password if needed).
 
 Also many ssh options can be specified (see the manual pages for
-sftp(1) and ssh_config(5)), including the remote port number
+*sftp(1)* and *ssh_config(5)*), including the remote port number
 (`-oport=PORT`)
 
 To unmount the filesystem:
 
     fusermount -u mountpoint
 
-On macOS, to unmount the filesystem:
+On BSD and OS-X, to unmount the filesystem:
 
     umount mountpoint
 
-Installing
-==========
 
-First you need to download FUSE 2.2 or later from
-http://github.com/libfuse/libfuse.
+Installation
+============
 
-You also need to install the devel package for glib2.0.  After
-installing FUSE, compile sshfs the usual way:
+First, download the latest SSHFS release from
+https://github.com/libfuse/sshfs/releases. On Linux and BSD, you will
+also need to have [libfuse](http://github.com/libfuse/libfuse)
+installed. On OS-X, you need [OSXFUSE](https://osxfuse.github.io/)
+instead. Finally, you need the
+[glib](https://developer.gnome.org/glib/stable/) development package
+(which should be available from your operating system's package
+manager).
+
+To compile and install SSHFS, extract the tarball and run:
 
     ./configure
     make
-    make install (as root)
+    sudo make install
 
-And you are ready to go.
+When checking out from git (instead of using a release tarball), you
+will need to run `autoreconf -i` before `./configure`.
 
-If checking out from git for the first time also do `autoreconf -i`
-before doing `./configure`.
+Getting Help
+============
+
+If you need help, please ask on the [SSHFS mailing
+list](http://groups.google.com/group/sshfs). To post to the list,
+please don't use the web interface but send an email to
+<sshfs@googlegroups.com>.
+
+Please report any bugs on the GitHub issue tracker at
+https://github.com/libfuse/libfuse/issues.
+
