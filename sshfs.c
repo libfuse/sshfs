@@ -2657,7 +2657,11 @@ static int sshfs_fsync(const char *path, int isdatasync,
 	int err;
 	(void) isdatasync;
 
-	if (err = sshfs_flush(path, fi))
+	/* A double parentheses statement tells compiler that the assignment in
+	 * the if () statement is intended as it is.
+	 * This suppresses compiler's warning.
+	 */
+	if ((err = sshfs_flush(path, fi)))
 		return err;
 
 	if (!sshfs.ext_fsync)
