@@ -3322,6 +3322,7 @@ static void usage(const char *progname)
 "             [no]rename       fix renaming to existing file (default: off)\n"
 "             [no]truncate     fix truncate for old servers (default: off)\n"
 "             [no]buflimit     fix buffer fillup bug in server (default: on)\n"
+"             [no]fstat        fix fstat for old servers (default: off)\n"
 "    -o idmap=TYPE          user/group ID mapping (default: " IDMAP_DEFAULT ")\n"
 "             none             no translation of the ID space\n"
 "             user             only translate UID/GID of connecting user\n"
