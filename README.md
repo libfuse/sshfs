@@ -88,6 +88,21 @@ the sshfs developers know!
     make
     sudo make install
 
+
+Caveats
+-------
+
+Some SSH servers do not support atomically overwriting the destination
+when renaming a file. In this case you will get an error when you
+attempt to rename a file and the destination already exists. A
+workaround is to first remove the destination file, and then do the
+rename. SSHFS can do this automatically if you call it with `-o
+workaround=rename`. However, in this case it is still possible that
+someone (or something) recreates the destination file after SSHFS has
+removed it, but before SSHFS had the time to rename the old file. In
+this case, the rename will still fail.
+
+    
 Getting Help
 ------------
 
