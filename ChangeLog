@@ -8,7 +8,10 @@ Unreleased Changes
 * Dropped support for the *nodelaysrv* workaround. The same effect
   (enabling NODELAY on the server side *and* enabling X11 forwarding)
   can be achieved by explicitly passing `-o ForwardX11`
-
+* Removed support for `-o workaround=all`. Workarounds should always
+  enabled explicitly and only when needed. There is no point in always
+  enabling a potentially changing set of workarounds.
+  
 Release 2.9 (2017-04-17)
 ------------------------
 

@@ -422,10 +422,6 @@ static struct fuse_opt workaround_opts[] = {
 	SSHFS_OPT("none",       truncate_workaround, 0),
 	SSHFS_OPT("none",       buflimit_workaround, 0),
 	SSHFS_OPT("none",       fstat_workaround, 0),
-	SSHFS_OPT("all",        rename_workaround, 1),
-	SSHFS_OPT("all",        truncate_workaround, 1),
-	SSHFS_OPT("all",        buflimit_workaround, 1),
-	SSHFS_OPT("all",        fstat_workaround, 1),
 	SSHFS_OPT("rename",     rename_workaround, 1),
 	SSHFS_OPT("norename",   rename_workaround, 0),
 	SSHFS_OPT("truncate",   truncate_workaround, 1),
@@ -3318,7 +3314,6 @@ static void usage(const char *progname)
 "                           cache if full (default: 5)\n"
 "    -o workaround=LIST     colon separated list of workarounds\n"
 "             none             no workarounds enabled\n"
-"             all              all workarounds enabled\n"
 "             [no]rename       fix renaming to existing file (default: off)\n"
 "             [no]truncate     fix truncate for old servers (default: off)\n"
 "             [no]buflimit     fix buffer fillup bug in server (default: on)\n"
