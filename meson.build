@@ -45,7 +45,7 @@ configure_file(input: 'sshfs.1.in',
 configure_file(output: 'config.h',
                configuration : cfg)
 
-sshfs_deps = [ dependency('fuse', version: '>= 2.3'),
+sshfs_deps = [ dependency('fuse', version: '>= 2.9'),
                dependency('glib-2.0'),
                dependency('gthread-2.0') ]
 

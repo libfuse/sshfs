@@ -1712,17 +1712,11 @@ static int start_processing_thread(void)
 	return 0;
 }
 
-#if FUSE_VERSION >= 26
 static void *sshfs_init(struct fuse_conn_info *conn)
-#else
-static void *sshfs_init(void)
-#endif
 {
-#if FUSE_VERSION >= 26
 	/* Readahead should be done by kernel or sshfs but not both */
 	if (conn->async_read)
 		sshfs.sync_read = 1;
-#endif
 
 	if (!sshfs.delay_connect)
 		start_processing_thread();
@@ -2999,7 +2993,6 @@ static int sshfs_ext_statvfs(const char *path, struct statvfs *stbuf)
 }
 
 
-#if FUSE_VERSION >= 25
 static int sshfs_statfs(const char *path, struct statvfs *buf)
 {
 	if (sshfs.ext_statvfs)
@@ -3017,36 +3010,7 @@ static int sshfs_statfs(const char *path, struct statvfs *buf)
 	buf->f_files = buf->f_ffree = 1000000000;
 	return 0;
 }
-#else
-static int sshfs_statfs(const char *path, struct statfs *buf)
-{
-	if (sshfs.ext_statvfs) {
-		int err;
-		struct statvfs vbuf;
 
-		err = sshfs_ext_statvfs(path, &vbuf);
-		if (!err) {
-			buf->f_bsize = vbuf.f_bsize;
-			buf->f_blocks = vbuf.f_blocks;
-			buf->f_bfree = vbuf.f_bfree;
-			buf->f_bavail = vbuf.f_bavail;
-			buf->f_files = vbuf.f_files;
-			buf->f_ffree = vbuf.f_ffree;
-			buf->f_namelen = vbuf.f_namemax;
-		}
-		return err;
-	}
-
-	buf->f_namelen = 255;
-	buf->f_bsize = sshfs.blksize;
-	buf->f_blocks = buf->f_bfree = buf->f_bavail =
-		1000ULL * 1024 * 1024 * 1024 / buf->f_bsize;
-	buf->f_files = buf->f_ffree = 1000000000;
-	return 0;
-}
-#endif
-
-#if FUSE_VERSION >= 25
 static int sshfs_create(const char *path, mode_t mode,
                         struct fuse_file_info *fi)
 {
@@ -3078,7 +3042,6 @@ static int sshfs_ftruncate(const char *path, off_t size,
 
 	return err;
 }
-#endif
 
 static int sshfs_fgetattr(const char *path, struct stat *stbuf,
 			  struct fuse_file_info *fi)
@@ -3268,15 +3231,11 @@ static struct fuse_cache_operations sshfs_oper = {
 		.read       = sshfs_read,
 		.write      = sshfs_write,
 		.statfs     = sshfs_statfs,
-#if FUSE_VERSION >= 25
 		.create     = sshfs_create,
 		.ftruncate  = sshfs_ftruncate,
 		.fgetattr   = sshfs_fgetattr,
-#endif
-#if FUSE_VERSION >= 29
 		.flag_nullpath_ok = 1,
 		.flag_nopath = 1,
-#endif
 	},
 	.cache_getdir = sshfs_getdir,
 };
@@ -3359,11 +3318,7 @@ static int is_ssh_opt(const char *arg)
 static int sshfs_fuse_main(struct fuse_args *args)
 {
 	sshfs.op = cache_init(&sshfs_oper);
-#if FUSE_VERSION >= 26
 	return fuse_main(args->argc, args->argv, sshfs.op, NULL);
-#else
-	return fuse_main(args->argc, args->argv, sshfs.op);
-#endif
 }
 
 static int sshfs_opt_proc(void *data, const char *arg, int key,
@@ -3413,10 +3368,8 @@ static int sshfs_opt_proc(void *data, const char *arg, int key,
 
 	case KEY_VERSION:
 		printf("SSHFS version %s\n", PACKAGE_VERSION);
-#if FUSE_VERSION >= 25
 		fuse_opt_add_arg(outargs, "--version");
 		sshfs_fuse_main(outargs);
-#endif
 		exit(0);
 
 	case KEY_FOREGROUND:
@@ -3455,24 +3408,6 @@ int parse_workarounds(void)
 
 	return res;
 }
-
-#if FUSE_VERSION == 25
-static int fuse_opt_insert_arg(struct fuse_args *args, int pos,
-                               const char *arg)
-{
-	assert(pos <= args->argc);
-	if (fuse_opt_add_arg(args, arg) == -1)
-		return -1;
-
-	if (pos != args->argc - 1) {
-		char *newarg = args->argv[args->argc - 1];
-		memmove(&args->argv[pos + 1], &args->argv[pos],
-			sizeof(char *) * (args->argc - pos - 1));
-		args->argv[pos] = newarg;
-	}
-	return 0;
-}
-#endif
 
 static void check_large_read(struct fuse_args *args)
 {
@@ -3597,24 +3532,6 @@ static char *find_base_path(void)
 	return s;
 }
 
-/*
- * Remove commas from fsname, as it confuses the fuse option parser.
- */
-static void fsname_remove_commas(char *fsname)
-{
-	if (strchr(fsname, ',') != NULL) {
-		char *s = fsname;
-		char *d = s;
-
-		for (; *s; s++) {
-			if (*s != ',')
-				*d++ = *s;
-		}
-		*d = *s;
-	}
-}
-
-#if FUSE_VERSION >= 27
 static char *fsname_escape_commas(char *fsnameold)
 {
 	char *fsname = g_malloc(strlen(fsnameold) * 2 + 1);
@@ -3631,7 +3548,6 @@ static char *fsname_escape_commas(char *fsnameold)
 
 	return fsname;
 }
-#endif
 
 static int ssh_connect(void)
 {
@@ -3839,7 +3755,6 @@ int main(int argc, char *argv[])
 	char *tmp;
 	char *fsname;
 	const char *sftp_server;
-	int libver;
 
 #ifdef __APPLE__
 	if (!realpath(*exec_path, sshfs_program_path)) {
@@ -3886,13 +3801,11 @@ int main(int argc, char *argv[])
 	    parse_workarounds() == -1)
 		exit(1);
 
-#if FUSE_VERSION >= 29
 	// These workarounds require the "path" argument.
 	if (sshfs.truncate_workaround || sshfs.fstat_workaround) {
 		sshfs_oper.oper.flag_nullpath_ok = 0;
 		sshfs_oper.oper.flag_nopath = 0;
 	}
-#endif
 
 	if (sshfs.idmap == IDMAP_USER)
 		sshfs.detect_uid = 1;
@@ -3982,24 +3895,13 @@ int main(int argc, char *argv[])
 
 	if (fuse_is_lib_option("ac_attr_timeout="))
 		fuse_opt_insert_arg(&args, 1, "-oauto_cache,ac_attr_timeout=0");
-#if FUSE_VERSION >= 27
-	libver = fuse_version();
-	assert(libver >= 27);
-	if (libver >= 28)
-		fsname = fsname_escape_commas(fsname);
-	else
-		fsname_remove_commas(fsname);
+        fsname = fsname_escape_commas(fsname);
 	tmp = g_strdup_printf("-osubtype=sshfs,fsname=%s", fsname);
-#else
-	fsname_remove_commas(fsname);
-	tmp = g_strdup_printf("-ofsname=sshfs#%s", fsname);
-#endif
 	fuse_opt_insert_arg(&args, 1, tmp);
 	g_free(tmp);
 	g_free(fsname);
 	check_large_read(&args);
 
-#if FUSE_VERSION >= 26
 	{
 		struct fuse *fuse;
 		struct fuse_chan *ch;
@@ -4089,13 +3991,6 @@ int main(int argc, char *argv[])
 		fuse_destroy(fuse);
 		free(mountpoint);
 	}
-#else
-	res = ssh_connect();
-	if (res == -1)
-		exit(1);
-
-	res = sshfs_fuse_main(&args);
-#endif
 
 	if (sshfs.debug) {
 		unsigned int avg_rtt = 0;
