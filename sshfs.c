@@ -3437,10 +3437,14 @@ static int workaround_opt_proc(void *data, const char *arg, int key,
 	return -1;
 }
 
-int parse_workarounds(void)
+static int parse_workarounds(void)
 {
 	int res;
-	char *argv[] = { "", "-o", sshfs.workarounds, NULL };
+        /* Need separate variables because literals are const
+           char */
+        char argv0[] = "";
+        char argv1[] = "-o";
+	char *argv[] = { argv0, argv1, sshfs.workarounds, NULL };
 	struct fuse_args args = FUSE_ARGS_INIT(3, argv);
 	char *s = sshfs.workarounds;
 	if (!s)
