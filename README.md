@@ -106,10 +106,9 @@ this case, the rename will still fail.
 Getting Help
 ------------
 
-If you need help, please ask on the [SSHFS mailing
-list](http://groups.google.com/group/sshfs). To post to the list,
-please don't use the web interface but send an email to
-<sshfs@googlegroups.com>.
+If you need help, please ask on the <fuse-sshfs@lists.sourceforge.net>
+mailing list (subscribe at
+https://lists.sourceforge.net/lists/listinfo/fuse-sshfs).
 
 Please report any bugs on the GitHub issue tracker at
 https://github.com/libfuse/libfuse/issues.
