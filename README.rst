@@ -88,6 +88,9 @@ the sshfs developers know!
 Caveats
 -------
 
+Rename
+~~~~~~
+
 Some SSH servers do not support atomically overwriting the destination
 when renaming a file. In this case you will get an error when you
 attempt to rename a file and the destination already exists. A
@@ -97,6 +100,14 @@ workaround=rename`. However, in this case it is still possible that
 someone (or something) recreates the destination file after SSHFS has
 removed it, but before SSHFS had the time to rename the old file. In
 this case, the rename will still fail.
+
+Hardlinks
+~~~~~~~~~
+
+If the SSH server supports the *hardlinks* extension, SSHFS will allow
+you to create hardlinks. However, hardlinks will always appear as
+individual files when seen through an SSHFS mount, i.e. they will
+appear to have different inodes and an *st_nlink* value of 1.
 
 
 Getting Help
