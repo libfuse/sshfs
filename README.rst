@@ -48,12 +48,10 @@ be available from your operating system's package manager).
 
 To build and install, we recommend to use Meson_ (version 0.38 or
 newer) and Ninja_.  After extracting the sshfs tarball, create a
-(temporary) build directory and run Meson and Ninja::
+(temporary) build directory and run Meson::
 
     $ md build; cd build
     $ meson ..
-    $ ninja
-    $ sudo ninja install
 
 Normally, the default build options will work fine. If you
 nevertheless want to adjust them, you can do so with the *mesonconf*
@@ -61,13 +59,20 @@ command::
 
     $ mesonconf                  # list options 
     $ mesonconf -D strip=true    # set an option
-    $ ninja                      # rebuild
+
+To build, test and install SSHFS, you then use Ninja (running the
+tests requires the `py.test`_ Python module)::
+
+    $ ninja
+    $ python3 -m pytest test/    # optional, but recommended
+    $ sudo ninja install
 
 .. _libfuse: http://github.com/libfuse/libfuse
 .. _OSXFUSE: https://osxfuse.github.io/
 .. _Glib: https://developer.gnome.org/glib/stable/
 .. _Meson: http://mesonbuild.com/
 .. _Ninja: https://ninja-build.org/
+.. _`py.test`: http://www.pytest.org/
 
 Alternate Installation
 ----------------------

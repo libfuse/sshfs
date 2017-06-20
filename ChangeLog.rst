@@ -1,6 +1,7 @@
 Unreleased Changes
 ------------------
 
+* Added unit tests
 * Documented limited hardlink support.
 * Added support for building with Meson.
 * Added support for more SSH options.
