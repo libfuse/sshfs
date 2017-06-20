@@ -453,7 +453,6 @@ static int cache_write(const char *path, const char *buf, size_t size,
 	return res;
 }
 
-#if FUSE_VERSION >= 25
 static int cache_create(const char *path, mode_t mode,
                         struct fuse_file_info *fi)
 {
@@ -484,14 +483,11 @@ static int cache_fgetattr(const char *path, struct stat *stbuf,
 	}
 	return err;
 }
-#endif
 
 static void cache_unity_fill(struct fuse_cache_operations *oper,
                              struct fuse_operations *cache_oper)
 {
-#if FUSE_VERSION >= 23
 	cache_oper->init        = oper->oper.init;
-#endif
 	cache_oper->getattr     = oper->oper.getattr;
 	cache_oper->access	= oper->oper.access;
 	cache_oper->readlink    = oper->oper.readlink;
@@ -518,15 +514,11 @@ static void cache_unity_fill(struct fuse_cache_operations *oper,
 	cache_oper->getxattr    = oper->oper.getxattr;
 	cache_oper->listxattr   = oper->oper.listxattr;
 	cache_oper->removexattr = oper->oper.removexattr;
-#if FUSE_VERSION >= 25
 	cache_oper->create      = oper->oper.create;
 	cache_oper->ftruncate   = oper->oper.ftruncate;
 	cache_oper->fgetattr    = oper->oper.fgetattr;
-#endif
-#if FUSE_VERSION >= 29
 	cache_oper->flag_nullpath_ok = oper->oper.flag_nullpath_ok;
 	cache_oper->flag_nopath  = oper->oper.flag_nopath;
-#endif
 }
 
 static void cache_fill(struct fuse_cache_operations *oper,
@@ -547,16 +539,11 @@ static void cache_fill(struct fuse_cache_operations *oper,
 	cache_oper->truncate = oper->oper.truncate ? cache_truncate : NULL;
 	cache_oper->utime    = oper->oper.utime ? cache_utime : NULL;
 	cache_oper->write    = oper->oper.write ? cache_write : NULL;
-#if FUSE_VERSION >= 25
 	cache_oper->create   = oper->oper.create ? cache_create : NULL;
 	cache_oper->ftruncate = oper->oper.ftruncate ? cache_ftruncate : NULL;
 	cache_oper->fgetattr = oper->oper.fgetattr ? cache_fgetattr : NULL;
-#endif
-#if FUSE_VERSION >= 29
 	cache_oper->flag_nullpath_ok = 0;
 	cache_oper->flag_nopath = 0;
-#endif
-
 }
 
 struct fuse_operations *cache_init(struct fuse_cache_operations *oper)

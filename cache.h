@@ -9,10 +9,6 @@
 #include <fuse.h>
 #include <fuse_opt.h>
 
-#ifndef FUSE_VERSION
-#define FUSE_VERSION (FUSE_MAJOR_VERSION * 10 + FUSE_MINOR_VERSION)
-#endif
-
 typedef struct fuse_cache_dirhandle *fuse_cache_dirh_t;
 typedef int (*fuse_cache_dirfil_t) (fuse_cache_dirh_t h, const char *name,
                                     const struct stat *stbuf);
