@@ -1,0 +1,20 @@
+sudo: required
+dist: trusty
+
+language:
+    - c
+addons:
+  apt:
+    sources:
+    - ubuntu-toolchain-r-test
+    packages:
+    - valgrind
+    - clang
+    - gcc
+    - gcc-6
+    - fuse
+    - libfuse2
+    - libfuse-dev
+install: test/travis-install.sh
+script: test/travis-build.sh
+

@@ -1,0 +1,11 @@
+# Suppression file for address sanitizer.
+
+# There are some leaks in command line option parsing. They should be
+# fixed at some point, but are harmless since the consume just a small,
+# constant amount of memory and do not grow.
+leak:fuse_opt_parse
+
+
+# Leaks in fusermount3 are harmless as well (it's a short-lived
+# process) - but patches are welcome!
+leak:fusermount.c
