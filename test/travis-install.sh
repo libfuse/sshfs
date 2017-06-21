@@ -13,9 +13,20 @@ valgrind --version
 ninja --version
 meson --version
 
+# Install fuse
+wget https://github.com/libfuse/libfuse/releases/download/fuse-3.0.2/fuse-3.0.2.tar.gz
+tar xzf fuse-3.0.2.tar.gz
+cd fuse-3.0.2
+mkdir build
+cd build
+meson ..
+ninja
+sudo ninja install
+test -e /usr/local/lib/pkgconfig || sudo mkdir /usr/local/lib/pkgconfig
+sudo mv /usr/local/lib/*/pkgconfig/* /usr/local/lib/pkgconfig/
+
 # Setup ssh
 ssh-keygen -b 768 -t rsa -f ~/.ssh/id_rsa -P ''
 cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
 ssh -o "StrictHostKeyChecking=no" localhost echo "SSH connection succeeded"
-

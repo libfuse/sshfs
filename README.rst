@@ -42,9 +42,10 @@ Installation
 
 First, download the latest SSHFS release from
 https://github.com/libfuse/sshfs/releases. On Linux and BSD, you will
-also need to have libfuse_ installed. On OS-X, you need OSXFUSE_
-instead. Finally, you need the Glib_ development package (which should
-be available from your operating system's package manager).
+also need to install libfuse_ 3.0.0 or newer. On OS-X, you need
+OSXFUSE_ instead. Finally, you need the Glib_ library with development
+headers (which should be available from your operating system's
+package manager).
 
 To build and install, we recommend to use Meson_ (version 0.38 or
 newer) and Ninja_.  After extracting the sshfs tarball, create a

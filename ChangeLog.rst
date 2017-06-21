@@ -1,7 +1,12 @@
 Unreleased Changes
 ------------------
 
+* sshfs now requires libfuse 3.0.0 or newer.
+* When supported by the kernel, sshfs now uses writeback caching.
+* The `cache` option has been renamed to `dir_cache` for clarity.  
 * Added unit tests
+* --debug now behaves like -o debug_sshfs, i.e. it enables sshfs
+  debugging messages rather than libfuse debugging messages.
 * Documented limited hardlink support.
 * Added support for building with Meson.
 * Added support for more SSH options.

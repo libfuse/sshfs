@@ -45,14 +45,14 @@ configure_file(input: 'sshfs.1.in',
 configure_file(output: 'config.h',
                configuration : cfg)
 
-sshfs_deps = [ dependency('fuse', version: '>= 2.9'),
+sshfs_deps = [ dependency('fuse3', version: '>= 3.0.0'),
                dependency('glib-2.0'),
                dependency('gthread-2.0') ]
 
 executable('sshfs', sshfs_sources,
            include_directories: include_dirs,
            dependencies: sshfs_deps,
-           c_args: ['-DFUSE_USE_VERSION=26'],
+           c_args: ['-DFUSE_USE_VERSION=30'],
            install: true,
            install_dir: get_option('bindir'))
 

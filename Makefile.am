@@ -12,7 +12,7 @@ endif
 
 sshfs_LDADD = $(SSHFS_LIBS)
 sshfs_CFLAGS = $(SSHFS_CFLAGS)
-sshfs_CPPFLAGS = -D_REENTRANT -DFUSE_USE_VERSION=26 -DLIBDIR=\"$(libdir)\" \
+sshfs_CPPFLAGS = -D_REENTRANT -DFUSE_USE_VERSION=30 -DLIBDIR=\"$(libdir)\" \
                  -DIDMAP_DEFAULT="\"$(IDMAP_DEFAULT)\""
 
 EXTRA_DIST = sshfs.1.in meson.build

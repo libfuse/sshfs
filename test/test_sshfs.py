@@ -30,7 +30,7 @@ def name_generator(__ctr=[0]):
     return 'testfile_%d' % __ctr[0]
 
 @pytest.mark.parametrize("debug", (False, True))
-@pytest.mark.parametrize("cache_timeout", (0, 1))
+@pytest.mark.parametrize("cache_timeout", (0,1))
 @pytest.mark.parametrize("sync_rd", (True, False))
 def test_sshfs(tmpdir, debug, cache_timeout, sync_rd, capfd):
     
@@ -64,10 +64,10 @@ def test_sshfs(tmpdir, debug, cache_timeout, sync_rd, capfd):
         
     # SSHFS Cache
     if cache_timeout == 0:
-        cmdline += [ '-o', 'cache=no' ]
+        cmdline += [ '-o', 'dir_cache=no' ]
     else:
-        cmdline += [ '-o', 'cache_timeout=%d' % cache_timeout,
-                     '-o', 'cache=yes' ]
+        cmdline += [ '-o', 'dcache_timeout=%d' % cache_timeout,
+                     '-o', 'dir_cache=yes' ]
 
     # FUSE Cache
     cmdline += [ '-o', 'entry_timeout=0',
