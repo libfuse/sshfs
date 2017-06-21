@@ -66,7 +66,8 @@ def test_sshfs(tmpdir, debug, cache_timeout, sync_rd, capfd):
     if cache_timeout == 0:
         cmdline += [ '-o', 'cache=no' ]
     else:
-        cmdline += [ '-o', 'cache_timeout=%d' % cache_timeout ]
+        cmdline += [ '-o', 'cache_timeout=%d' % cache_timeout,
+                     '-o', 'cache=yes' ]
 
     # FUSE Cache
     cmdline += [ '-o', 'entry_timeout=0',
