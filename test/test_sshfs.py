@@ -31,7 +31,8 @@ def name_generator(__ctr=[0]):
 
 @pytest.mark.parametrize("debug", (False, True))
 @pytest.mark.parametrize("cache_timeout", (0, 1))
-def test_sshfs(tmpdir, debug, cache_timeout, capfd):
+@pytest.mark.parametrize("sync_rd", (True, False))
+def test_sshfs(tmpdir, debug, cache_timeout, sync_rd, capfd):
     
     # Avoid false positives from debug messages
     #if debug:
@@ -58,6 +59,9 @@ def test_sshfs(tmpdir, debug, cache_timeout, capfd):
     if debug:
         cmdline += [ '-o', 'sshfs_debug' ]
 
+    if sync_rd:
+        cmdline += [ '-o', 'sync_readdir' ]
+        
     # SSHFS Cache
     if cache_timeout == 0:
         cmdline += [ '-o', 'cache=no' ]

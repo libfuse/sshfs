@@ -836,8 +836,8 @@ static int buf_get_statvfs(struct buffer *buf, struct statvfs *stbuf)
 	return 0;
 }
 
-static int buf_get_entries(struct buffer *buf, fuse_cache_dirh_t h,
-                           fuse_cache_dirfil_t filler)
+static int buf_get_entries(struct buffer *buf, void *dbuf,
+                           fuse_fill_dir_t filler)
 {
 	uint32_t count;
 	unsigned i;
@@ -860,7 +860,7 @@ static int buf_get_entries(struct buffer *buf, fuse_cache_dirh_t h,
 				    S_ISLNK(stbuf.st_mode)) {
 					stbuf.st_mode = 0;
 				}
-				filler(h, name, &stbuf);
+				filler(dbuf, name, &stbuf, 0);
 			}
 		}
 		free(name);
@@ -2029,8 +2029,8 @@ static int sshfs_req_pending(struct request *req)
 		return 0;
 }
 
-static int sftp_readdir_async(struct buffer *handle, fuse_cache_dirh_t h,
-			      fuse_cache_dirfil_t filler)
+static int sftp_readdir_async(struct buffer *handle, void *buf, off_t offset,
+			     fuse_fill_dir_t filler)
 {
 	int err = 0;
 	int outstanding = 0;
@@ -2039,6 +2039,7 @@ static int sftp_readdir_async(struct buffer *handle, fuse_cache_dirh_t h,
 
 	int done = 0;
 
+	assert(offset == 0);
 	while (!done || outstanding) {
 		struct request *req;
 		struct buffer name;
@@ -2084,7 +2085,7 @@ static int sftp_readdir_async(struct buffer *handle, fuse_cache_dirh_t h,
 				done = 1;
 			}
 			if (!done) {
-				err = buf_get_entries(&name, h, filler);
+				err = buf_get_entries(&name, buf, filler);
 				buf_free(&name);
 
 				/* increase number of outstanding requests */
@@ -2101,15 +2102,16 @@ static int sftp_readdir_async(struct buffer *handle, fuse_cache_dirh_t h,
 	return err;
 }
 
-static int sftp_readdir_sync(struct buffer *handle, fuse_cache_dirh_t h,
-			     fuse_cache_dirfil_t filler)
+static int sftp_readdir_sync(struct buffer *handle, void *buf, off_t offset,
+			     fuse_fill_dir_t filler)
 {
 	int err;
+	assert(offset == 0);
 	do {
 		struct buffer name;
 		err = sftp_request(SSH_FXP_READDIR, handle, SSH_FXP_NAME, &name);
 		if (!err) {
-			err = buf_get_entries(&name, h, filler);
+			err = buf_get_entries(&name, buf, filler);
 			buf_free(&name);
 		}
 	} while (!err);
@@ -2119,23 +2121,32 @@ static int sftp_readdir_sync(struct buffer *handle, fuse_cache_dirh_t h,
 	return err;
 }
 
-static int sshfs_getdir(const char *path, fuse_cache_dirh_t h,
-                        fuse_cache_dirfil_t filler)
+static int sshfs_readdir(const char *path, void *dbuf, fuse_fill_dir_t filler,
+			 off_t offset, struct fuse_file_info *fi)
 {
 	int err;
 	struct buffer buf;
 	struct buffer handle;
+
+	/* FIXME: Handle this */
+	(void) fi;
+	if(path == NULL) {
+		fprintf(stderr, "Don't yet know how to do readdir() without path\n");
+		return -EIO;
+	}
+	
 	buf_init(&buf, 0);
 	buf_add_path(&buf, path);
+	// TODO: This should really go into sshfs_opendir() and sshfs_closedir()
 	err = sftp_request(SSH_FXP_OPENDIR, &buf, SSH_FXP_HANDLE, &handle);
 	if (!err) {
 		int err2;
 		buf_finish(&handle);
 
 		if (sshfs.sync_readdir)
-			err = sftp_readdir_sync(&handle, h, filler);
+			err = sftp_readdir_sync(&handle, dbuf, offset, filler);
 		else
-			err = sftp_readdir_async(&handle, h, filler);
+			err = sftp_readdir_async(&handle, dbuf, offset, filler);
 
 		err2 = sftp_request(SSH_FXP_CLOSE, &handle, 0, NULL);
 		if (!err)
@@ -3212,6 +3223,7 @@ static struct fuse_cache_operations sshfs_oper = {
 		.init       = sshfs_init,
 		.getattr    = sshfs_getattr,
 		.access     = sshfs_access,
+		.readdir     = sshfs_readdir,
 		.readlink   = sshfs_readlink,
 		.mknod      = sshfs_mknod,
 		.mkdir      = sshfs_mkdir,
@@ -3234,10 +3246,10 @@ static struct fuse_cache_operations sshfs_oper = {
 		.create     = sshfs_create,
 		.ftruncate  = sshfs_ftruncate,
 		.fgetattr   = sshfs_fgetattr,
-		.flag_nullpath_ok = 1,
-		.flag_nopath = 1,
+		.flag_nullpath_ok = 0,
+		.flag_nopath = 0,
 	},
-	.cache_getdir = sshfs_getdir,
+//	.cache_readdir = sshfs_readdir,
 };
 
 static void usage(const char *progname)
@@ -3948,7 +3960,8 @@ int main(int argc, char *argv[])
 #endif
 
 		sshfs.op = cache_init(&sshfs_oper);
-		fuse = fuse_new(ch, &args, sshfs.op,
+		// FIXME: Bypass cache for now
+		fuse = fuse_new(ch, &args, &sshfs_oper.oper,
 				sizeof(struct fuse_operations), NULL);
 		if (fuse == NULL) {
 			fuse_unmount(mountpoint, ch);
