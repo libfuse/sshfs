@@ -2121,41 +2121,57 @@ static int sftp_readdir_sync(struct buffer *handle, void *buf, off_t offset,
 	return err;
 }
 
-static int sshfs_readdir(const char *path, void *dbuf, fuse_fill_dir_t filler,
-			 off_t offset, struct fuse_file_info *fi)
+static int sshfs_opendir(const char *path, struct fuse_file_info *fi)
 {
 	int err;
 	struct buffer buf;
-	struct buffer handle;
+	struct buffer *handle;
 
-	/* FIXME: Handle this */
-	(void) fi;
-	if(path == NULL) {
-		fprintf(stderr, "Don't yet know how to do readdir() without path\n");
-		return -EIO;
-	}
-	
+	handle = malloc(sizeof(struct buffer));
+	if(handle == NULL)
+		return -ENOMEM;
+
 	buf_init(&buf, 0);
 	buf_add_path(&buf, path);
-	// TODO: This should really go into sshfs_opendir() and sshfs_closedir()
-	err = sftp_request(SSH_FXP_OPENDIR, &buf, SSH_FXP_HANDLE, &handle);
+	err = sftp_request(SSH_FXP_OPENDIR, &buf, SSH_FXP_HANDLE, handle);
 	if (!err) {
-		int err2;
-		buf_finish(&handle);
-
-		if (sshfs.sync_readdir)
-			err = sftp_readdir_sync(&handle, dbuf, offset, filler);
-		else
-			err = sftp_readdir_async(&handle, dbuf, offset, filler);
-
-		err2 = sftp_request(SSH_FXP_CLOSE, &handle, 0, NULL);
-		if (!err)
-			err = err2;
-		buf_free(&handle);
+		buf_finish(handle);
+		fi->fh = (unsigned long) handle;
 	}
 	buf_free(&buf);
 	return err;
 }
+
+static int sshfs_readdir(const char *path, void *dbuf, fuse_fill_dir_t filler,
+			 off_t offset, struct fuse_file_info *fi)
+{
+	(void) path;
+	int err;
+	struct buffer *handle;
+
+	handle = (struct buffer*) fi->fh;
+
+	if (sshfs.sync_readdir)
+		err = sftp_readdir_sync(handle, dbuf, offset, filler);
+	else
+		err = sftp_readdir_async(handle, dbuf, offset, filler);
+
+	return err;
+}
+
+static int sshfs_releasedir(const char *path, struct fuse_file_info *fi)
+{
+	(void) path;
+	int err;
+	struct buffer *handle;
+
+	handle = (struct buffer*) fi->fh;
+	err = sftp_request(SSH_FXP_CLOSE, handle, 0, NULL);
+	buf_free(handle);
+	free(handle);
+	return err;
+}
+
 
 static int sshfs_mkdir(const char *path, mode_t mode)
 {
@@ -3223,7 +3239,9 @@ static struct fuse_cache_operations sshfs_oper = {
 		.init       = sshfs_init,
 		.getattr    = sshfs_getattr,
 		.access     = sshfs_access,
-		.readdir     = sshfs_readdir,
+		.opendir    = sshfs_opendir,
+		.readdir    = sshfs_readdir,
+		.releasedir = sshfs_releasedir,
 		.readlink   = sshfs_readlink,
 		.mknod      = sshfs_mknod,
 		.mkdir      = sshfs_mkdir,
@@ -3246,8 +3264,8 @@ static struct fuse_cache_operations sshfs_oper = {
 		.create     = sshfs_create,
 		.ftruncate  = sshfs_ftruncate,
 		.fgetattr   = sshfs_fgetattr,
-		.flag_nullpath_ok = 0,
-		.flag_nopath = 0,
+		.flag_nullpath_ok = 1,
+		.flag_nopath = 1,
 	},
 //	.cache_readdir = sshfs_readdir,
 };
