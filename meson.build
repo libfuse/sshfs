@@ -56,4 +56,6 @@ executable('sshfs', sshfs_sources,
            install: true,
            install_dir: get_option('bindir'))
 
-install_man('sshfs.1')
+# This is a little ugly. Is there a better way to tell Meson that the
+# manpage is in the build directory?
+install_man(join_paths(meson.current_build_dir(), 'sshfs.1'))
