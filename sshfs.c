@@ -3825,7 +3825,7 @@ int main(int argc, char *argv[])
 	const char *sftp_server;
 	struct fuse *fuse;
 	struct fuse_session *se;
-#if !defined(__CYGWIN__)
+#if !defined(__APPLE__) && !defined(__CYGWIN__)
 	struct stat st;
 #endif
 
@@ -3989,15 +3989,14 @@ int main(int argc, char *argv[])
 	g_free(tmp);
 	g_free(fsname);
 
-
-#if !defined(__CYGWIN__)
+#if !defined(__APPLE__) && !defined(__CYGWIN__)
 	res = stat(sshfs.mountpoint, &st);
 	if (res == -1) {
 		perror(sshfs.mountpoint);
 		exit(1);
 	}
 	sshfs.mnt_mode = st.st_mode;
-#elif defined(__CYGWIN__)
+#else
 	sshfs.mnt_mode = S_IFDIR | 0755;
 #endif
 
