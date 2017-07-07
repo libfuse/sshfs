@@ -523,6 +523,10 @@ static void cache_unity_fill(struct fuse_cache_operations *oper,
 	cache_oper->ftruncate   = oper->oper.ftruncate;
 	cache_oper->fgetattr    = oper->oper.fgetattr;
 #endif
+#if FUSE_VERSION >= 29
+	cache_oper->flag_nullpath_ok = oper->oper.flag_nullpath_ok;
+	cache_oper->flag_nopath  = oper->oper.flag_nopath;
+#endif
 }
 
 static void cache_fill(struct fuse_cache_operations *oper,
@@ -547,6 +551,10 @@ static void cache_fill(struct fuse_cache_operations *oper,
 	cache_oper->create   = oper->oper.create ? cache_create : NULL;
 	cache_oper->ftruncate = oper->oper.ftruncate ? cache_ftruncate : NULL;
 	cache_oper->fgetattr = oper->oper.fgetattr ? cache_fgetattr : NULL;
+#endif
+#if FUSE_VERSION >= 29
+	cache_oper->flag_nullpath_ok = 0;
+	cache_oper->flag_nopath = 0;
 #endif
 
 }

@@ -1,5 +1,17 @@
-Draft notes for upcoming release
---------------------------------
+Release 2.9 (2017-04-17)
+------------------------
+
+* Improved support for Cygwin.
+* Various small bugfixes.
+
+Release 2.8 (2016-06-22)
+------------------------
+
+* Added support for the "fsync" extension.
+* Fixed a build problem with bitbake
+
+Release 2.7 (2016-03-01)
+------------------------
 
 * Integrated osxfuse's copy of sshfs, which means that sshfs now works
   on OS X out of the box.
@@ -8,12 +20,12 @@ Draft notes for upcoming release
 * Added -o cache_clean_interval=N and -o cache_min_clean_interval=N
   options to let users tune the cleaning behavior of the cache.
 
-Release 2.7 (2015-01-28)
+Release 2.6 (2015-01-28)
 ------------------------
 
 * New maintainer (Nikolaus Rath <Nikolaus@rath.org>)
 
-Release 2.6 (2014-01-14)
+Release 2.5 (2014-01-14)
 ------------------------
 
 * Some performance improvements for large directories.

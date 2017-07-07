@@ -11,7 +11,9 @@
 
 #include <fuse.h>
 #include <fuse_opt.h>
+#if !defined(__CYGWIN__)
 #include <fuse_lowlevel.h>
+#endif
 #ifdef __APPLE__
 #  include <fuse_darwin.h>
 #endif
@@ -118,6 +120,7 @@
 #define SFTP_EXT_POSIX_RENAME "posix-rename@openssh.com"
 #define SFTP_EXT_STATVFS "statvfs@openssh.com"
 #define SFTP_EXT_HARDLINK "hardlink@openssh.com"
+#define SFTP_EXT_FSYNC "fsync@openssh.com"
 
 #define PROTO_VERSION 3
 
@@ -273,6 +276,7 @@ struct sshfs {
 	int ext_posix_rename;
 	int ext_statvfs;
 	int ext_hardlink;
+	int ext_fsync;
 	mode_t mnt_mode;
 	struct fuse_operations *op;
 
@@ -1548,6 +1552,9 @@ static int sftp_init_reply_ok(struct buffer *buf, uint32_t *version)
 			if (strcmp(ext, SFTP_EXT_HARDLINK) == 0 &&
 			    strcmp(extdata, "1") == 0)
 				sshfs.ext_hardlink = 1;
+			if (strcmp(ext, SFTP_EXT_FSYNC) == 0 &&
+			    strcmp(extdata, "1") == 0)
+				sshfs.ext_fsync = 1;
 		} while (buf2.len < buf2.size);
 		buf_free(&buf2);
 	}
@@ -2632,8 +2639,25 @@ static int sshfs_flush(const char *path, struct fuse_file_info *fi)
 static int sshfs_fsync(const char *path, int isdatasync,
                        struct fuse_file_info *fi)
 {
+	int err;
 	(void) isdatasync;
-	return sshfs_flush(path, fi);
+
+	if (err = sshfs_flush(path, fi))
+		return err;
+
+	if (!sshfs.ext_fsync)
+		return err;
+
+	{
+		struct buffer buf;
+		struct sshfs_file *sf = get_sshfs_file(fi);
+		buf_init(&buf, 0);
+		buf_add_string(&buf, SFTP_EXT_FSYNC);
+		buf_add_buf(&buf, &sf->handle);
+		err = sftp_request(SSH_FXP_EXTENDED, &buf, SSH_FXP_STATUS, NULL);
+		buf_free(&buf);
+		return err;
+	}
 }
 
 static void sshfs_file_put(struct sshfs_file *sf)
@@ -3351,6 +3375,10 @@ static struct fuse_cache_operations sshfs_oper = {
 		.ftruncate  = sshfs_ftruncate,
 		.fgetattr   = sshfs_fgetattr,
 #endif
+#if FUSE_VERSION >= 29
+		.flag_nullpath_ok = 1,
+		.flag_nopath = 1,
+#endif
 	},
 	.cache_getdir = sshfs_getdir,
 };
@@ -3967,6 +3995,14 @@ int main(int argc, char *argv[])
 	    parse_workarounds() == -1)
 		exit(1);
 
+#if FUSE_VERSION >= 29
+	// These workarounds require the "path" argument.
+	if (sshfs.truncate_workaround || sshfs.fstat_workaround) {
+		sshfs_oper.oper.flag_nullpath_ok = 0;
+		sshfs_oper.oper.flag_nopath = 0;
+	}
+#endif
+
 	if (sshfs.idmap == IDMAP_USER)
 		sshfs.detect_uid = 1;
 	else if (sshfs.idmap == IDMAP_FILE) {
@@ -4079,7 +4115,9 @@ int main(int argc, char *argv[])
 		char *mountpoint;
 		int multithreaded;
 		int foreground;
+#if !defined(__CYGWIN__)
 		struct stat st;
+#endif
 
 		res = fuse_parse_cmdline(&args, &mountpoint, &multithreaded,
 					 &foreground);
@@ -4091,20 +4129,26 @@ int main(int argc, char *argv[])
 			foreground = 1;
 		}
 
+#if !defined(__CYGWIN__)
 		res = stat(mountpoint, &st);
 		if (res == -1) {
 			perror(mountpoint);
 			exit(1);
 		}
 		sshfs.mnt_mode = st.st_mode;
+#elif defined(__CYGWIN__)
+		sshfs.mnt_mode = S_IFDIR | 0755;
+#endif
 
 		ch = fuse_mount(mountpoint, &args);
 		if (!ch)
 			exit(1);
 
+#if !defined(__CYGWIN__)
 		res = fcntl(fuse_chan_fd(ch), F_SETFD, FD_CLOEXEC);
 		if (res == -1)
 			perror("WARNING: failed to set FD_CLOEXEC on fuse device");
+#endif
 
 		sshfs.op = cache_init(&sshfs_oper);
 		fuse = fuse_new(ch, &args, sshfs.op,
