@@ -4121,7 +4121,7 @@ int main(int argc, char *argv[])
 		char *mountpoint;
 		int multithreaded;
 		int foreground;
-#if !defined(__CYGWIN__)
+#if !defined(__APPLE__) && !defined(__CYGWIN__)
 		struct stat st;
 #endif
 
@@ -4135,14 +4135,14 @@ int main(int argc, char *argv[])
 			foreground = 1;
 		}
 
-#if !defined(__CYGWIN__)
+#if !defined(__APPLE__) && !defined(__CYGWIN__)
 		res = stat(mountpoint, &st);
 		if (res == -1) {
 			perror(mountpoint);
 			exit(1);
 		}
 		sshfs.mnt_mode = st.st_mode;
-#elif defined(__CYGWIN__)
+#else
 		sshfs.mnt_mode = S_IFDIR | 0755;
 #endif
 
