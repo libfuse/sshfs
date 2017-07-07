@@ -3150,6 +3150,9 @@ static int sshfs_getattr(const char *path, struct stat *stbuf,
 	}		
 	if (!err) {
 		err = buf_get_attrs(&outbuf, stbuf, NULL);
+#ifdef __APPLE__
+		stbuf->st_blksize = 0;
+#endif
 		buf_free(&outbuf);
 	}
 	buf_free(&buf);
