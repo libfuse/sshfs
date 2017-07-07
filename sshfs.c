@@ -2000,6 +2000,9 @@ static int sshfs_getattr(const char *path, struct stat *stbuf)
 			   &buf, SSH_FXP_ATTRS, &outbuf);
 	if (!err) {
 		err = buf_get_attrs(&outbuf, stbuf, NULL);
+#ifdef __APPLE__
+		stbuf->st_blksize = 0;
+#endif
 		buf_free(&outbuf);
 	}
 	buf_free(&buf);
@@ -3203,6 +3206,9 @@ static int sshfs_fgetattr(const char *path, struct stat *stbuf,
 	err = sftp_request(SSH_FXP_FSTAT, &buf, SSH_FXP_ATTRS, &outbuf);
 	if (!err) {
 		err = buf_get_attrs(&outbuf, stbuf, NULL);
+#ifdef __APPLE__
+		stbuf->st_blksize = 0;
+#endif
 		buf_free(&outbuf);
 	}
 	buf_free(&buf);
