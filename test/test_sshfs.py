@@ -72,8 +72,14 @@ def test_sshfs(tmpdir, debug, cache_timeout, sync_rd, capfd):
     # FUSE Cache
     cmdline += [ '-o', 'entry_timeout=0',
                  '-o', 'attr_timeout=0' ]
+
     
-    mount_process = subprocess.Popen(cmdline)
+    new_env = dict(os.environ) # copy, don't modify
+
+    # Abort on warnings from glib
+    new_env['G_DEBUG'] = 'fatal-warnings'
+    
+    mount_process = subprocess.Popen(cmdline, env=new_env)
     try:
         wait_for_mount(mount_process, mnt_dir)
 
