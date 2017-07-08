@@ -25,6 +25,8 @@ ninja
 sudo ninja install
 test -e /usr/local/lib/pkgconfig || sudo mkdir /usr/local/lib/pkgconfig
 sudo mv /usr/local/lib/*/pkgconfig/* /usr/local/lib/pkgconfig/
+ls -d1 /usr/local/lib/*-linux-gnu | sudo tee /etc/ld.so.conf.d/usrlocal.conf
+sudo ldconfig
 
 # Setup ssh
 ssh-keygen -b 768 -t rsa -f ~/.ssh/id_rsa -P ''
