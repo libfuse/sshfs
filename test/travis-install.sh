@@ -14,9 +14,9 @@ ninja --version
 meson --version
 
 # Install fuse
-wget https://github.com/libfuse/libfuse/releases/download/fuse-3.0.2/fuse-3.0.2.tar.gz
-tar xzf fuse-3.0.2.tar.gz
-cd fuse-3.0.2
+wget https://github.com/libfuse/libfuse/releases/download/fuse-3.1.0/fuse-3.1.0.tar.gz
+tar xzf fuse-3.1.0.tar.gz
+cd fuse-3.1.0
 mkdir build
 cd build
 meson ..
