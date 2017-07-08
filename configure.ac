@@ -1,4 +1,4 @@
-AC_INIT(sshfs, 2.9)
+AC_INIT(sshfs, 3.0.0)
 AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 AM_CONFIG_HEADER(config.h)
@@ -17,7 +17,7 @@ case "$target_os" in
 esac
 
 export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
-PKG_CHECK_MODULES([SSHFS], [fuse >= 3.1 glib-2.0 gthread-2.0])
+PKG_CHECK_MODULES([SSHFS], [fuse3 >= 3.1 glib-2.0 gthread-2.0])
 have_fuse_opt_parse=no
 oldlibs="$LIBS"
 LIBS="$LIBS $SSHFS_LIBS"

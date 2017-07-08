@@ -1,5 +1,5 @@
-Unreleased Changes
-------------------
+Release 3.0.0 (2017-07-08)
+--------------------------
 
 * sshfs now requires libfuse 3.1.0 or newer.
 * When supported by the kernel, sshfs now uses writeback caching.
