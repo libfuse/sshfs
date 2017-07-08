@@ -3884,11 +3884,7 @@ int main(int argc, char *argv[])
 
 	if (sshfs.show_help) {
 		usage(args.argv[0]);
-		/* Re-add --help */
-		if (fuse_opt_add_arg(&args, "--help") == -1)
-			exit(1);
-		/* Print FUSE help text */
-		assert(fuse_new(&args, NULL, 0, NULL) == NULL);
+		fuse_lib_help(&args);
 		exit(0);
 	} else if (!sshfs.host) {
 		fprintf(stderr, "missing host\n");
