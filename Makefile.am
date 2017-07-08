@@ -2,6 +2,8 @@
 
 bin_PROGRAMS = sshfs
 
+SUBDIRS = test
+
 sshfs_SOURCES = sshfs.c cache.c cache.h
 if FUSE_OPT_COMPAT
 sshfs_SOURCES += compat/fuse_opt.c compat/fuse_opt.h

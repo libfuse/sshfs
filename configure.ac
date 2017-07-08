@@ -40,5 +40,5 @@ case "$osname" in
 esac
 AC_SUBST(IDMAP_DEFAULT)
 
-AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([Makefile test/Makefile])
 AC_OUTPUT
