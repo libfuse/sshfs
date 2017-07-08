@@ -19,6 +19,7 @@ tar xzf fuse-3.1.0.tar.gz
 cd fuse-3.1.0
 mkdir build
 cd build
+export CC=gcc-6
 meson ..
 ninja
 sudo ninja install
