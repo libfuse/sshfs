@@ -2495,7 +2495,7 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	uint32_t pflags = 0;
 	struct iovec iov;
 	uint8_t type;
-	uint64_t wrctr;
+	uint64_t wrctr = 0;
 
 	if (sshfs.dir_cache)
 		wrctr = cache_get_write_ctr();
