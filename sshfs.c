@@ -2072,11 +2072,16 @@ static int sftp_readdir_async(struct buffer *handle, fuse_cache_dirh_t h,
 			outstanding--;
 
 			if (done) {
+				/* We need to cache want_reply, since processing
+				   thread may free req right after unlock() if
+				   want_reply == 0 */
+				int want_reply;
 				pthread_mutex_lock(&sshfs.lock);
 				if (sshfs_req_pending(req))
 					req->want_reply = 0;
+				want_reply = req->want_reply;
 				pthread_mutex_unlock(&sshfs.lock);
-				if (!req->want_reply)
+				if (!want_reply)
 					continue;
 			}
 

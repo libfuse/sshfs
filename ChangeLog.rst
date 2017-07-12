@@ -1,6 +1,8 @@
 Unreleased Changes
 ------------------
 
+* Fixed a crash due to a race condition when listing
+  directory contents.
 * Added unit tests
 * Documented limited hardlink support.
 * Added support for building with Meson.
