@@ -1,3 +1,9 @@
+Unreleased Changes
+------------------
+
+* Fixed a crash due to a race condition when listing
+  directory contents.
+
 Release 3.0.0 (2017-07-08)
 --------------------------
 
