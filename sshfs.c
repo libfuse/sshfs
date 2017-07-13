@@ -1897,6 +1897,9 @@ static int sshfs_getattr(const char *path, struct stat *stbuf)
 			   &buf, SSH_FXP_ATTRS, &outbuf);
 	if (!err) {
 		err = buf_get_attrs(&outbuf, stbuf, NULL);
+#ifdef __APPLE__
+		stbuf->st_blksize = 0;
+#endif
 		buf_free(&outbuf);
 	}
 	buf_free(&buf);
@@ -3106,6 +3109,9 @@ static int sshfs_fgetattr(const char *path, struct stat *stbuf,
 	err = sftp_request(SSH_FXP_FSTAT, &buf, SSH_FXP_ATTRS, &outbuf);
 	if (!err) {
 		err = buf_get_attrs(&outbuf, stbuf, NULL);
+#ifdef __APPLE__
+		stbuf->st_blksize = 0;
+#endif
 		buf_free(&outbuf);
 	}
 	buf_free(&buf);
@@ -4015,7 +4021,7 @@ int main(int argc, char *argv[])
 		char *mountpoint;
 		int multithreaded;
 		int foreground;
-#if !defined(__CYGWIN__)
+#if !defined(__APPLE__) && !defined(__CYGWIN__)
 		struct stat st;
 #endif
 
@@ -4029,14 +4035,14 @@ int main(int argc, char *argv[])
 			foreground = 1;
 		}
 
-#if !defined(__CYGWIN__)
+#if !defined(__APPLE__) && !defined(__CYGWIN__)
 		res = stat(mountpoint, &st);
 		if (res == -1) {
 			perror(mountpoint);
 			exit(1);
 		}
 		sshfs.mnt_mode = st.st_mode;
-#elif defined(__CYGWIN__)
+#else
 		sshfs.mnt_mode = S_IFDIR | 0755;
 #endif
 
