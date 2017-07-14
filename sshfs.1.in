@@ -180,9 +180,6 @@ allow access to other users
 .TP
 \fB\-o\fR allow_root
 allow access to root
-.TP
-\fB\-o\fR nonempty
-allow mounts over non\-empty file/dir
 .HP
 \fB\-o\fR default_permissions
 enable permission checking by kernel
