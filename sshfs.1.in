@@ -64,24 +64,12 @@ synchronous readdir
 \fB\-o\fR sshfs_debug
 print some debugging information
 .TP
-\fB\-o\fR cache=BOOL
-enable caching {yes,no} (default: yes)
-.TP
-\fB\-o\fR cache_timeout=N
-sets timeout for caches in seconds (default: 20)
-.TP
-\fB\-o\fR cache_X_timeout=N
-sets timeout for {stat,dir,link} cache
-.TP
 \fB\-o\fR workaround=LIST
 colon separated list of workarounds
 .RS 8
 .TP
 none
 no workarounds enabled
-.TP
-all
-all workarounds enabled
 .TP
 [no]rename
 fix renaming to existing file (default: off)
@@ -180,9 +168,6 @@ allow access to other users
 .TP
 \fB\-o\fR allow_root
 allow access to root
-.TP
-\fB\-o\fR nonempty
-allow mounts over non\-empty file/dir
 .HP
 \fB\-o\fR default_permissions
 enable permission checking by kernel
@@ -193,23 +178,8 @@ set filesystem name
 \fB\-o\fR subtype=NAME
 set filesystem type
 .TP
-\fB\-o\fR large_read
-issue large read requests (2.4 only)
-.TP
 \fB\-o\fR max_read=N
 set maximum size of read requests
-.TP
-\fB\-o\fR hard_remove
-immediate removal (don't hide files)
-.TP
-\fB\-o\fR use_ino
-let filesystem set inode numbers
-.TP
-\fB\-o\fR readdir_ino
-try to fill in d_ino in readdir
-.TP
-\fB\-o\fR direct_io
-use direct I/O
 .TP
 \fB\-o\fR kernel_cache
 cache files in kernel
@@ -238,26 +208,11 @@ cache timeout for attributes (1.0s)
 \fB\-o\fR ac_attr_timeout=T
 auto cache timeout for attributes (attr_timeout)
 .TP
-\fB\-o\fR intr
-allow requests to be interrupted
-.TP
-\fB\-o\fR intr_signal=NUM
-signal to send on interrupt (10)
-.TP
 \fB\-o\fR modules=M1[:M2...]
 names of modules to push onto filesystem stack
 .TP
 \fB\-o\fR max_write=N
 set maximum size of write requests
-.TP
-\fB\-o\fR max_readahead=N
-set maximum readahead
-.TP
-\fB\-o\fR async_read
-perform reads asynchronously (default)
-.TP
-\fB\-o\fR sync_read
-perform reads synchronously
 .SS "Module options:"
 .TP
 [subdir]
