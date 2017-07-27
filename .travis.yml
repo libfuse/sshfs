@@ -12,6 +12,8 @@ addons:
     - clang
     - gcc
     - gcc-6
+before_install:
+   - pip install pip==8.1.1 && pip3 install pip==8.1.1
 install: test/travis-install.sh
 script: test/travis-build.sh
 
