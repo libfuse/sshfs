@@ -423,7 +423,13 @@ static struct fuse_opt sshfs_opts[] = {
 	FUSE_OPT_KEY("-p ",            KEY_PORT),
 	FUSE_OPT_KEY("-C",             KEY_COMPRESS),
 	FUSE_OPT_KEY("-F ",            KEY_CONFIGFILE),
+
+	/* For backwards compatibility */
+	SSHFS_OPT("cache=yes", dir_cache, 1),
+	SSHFS_OPT("cache=no",  dir_cache, 0),
+	
 	FUSE_OPT_END
+
 };
 
 static struct fuse_opt workaround_opts[] = {

@@ -586,6 +586,19 @@ static const struct fuse_opt cache_opts[] = {
 					       clean_interval_secs), 0 },
 	{ "dcache_min_clean_interval=%u", offsetof(struct cache,
 						   min_clean_interval_secs), 0 },
+
+	/* For backwards compatibility */
+	{ "cache_timeout=%u", offsetof(struct cache, stat_timeout_secs), 0 },
+	{ "cache_timeout=%u", offsetof(struct cache, dir_timeout_secs), 0 },
+	{ "cache_timeout=%u", offsetof(struct cache, link_timeout_secs), 0 },
+	{ "cache_stat_timeout=%u", offsetof(struct cache, stat_timeout_secs), 0 },
+	{ "cache_dir_timeout=%u", offsetof(struct cache, dir_timeout_secs), 0 },
+	{ "cache_link_timeout=%u", offsetof(struct cache, link_timeout_secs), 0 },
+	{ "cache_max_size=%u", offsetof(struct cache, max_size), 0 },
+	{ "cache_clean_interval=%u", offsetof(struct cache,
+					       clean_interval_secs), 0 },
+	{ "cache_min_clean_interval=%u", offsetof(struct cache,
+						   min_clean_interval_secs), 0 },
 	FUSE_OPT_END
 };
 

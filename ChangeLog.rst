@@ -4,6 +4,9 @@ Unreleased Changes
 * Fixed a crash due to a race condition when listing
   directory contents.
 
+* For improved backwards compatibility, SSHFS now also silently
+  accepts the old ``-o cache_*`` options.
+  
 Release 3.0.0 (2017-07-08)
 --------------------------
 
