@@ -116,7 +116,7 @@ void cache_invalidate(const char *path)
 	pthread_mutex_unlock(&cache.lock);
 }
 
-void cache_invalidate_write(const char *path)
+static void cache_invalidate_write(const char *path)
 {
 	pthread_mutex_lock(&cache.lock);
 	cache_purge(path);
