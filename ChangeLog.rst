@@ -1,5 +1,5 @@
-Unreleased Changes
-------------------
+Release 2.10 (2017-08-03)
+-------------------------
 
 * Fixed a crash due to a race condition when listing
   directory contents.
