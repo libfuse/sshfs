@@ -279,7 +279,6 @@ struct sshfs {
 	int ext_statvfs;
 	int ext_hardlink;
 	int ext_fsync;
-	mode_t mnt_mode;
 	struct fuse_operations *op;
 
 	/* statistics */
@@ -1650,14 +1649,9 @@ static int sftp_check_root(const char *base_path)
 	if (!(flags & SSH_FILEXFER_ATTR_PERMISSIONS))
 		goto out;
 
-	if (S_ISDIR(sshfs.mnt_mode) && !S_ISDIR(stbuf.st_mode)) {
+	if (!S_ISDIR(stbuf.st_mode)) {
 		fprintf(stderr, "%s:%s: Not a directory\n", sshfs.host,
 			remote_dir);
-		goto out;
-	}
-	if ((sshfs.mnt_mode ^ stbuf.st_mode) & S_IFMT) {
-		fprintf(stderr, "%s:%s: type of file differs from mountpoint\n",
-			sshfs.host, remote_dir);
 		goto out;
 	}
 
@@ -3997,17 +3991,6 @@ int main(int argc, char *argv[])
 	fuse_opt_insert_arg(&args, 1, tmp);
 	g_free(tmp);
 	g_free(fsname);
-
-#if !defined(__APPLE__) && !defined(__CYGWIN__)
-	res = stat(sshfs.mountpoint, &st);
-	if (res == -1) {
-		perror(sshfs.mountpoint);
-		exit(1);
-	}
-	sshfs.mnt_mode = st.st_mode;
-#else
-	sshfs.mnt_mode = S_IFDIR | 0755;
-#endif
 
 	if(sshfs.dir_cache)
 		sshfs.op = cache_wrap(&sshfs_oper);
