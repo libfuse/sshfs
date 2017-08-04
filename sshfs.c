@@ -3828,9 +3828,6 @@ int main(int argc, char *argv[])
 	const char *sftp_server;
 	struct fuse *fuse;
 	struct fuse_session *se;
-#if !defined(__APPLE__) && !defined(__CYGWIN__)
-	struct stat st;
-#endif
 
 #ifdef __APPLE__
 	if (!realpath(*exec_path, sshfs_program_path)) {
