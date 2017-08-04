@@ -1,5 +1,5 @@
-Unreleased Changes
-------------------
+Release 3.1.0 (2017-08-04)
+--------------------------
 
 * Temporarily disabled the writeback cache feature, since there
   have been reports of dataloss when appending to files when
