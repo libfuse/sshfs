@@ -1,6 +1,10 @@
 Unreleased Changes
 ------------------
 
+* Temporarily disabled the writeback cache feature, since there
+  have been reports of dataloss when appending to files when
+  writeback caching is enabled.
+
 * Fixed a crash due to a race condition when listing
   directory contents.
 

@@ -3852,7 +3852,7 @@ int main(int argc, char *argv[])
 	sshfs.wfd = -1;
 	sshfs.ptyfd = -1;
 	sshfs.dir_cache = 1;
-	sshfs.writeback_cache = 1;
+	sshfs.writeback_cache = 0;
 	sshfs.show_help = 0;
 	sshfs.show_version = 0;
 	sshfs.singlethread = 0;
@@ -3900,7 +3900,11 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "see `%s -h' for usage\n", argv[0]);
 		exit(1);
 	}
-	
+
+	if(sshfs.writeback_cache)
+		printf("NOTICE: writeback cache is disabled in this release due to potential\n"
+		       "dataloss. It will be re-enabled in a future SSHFS release.\n");
+
 	if (sshfs.idmap == IDMAP_USER)
 		sshfs.detect_uid = 1;
 	else if (sshfs.idmap == IDMAP_FILE) {
