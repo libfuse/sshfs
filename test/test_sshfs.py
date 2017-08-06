@@ -13,6 +13,7 @@ import stat
 import shutil
 import filecmp
 import errno
+from contextlib import contextmanager
 from tempfile import NamedTemporaryFile
 from util import (wait_for_mount, umount, cleanup, base_cmdline,
                   basename, fuse_test_marker, safe_sleep)
@@ -32,7 +33,9 @@ def name_generator(__ctr=[0]):
 @pytest.mark.parametrize("debug", (False, True))
 @pytest.mark.parametrize("cache_timeout", (0,1))
 @pytest.mark.parametrize("sync_rd", (True, False))
-def test_sshfs(tmpdir, debug, cache_timeout, sync_rd, capfd):
+@pytest.mark.parametrize("writeback", (False, True))
+def test_sshfs(tmpdir, debug, cache_timeout, sync_rd,
+               writeback, capfd):
     
     # Avoid false positives from debug messages
     #if debug:
@@ -61,7 +64,12 @@ def test_sshfs(tmpdir, debug, cache_timeout, sync_rd, capfd):
 
     if sync_rd:
         cmdline += [ '-o', 'sync_readdir' ]
-        
+
+    if writeback:
+        cmdline += [ '-o', 'writeback_cache=yes' ]
+    else:
+        cmdline += [ '-o', 'writeback_cache=no' ]
+    
     # SSHFS Cache
     if cache_timeout == 0:
         cmdline += [ '-o', 'dir_cache=no' ]
