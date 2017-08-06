@@ -1,8 +1,8 @@
-Unreleased Changes
-------------------
+Release 3.2.0 (2017-08-06)
+--------------------------
 
 * Re-enabled writeback cache.
-* SSHFS now supports O_APPEND.  
+* SSHFS now supports O_APPEND.
 
 Release 3.1.0 (2017-08-04)
 --------------------------
