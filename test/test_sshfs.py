@@ -95,6 +95,8 @@ def test_sshfs(tmpdir, debug, cache_timeout, sync_rd,
         tst_readdir(src_dir, mnt_dir)
         tst_open_read(src_dir, mnt_dir)
         tst_open_write(src_dir, mnt_dir)
+        tst_append(src_dir, mnt_dir)
+        tst_seek(src_dir, mnt_dir)
         tst_create(mnt_dir)
         tst_passthrough(src_dir, mnt_dir, cache_timeout)
         tst_mkdir(mnt_dir)
@@ -117,6 +119,17 @@ def test_sshfs(tmpdir, debug, cache_timeout, sync_rd,
         raise
     else:
         umount(mount_process, mnt_dir)
+
+@contextmanager
+def os_open(name, flags):
+    fd = os.open(name, flags)
+    try:
+        yield fd
+    finally:
+        os.close(fd)
+
+def os_create(name):
+    os.close(os.open(name, os.O_CREAT | os.O_RDWR))
 
 def tst_unlink(src_dir, mnt_dir, cache_timeout):
     name = name_generator()
@@ -222,6 +235,32 @@ def tst_open_write(src_dir, mnt_dir):
         shutil.copyfileobj(fh_in, fh_out)
 
     assert filecmp.cmp(fullname, TEST_FILE, False)
+
+def tst_append(src_dir, mnt_dir):
+    name = name_generator()
+    os_create(pjoin(src_dir, name))
+    fullname = pjoin(mnt_dir, name)
+    with os_open(fullname, os.O_WRONLY) as fd:
+        os.write(fd, b'foo\n')
+    with os_open(fullname, os.O_WRONLY|os.O_APPEND) as fd:
+        os.write(fd, b'bar\n')
+
+    with open(fullname, 'rb') as fh:
+        assert fh.read() == b'foo\nbar\n'
+
+def tst_seek(src_dir, mnt_dir):
+    name = name_generator()
+    os_create(pjoin(src_dir, name))
+    fullname = pjoin(mnt_dir, name)
+    with os_open(fullname, os.O_WRONLY) as fd:
+        os.lseek(fd, 1, os.SEEK_SET)
+        os.write(fd, b'foobar\n')
+    with os_open(fullname, os.O_WRONLY) as fd:
+        os.lseek(fd, 4, os.SEEK_SET)
+        os.write(fd, b'com')
+
+    with open(fullname, 'rb') as fh:
+        assert fh.read() == b'\0foocom\n'
 
 def tst_open_unlink(mnt_dir):
     name = pjoin(mnt_dir, name_generator())
