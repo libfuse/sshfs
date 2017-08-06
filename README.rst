@@ -116,6 +116,16 @@ individual files when seen through an SSHFS mount, i.e. they will
 appear to have different inodes and an *st_nlink* value of 1.
 
 
+O_APPEND
+~~~~~~~~
+
+When writeback caching is enabled, SSHFS cannot reliably support the
+``O_APPEND`` open flag and thus signals an error on open.  To enable
+support for unreliable ``O_APPEND`` (which may overwrite data if the
+file changes on the server at a bad time), mount the file system with
+``-o unreliable_append``.
+
+
 Getting Help
 ------------
 

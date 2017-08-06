@@ -216,6 +216,7 @@ struct sshfs {
 	int rename_workaround;
 	int truncate_workaround;
 	int buflimit_workaround;
+	int unrel_append;
 	int fstat_workaround;
 	int transform_symlinks;
 	int follow_symlinks;
@@ -409,6 +410,7 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("dir_cache=no",  dir_cache, 0),
 	SSHFS_OPT("writeback_cache=yes", writeback_cache, 1),
 	SSHFS_OPT("writeback_cache=no", writeback_cache, 0),
+	SSHFS_OPT("unreliable_append", unrel_append, 1),
 
 	SSHFS_OPT("-h",		show_help, 1),
 	SSHFS_OPT("--help",	show_help, 1),
@@ -2500,6 +2502,24 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	if (sshfs.dir_cache)
 		wrctr = cache_get_write_ctr();
 
+	/* With writeback cache, kernel may send read requests even
+	   when userspace opened write-only */
+	if (sshfs.writeback_cache &&
+	    (fi->flags & O_ACCMODE) == O_WRONLY) {
+		fi->flags &= ~O_ACCMODE;
+		fi->flags |= O_RDWR;
+	}
+
+	/* Having the kernel handle O_APPEND doesn't work reliably, if
+	   the file changes on the server at the wrong time, we will
+	   overwrite data instead of appending. */
+	if ((fi->flags & O_APPEND) && sshfs.writeback_cache) {
+		if(sshfs.unrel_append)
+			fi->flags &= ~O_APPEND;
+		else
+			return -EINVAL;
+	}
+
 	if ((fi->flags & O_ACCMODE) == O_RDONLY)
 		pflags = SSH_FXF_READ;
 	else if((fi->flags & O_ACCMODE) == O_WRONLY)
@@ -3344,6 +3364,7 @@ static void usage(const char *progname)
 "    -o sshfs_sync          synchronous writes\n"
 "    -o no_readahead        synchronous reads (no speculative readahead)\n"
 "    -o sync_readdir        synchronous readdir\n"
+"    -o unreliable_append   Enable (unreliable) O_APPEND support\n"
 "    -d, --debug            print some debugging information (implies -f)\n"
 "    -o writeback_cache=BOOL enable writeback cache {yes,no} (default: yes)\n"
 "    -o dir_cache=BOOL      enable caching of directory contents (names,\n"
@@ -3855,7 +3876,8 @@ int main(int argc, char *argv[])
 	sshfs.wfd = -1;
 	sshfs.ptyfd = -1;
 	sshfs.dir_cache = 1;
-	sshfs.writeback_cache = 0;
+	sshfs.writeback_cache = 1;
+	sshfs.unrel_append = 0;
 	sshfs.show_help = 0;
 	sshfs.show_version = 0;
 	sshfs.singlethread = 0;
@@ -3902,12 +3924,6 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "error: no mountpoint specified\n");
 		fprintf(stderr, "see `%s -h' for usage\n", argv[0]);
 		exit(1);
-	}
-
-	if(sshfs.writeback_cache) {
-		printf("NOTICE: writeback cache is disabled in this release due to potential\n"
-		       "dataloss. It will be re-enabled in a future SSHFS release.\n");
-		sshfs.writeback_cache = 0;
 	}
 
 	if (sshfs.idmap == IDMAP_USER)

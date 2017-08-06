@@ -66,7 +66,8 @@ def test_sshfs(tmpdir, debug, cache_timeout, sync_rd,
         cmdline += [ '-o', 'sync_readdir' ]
 
     if writeback:
-        cmdline += [ '-o', 'writeback_cache=yes' ]
+        cmdline += [ '-o', 'writeback_cache=yes',
+                     '-o', 'unreliable_append' ]
     else:
         cmdline += [ '-o', 'writeback_cache=no' ]
     

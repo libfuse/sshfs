@@ -1,8 +1,7 @@
 Unreleased Changes
 ------------------
 
-* Truly disable the writeback cache, instead of just adjusting the
-  default and printing a warning when explicitly enabled.
+* Re-enabled writeback cache.
 * SSHFS now supports O_APPEND.  
 
 Release 3.1.0 (2017-08-04)
