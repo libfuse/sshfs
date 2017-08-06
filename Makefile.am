@@ -17,7 +17,7 @@ sshfs_CFLAGS = $(SSHFS_CFLAGS)
 sshfs_CPPFLAGS = -D_REENTRANT -DFUSE_USE_VERSION=31 -DLIBDIR=\"$(libdir)\" \
                  -DIDMAP_DEFAULT="\"$(IDMAP_DEFAULT)\""
 
-EXTRA_DIST = sshfs.1.in meson.build
+EXTRA_DIST = sshfs.1.in meson.build ChangeLog.rst
 CLEANFILES = sshfs.1 sshfs.1.tmp
 
 dist_man_MANS = sshfs.1
