@@ -3901,9 +3901,11 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	if(sshfs.writeback_cache)
+	if(sshfs.writeback_cache) {
 		printf("NOTICE: writeback cache is disabled in this release due to potential\n"
 		       "dataloss. It will be re-enabled in a future SSHFS release.\n");
+		sshfs.writeback_cache = 0;
+	}
 
 	if (sshfs.idmap == IDMAP_USER)
 		sshfs.detect_uid = 1;
