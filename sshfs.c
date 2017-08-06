@@ -2518,6 +2518,9 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	if (fi->flags & O_TRUNC)
 		pflags |= SSH_FXF_TRUNC;
 
+	if (fi->flags & O_APPEND)
+		pflags |= SSH_FXF_APPEND;
+	
 	sf = g_new0(struct sshfs_file, 1);
 	list_init(&sf->write_reqs);
 	pthread_cond_init(&sf->write_finished, NULL);
