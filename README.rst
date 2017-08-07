@@ -91,41 +91,6 @@ point, so if you depend on using autotools for some reason please let
 the sshfs developers know!
 
 
-Caveats
--------
-
-Rename
-~~~~~~
-
-Some SSH servers do not support atomically overwriting the destination
-when renaming a file. In this case you will get an error when you
-attempt to rename a file and the destination already exists. A
-workaround is to first remove the destination file, and then do the
-rename. SSHFS can do this automatically if you call it with `-o
-workaround=rename`. However, in this case it is still possible that
-someone (or something) recreates the destination file after SSHFS has
-removed it, but before SSHFS had the time to rename the old file. In
-this case, the rename will still fail.
-
-Hardlinks
-~~~~~~~~~
-
-If the SSH server supports the *hardlinks* extension, SSHFS will allow
-you to create hardlinks. However, hardlinks will always appear as
-individual files when seen through an SSHFS mount, i.e. they will
-appear to have different inodes and an *st_nlink* value of 1.
-
-
-O_APPEND
-~~~~~~~~
-
-When writeback caching is enabled, SSHFS cannot reliably support the
-``O_APPEND`` open flag and thus signals an error on open.  To enable
-support for unreliable ``O_APPEND`` (which may overwrite data if the
-file changes on the server at a bad time), mount the file system with
-``-o unreliable_append``.
-
-
 Getting Help
 ------------
 

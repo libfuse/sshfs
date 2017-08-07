@@ -25,6 +25,8 @@ if not cc.compiles(code, args: [ '-O0', '-Werror=unused-result' ])
 endif
 
 
+rst2man = find_program('rst2man', required: false)
+  
 cfg = configuration_data()
 
 cfg.set_quoted('PACKAGE_VERSION', meson.project_version())
@@ -39,9 +41,6 @@ else
   cfg.set_quoted('IDMAP_DEFAULT', 'none')
 endif
 
-configure_file(input: 'sshfs.1.in',
-               output: 'sshfs.1',
-               configuration : cfg)
 configure_file(output: 'config.h',
                configuration : cfg)
 
@@ -56,9 +55,14 @@ executable('sshfs', sshfs_sources,
            install: true,
            install_dir: get_option('bindir'))
 
-# This is a little ugly. Is there a better way to tell Meson that the
-# manpage is in the build directory?
-install_man(join_paths(meson.current_build_dir(), 'sshfs.1'))
+if rst2man.found()
+    custom_target('manpages', input: [ 'sshfs.rst' ], output: [ 'sshfs.1' ],
+                  command: [rst2man, '@INPUT@', '@OUTPUT@'], install: true,
+                  install_dir: join_paths(get_option('mandir'), '1'))
+else
+    message('rst2man not found, not building manual page.')
+endif
+
 
 subdir('test')
 
