@@ -1,8 +1,8 @@
 project('sshfs', 'c', version: '3.2.0',
         meson_version: '>= 0.38',
-        default_options: [ 'buildtype=plain' ])
+        default_options: [ 'buildtype=debugoptimized' ])
 
-add_global_arguments('-D_REENTRANT', '-DHAVE_CONFIG_H', '-O2', '-g',
+add_global_arguments('-D_REENTRANT', '-DHAVE_CONFIG_H',
                      '-Wall', '-Wextra', '-Wno-sign-compare',
                      '-Wmissing-declarations', '-Wwrite-strings',
                      language: 'c')
