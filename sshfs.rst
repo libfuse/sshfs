@@ -159,11 +159,17 @@ Options
    option.
 
 -o transform_symlinks
-   transform absolute symlinks on remote side to relative symlinks.
+   transform absolute symlinks on remote side to relative
+   symlinks. This means that if e.g. on the server side
+   ``/foo/bar/com`` is a symlink to ``/foo/blub``, SSHFS will
+   transform the link target to ``../blub`` on the client side.
 
 -o follow_symlinks
    follow symlinks on the server, i.e. present them as regular
-   files on the client.
+   files on the client. If a symlink is dangling (i.e, the target does
+   not exist) the behavior depends on the remote server - the entry
+   may appear as a symlink on the client, or it may appear as a
+   regular file that cannot be accessed.
 
 -o no_check_root
    don't check for existence of 'dir' on server
