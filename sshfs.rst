@@ -242,6 +242,17 @@ someone (or something) recreates the destination file after SSHFS has
 removed it, but before SSHFS had the time to rename the old file. In
 this case, the rename will still fail.
 
+
+SSHFS hangs
+~~~~~~~~~~~
+
+In some cases, attempts to access the SSHFS mountpoint may freeze if
+no filesystem activity has occured for some time. This is typically
+caused by the SSH connection being dropped because of inactivity
+without SSHFS being informed about that. As a workaround, you can try
+to mount with ``-o ServerAliveInterval=15``. This will force the SSH
+connection to stay alive even if you have no activity.
+
 See also
 ========
 
