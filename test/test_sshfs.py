@@ -111,7 +111,7 @@ def test_sshfs(tmpdir, debug, cache_timeout, sync_rd,
         # file timestamps.
         tst_utimens(mnt_dir, tol=1)
 
-        tst_link(mnt_dir)
+        tst_link(mnt_dir, cache_timeout)
         tst_truncate_path(mnt_dir)
         tst_truncate_fd(mnt_dir)
         tst_open_unlink(mnt_dir)
@@ -282,7 +282,7 @@ def tst_open_unlink(mnt_dir):
 def tst_statvfs(mnt_dir):
     os.statvfs(mnt_dir)
 
-def tst_link(mnt_dir):
+def tst_link(mnt_dir, cache_timeout):
     name1 = pjoin(mnt_dir, name_generator())
     name2 = pjoin(mnt_dir, name_generator())
     shutil.copyfile(TEST_FILE, name1)
@@ -293,6 +293,14 @@ def tst_link(mnt_dir):
 
     os.link(name1, name2)
 
+    # The link operation changes st_ctime, and if we're unlucky
+    # the kernel will keep the old value cached for name1, and
+    # retrieve the new value for name2 (at least, this is the only
+    # way I can explain the test failure). To avoid this problem,
+    # we need to wait until the cached value has expired.
+    if cache_timeout:
+        safe_sleep(cache_timeout)
+    
     fstat1 = os.lstat(name1)
     fstat2 = os.lstat(name2)
     for attr in ('st_mode', 'st_dev', 'st_uid', 'st_gid',
