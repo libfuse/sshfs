@@ -1,6 +1,10 @@
 Unreleased Changes
 ------------------
 
+* Dropped support for writeback caching (and, as a consequence,
+  "unreliable append" operation). As of kernel 4.14, the FUSE module's
+  writeback implementation is not compatible with network filesystems
+  and there are no imminent plans to change that.
 * Add support for mounting from /etc/fstab
 * Dropped support for building with autotools.
 * Added missing options to man page.

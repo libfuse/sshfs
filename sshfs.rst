@@ -175,21 +175,6 @@ Options
 -o password_stdin
    read password from stdin (only for pam_mount!)
 
--o writeback_cache=BOOL
-   Enables (*yes*) or disables (*no*) the FUSE writeback cache. When
-   writeback caching is enabled, write operations are not immediately
-   sent to the SSH server but first collected and merged locally. This
-   can significantly improve performance. However, if the file is
-   changed on the server while there are unsent changes on the client,
-   data corruption is likely to result.
-
--o unreliable_append
-   When writeback caching is enabled, SSHFS cannot reliably support
-   the ``O_APPEND`` open flag and thus signals an error on open.  To
-   enable support for unreliable ``O_APPEND`` (which may overwrite
-   data if the file changes on the server at a bad time), mount the
-   file system with ``-o unreliable_append``.
-
 -o dir_cache=BOOL
    Enables (*yes*) or disables (*no*) the SSHFS directory cache.  The
    directory cache holds the names of directory entries. Enabling it

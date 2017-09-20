@@ -226,7 +226,6 @@ struct sshfs {
 	int nomap;
 	int disable_hardlink;
 	int dir_cache;
-	int writeback_cache;
 	int show_version;
 	int show_help;
 	int singlethread;
@@ -408,9 +407,6 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("disable_hardlink",  disable_hardlink, 1),
 	SSHFS_OPT("dir_cache=yes", dir_cache, 1),
 	SSHFS_OPT("dir_cache=no",  dir_cache, 0),
-	SSHFS_OPT("writeback_cache=yes", writeback_cache, 1),
-	SSHFS_OPT("writeback_cache=no", writeback_cache, 0),
-	SSHFS_OPT("unreliable_append", unrel_append, 1),
 
 	SSHFS_OPT("-h",		show_help, 1),
 	SSHFS_OPT("--help",	show_help, 1),
@@ -428,6 +424,10 @@ static struct fuse_opt sshfs_opts[] = {
 	/* For backwards compatibility */
 	SSHFS_OPT("cache=yes", dir_cache, 1),
 	SSHFS_OPT("cache=no",  dir_cache, 0),
+	
+	FUSE_OPT_KEY("writeback_cache=no", FUSE_OPT_KEY_DISCARD),
+	FUSE_OPT_KEY("unreliable_append", FUSE_OPT_KEY_DISCARD),
+
 	
 	FUSE_OPT_END
 
@@ -1736,10 +1736,6 @@ static void *sshfs_init(struct fuse_conn_info *conn,
         // Lookup of . and .. is supported
         conn->capable |= FUSE_CAP_EXPORT_SUPPORT;
 
-	// Enable writeback cache if supported
-	if (sshfs.writeback_cache && (conn->capable & FUSE_CAP_WRITEBACK_CACHE))
-		conn->want |= FUSE_CAP_WRITEBACK_CACHE;
-
 	if (!sshfs.delay_connect)
 		start_processing_thread();
 
@@ -2501,24 +2497,6 @@ static int sshfs_open_common(const char *path, mode_t mode,
 
 	if (sshfs.dir_cache)
 		wrctr = cache_get_write_ctr();
-
-	/* With writeback cache, kernel may send read requests even
-	   when userspace opened write-only */
-	if (sshfs.writeback_cache &&
-	    (fi->flags & O_ACCMODE) == O_WRONLY) {
-		fi->flags &= ~O_ACCMODE;
-		fi->flags |= O_RDWR;
-	}
-
-	/* Having the kernel handle O_APPEND doesn't work reliably, if
-	   the file changes on the server at the wrong time, we will
-	   overwrite data instead of appending. */
-	if ((fi->flags & O_APPEND) && sshfs.writeback_cache) {
-		if(sshfs.unrel_append)
-			fi->flags &= ~O_APPEND;
-		else
-			return -EINVAL;
-	}
 
 	if ((fi->flags & O_ACCMODE) == O_RDONLY)
 		pflags = SSH_FXF_READ;
@@ -3364,9 +3342,7 @@ static void usage(const char *progname)
 "    -o sshfs_sync          synchronous writes\n"
 "    -o no_readahead        synchronous reads (no speculative readahead)\n"
 "    -o sync_readdir        synchronous readdir\n"
-"    -o unreliable_append   Enable (unreliable) O_APPEND support\n"
 "    -d, --debug            print some debugging information (implies -f)\n"
-"    -o writeback_cache=BOOL enable writeback cache {yes,no} (default: yes)\n"
 "    -o dir_cache=BOOL      enable caching of directory contents (names,\n"
 "                           attributes, symlink targets) {yes,no} (default: yes)\n"
 "    -o dcache_max_size=N   sets the maximum size of the directory cache (default: 10000)\n"
@@ -3876,8 +3852,6 @@ int main(int argc, char *argv[])
 	sshfs.wfd = -1;
 	sshfs.ptyfd = -1;
 	sshfs.dir_cache = 1;
-	sshfs.writeback_cache = 1;
-	sshfs.unrel_append = 0;
 	sshfs.show_help = 0;
 	sshfs.show_version = 0;
 	sshfs.singlethread = 0;
