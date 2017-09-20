@@ -63,6 +63,10 @@ else
     message('rst2man not found, not building manual page.')
 endif
 
+meson.add_install_script('utils/install_helper.sh',
+                         get_option('sbindir'),
+                         get_option('bindir'))
+
 
 subdir('test')
 

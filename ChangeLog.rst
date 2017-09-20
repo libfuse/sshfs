@@ -1,6 +1,7 @@
 Unreleased Changes
 ------------------
 
+* Add support for mounting from /etc/fstab
 * Dropped support for building with autotools.
 * Added missing options to man page.
 

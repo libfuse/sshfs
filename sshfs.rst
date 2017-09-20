@@ -253,6 +253,14 @@ without SSHFS being informed about that. As a workaround, you can try
 to mount with ``-o ServerAliveInterval=15``. This will force the SSH
 connection to stay alive even if you have no activity.
 
+Mounting from /etc/fstab
+========================
+
+To mount an SSHFS filesystem from ``/etc/fstab``, simply use ``sshfs`
+as the file system type. (For backwards compatibility, you may also
+use ``fuse.sshfs``).
+
+
 See also
 ========
 
