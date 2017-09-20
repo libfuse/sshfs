@@ -153,10 +153,8 @@ Options
    communicate over stdin and stdout bypassing network
 
 -o disable_hardlink
-   `link(2)` will return with errno set to ENOSYS.  Hard links
-   don't currently work perfectly on sshfs, and this confuses some
-   programs.  If that happens try disabling hard links with this
-   option.
+   With this option set, attempts to call `link(2)` will fail with
+   error code ENOSYS.
 
 -o transform_symlinks
    transform absolute symlinks on remote side to relative
@@ -176,6 +174,44 @@ Options
 
 -o password_stdin
    read password from stdin (only for pam_mount!)
+
+-o writeback_cache=BOOL
+   Enables (*yes*) or disables (*no*) the FUSE writeback cache. When
+   writeback caching is enabled, write operations are not immediately
+   sent to the SSH server but first collected and merged locally. This
+   can significantly improve performance. However, if the file is
+   changed on the server while there are unsent changes on the client,
+   data corruption is likely to result.
+
+-o unreliable_append
+   When writeback caching is enabled, SSHFS cannot reliably support
+   the ``O_APPEND`` open flag and thus signals an error on open.  To
+   enable support for unreliable ``O_APPEND`` (which may overwrite
+   data if the file changes on the server at a bad time), mount the
+   file system with ``-o unreliable_append``.
+
+-o dir_cache=BOOL
+   Enables (*yes*) or disables (*no*) the SSHFS directory cache.  The
+   directory cache holds the names of directory entries. Enabling it
+   allows `readdir(3)` system calls to be processed without network
+   access.
+   
+-o dcache_max_size=N
+   sets the maximum size of the directory cache.
+   
+-o dcache_timeout=N
+   sets timeout for directory cache in seconds.
+   
+-o dcache_{stat,link,dir}_timeout=N
+   sets separate timeout for {attributes, symlinks, names} in  the
+   directory cache.
+   
+-o dcache_clean_interval=N
+   sets the interval for automatic cleaning of the directory cache.
+
+-o dcache_min_clean_interval=N
+   sets the interval for forced cleaning of the directory cache
+   when full.
 
 In addition, SSHFS accepts several options common to all FUSE file
 systems. These are described in the `mount.fuse` manpage (look
@@ -205,17 +241,6 @@ workaround=rename`. However, in this case it is still possible that
 someone (or something) recreates the destination file after SSHFS has
 removed it, but before SSHFS had the time to rename the old file. In
 this case, the rename will still fail.
-
-
-O_APPEND
-~~~~~~~~
-
-When writeback caching is enabled, SSHFS cannot reliably support the
-``O_APPEND`` open flag and thus signals an error on open.  To enable
-support for unreliable ``O_APPEND`` (which may overwrite data if the
-file changes on the server at a bad time), mount the file system with
-``-o unreliable_append``.
-
 
 See also
 ========
