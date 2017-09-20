@@ -1,5 +1,5 @@
-Unreleased Changes
-------------------
+SSHFS 3.3.0 (2017-09-20)
+------------------------
 
 * Dropped support for writeback caching (and, as a consequence,
   "unreliable append" operation). As of kernel 4.14, the FUSE module's
