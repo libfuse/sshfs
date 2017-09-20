@@ -36,13 +36,6 @@ for san in undefined address; do
     meson -D b_sanitize=${san} -D b_lundef=false -D werror=true ..
     ninja
     ${TEST_CMD}
+    sudo ninja install
     cd ..
 done
-
-# Autotools build
-CC=gcc
-autoreconf -i
-./configure
-make
-${TEST_CMD}
-sudo make install

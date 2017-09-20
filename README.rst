@@ -75,22 +75,6 @@ tests requires the `py.test`_ Python module)::
 .. _Ninja: https://ninja-build.org/
 .. _`py.test`: http://www.pytest.org/
 
-Alternate Installation
-----------------------
-
-If you are not able to use Meson and Ninja, please report this to the
-sshfs mailing list. Until the problem is resolved, you may fall back
-to an in-source build using autotools::
-
-    $ ./configure
-    $ make
-    $ sudo make install
-
-Note that support for building with autotools may disappear at some
-point, so if you depend on using autotools for some reason please let
-the sshfs developers know!
-
-
 Getting Help
 ------------
 

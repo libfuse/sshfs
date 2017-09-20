@@ -1,6 +1,7 @@
 Unreleased Changes
 ------------------
 
+* Dropped support for building with autotools.
 * Added missing options to man page.
 
 Release 3.2.0 (2017-08-06)
