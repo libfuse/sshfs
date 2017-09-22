@@ -58,7 +58,7 @@ executable('sshfs', sshfs_sources,
 if rst2man.found()
     custom_target('manpages', input: [ 'sshfs.rst' ], output: [ 'sshfs.1' ],
                   command: [rst2man, '@INPUT@', '@OUTPUT@'], install: true,
-                  install_dir: join_paths(get_option('mandir'), '1'))
+                  install_dir: join_paths(get_option('mandir'), 'man1'))
 else
     message('rst2man not found, not building manual page.')
 endif

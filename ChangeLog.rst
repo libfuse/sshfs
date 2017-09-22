@@ -1,3 +1,8 @@
+Unreleased Changes
+------------------
+
+* Manpage is now installed in correct directory.
+
 SSHFS 3.3.0 (2017-09-20)
 ------------------------
 
