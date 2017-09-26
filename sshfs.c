@@ -428,9 +428,15 @@ static struct fuse_opt sshfs_opts[] = {
 	FUSE_OPT_KEY("writeback_cache=no", FUSE_OPT_KEY_DISCARD),
 	FUSE_OPT_KEY("unreliable_append", FUSE_OPT_KEY_DISCARD),
 
-	
-	FUSE_OPT_END
+	/* These may come in from /etc/fstab - we just ignore them */
+	FUSE_OPT_KEY("auto", FUSE_OPT_KEY_DISCARD),
+	FUSE_OPT_KEY("noauto", FUSE_OPT_KEY_DISCARD),
+	FUSE_OPT_KEY("user", FUSE_OPT_KEY_DISCARD),
+	FUSE_OPT_KEY("nouser", FUSE_OPT_KEY_DISCARD),
+	FUSE_OPT_KEY("users", FUSE_OPT_KEY_DISCARD),
+	FUSE_OPT_KEY("_netdev", FUSE_OPT_KEY_DISCARD),
 
+	FUSE_OPT_END
 };
 
 static struct fuse_opt workaround_opts[] = {

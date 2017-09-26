@@ -2,6 +2,9 @@ Unreleased Changes
 ------------------
 
 * Manpage is now installed in correct directory.
+* SSHFS now supports (or rather: ignores) some options that it may
+  receive as result of being mounted from ``/etc/mtab``. This includes
+  things like ``user``, ``netdev``, or ``auto``.
 
 SSHFS 3.3.0 (2017-09-20)
 ------------------------
