@@ -2152,7 +2152,8 @@ static int sshfs_opendir(const char *path, struct fuse_file_info *fi)
 	if (!err) {
 		buf_finish(handle);
 		fi->fh = (unsigned long) handle;
-	}
+	} else
+		free(handle);
 	buf_free(&buf);
 	return err;
 }
