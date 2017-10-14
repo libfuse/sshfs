@@ -33,7 +33,8 @@ def name_generator(__ctr=[0]):
 @pytest.mark.parametrize("debug", (False, True))
 @pytest.mark.parametrize("cache_timeout", (0,1))
 @pytest.mark.parametrize("sync_rd", (True, False))
-def test_sshfs(tmpdir, debug, cache_timeout, sync_rd, capfd):
+@pytest.mark.parametrize("multiconn", (True,False))
+def test_sshfs(tmpdir, debug, cache_timeout, sync_rd, multiconn, capfd):
     
     # Avoid false positives from debug messages
     #if debug:
@@ -77,6 +78,9 @@ def test_sshfs(tmpdir, debug, cache_timeout, sync_rd, capfd):
     cmdline += [ '-o', 'entry_timeout=0',
                  '-o', 'attr_timeout=0' ]
 
+    if multiconn:
+        cmdline += [ '-o', 'max_conns=3',
+                     '-o', 'workaround=nobuflimit' ]
     
     new_env = dict(os.environ) # copy, don't modify
 

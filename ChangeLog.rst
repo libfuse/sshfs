@@ -1,3 +1,10 @@
+Unreleased Changes
+------------------
+
+* New max_conns option enables the use of multiple connections to improve responsiveness
+  during large file transfers. Thanks to Timo Savola for doing most of the implementation
+  work, and thanks to CEA.fr for sponsoring remaining bugfixes and cleanups!
+
 Release 3.6.0 (2019-11-03)
 --------------------------
 
