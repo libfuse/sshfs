@@ -1756,8 +1756,9 @@ static struct conn *choose_conn()
 {
 	int best_index = 0;
 	uint64_t best_score = ~0ULL; /* smaller is better */
+	int i;
 
-	for (int i = 0; i < sshfs.max_conns; i++) {
+	for (i = 0; i < sshfs.max_conns; i++) {
 		uint64_t score = ((uint64_t) sshfs.conns[i].req_count << 43) +
 				 ((uint64_t) sshfs.conns[i].dir_count << 22) +
 				 ((uint64_t) sshfs.conns[i].file_count << 1) +
@@ -3401,10 +3402,12 @@ static int sshfs_truncate_workaround(const char *path, off_t size,
 
 static int processing_init(void)
 {
+	int i;
+
 	signal(SIGPIPE, SIG_IGN);
 
 	pthread_mutex_init(&sshfs.lock, NULL);
-	for (int i = 0; i < sshfs.max_conns; i++)
+	for (i = 0; i < sshfs.max_conns; i++)
 		pthread_mutex_init(&sshfs.conns[i].lock_write, NULL);
 	pthread_cond_init(&sshfs.outstanding_cond, NULL);
 	sshfs.reqtab = g_hash_table_new(NULL, NULL);
@@ -3950,6 +3953,7 @@ int main(int argc, char *argv[])
 	const char *sftp_server;
 	struct fuse *fuse;
 	struct fuse_session *se;
+	int i;
 
 #ifdef __APPLE__
 	if (!realpath(*exec_path, sshfs_program_path)) {
@@ -4090,7 +4094,7 @@ int main(int argc, char *argv[])
 	}
 
 	sshfs.conns = g_new0(struct conn, sshfs.max_conns);
-	for (int i = 0; i < sshfs.max_conns; i++) {
+	for (i = 0; i < sshfs.max_conns; i++) {
 		sshfs.conns[i].rfd = -1;
 		sshfs.conns[i].wfd = -1;
 	}
