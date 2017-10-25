@@ -1,5 +1,5 @@
-Unreleased Changes
-------------------
+Release 3.3.1 (2017-10-25)
+--------------------------
 
 * Manpage is now installed in correct directory.
 * SSHFS now supports (or rather: ignores) some options that it may
