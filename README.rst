@@ -51,7 +51,7 @@ To build and install, we recommend to use Meson_ (version 0.38 or
 newer) and Ninja_.  After extracting the sshfs tarball, create a
 (temporary) build directory and run Meson::
 
-    $ md build; cd build
+    $ mkdir build; cd build
     $ meson ..
 
 Normally, the default build options will work fine. If you
