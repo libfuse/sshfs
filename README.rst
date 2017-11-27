@@ -89,5 +89,6 @@ https://github.com/libfuse/libfuse/issues.
 Professional Support
 --------------------
 
-Professional support is offered via (Rath
-Consulting)[http://www.rath-consulting.biz].
+Professional support is offered via `Rath Consulting`_.
+
+.. _`Rath Consulting`: http://www.rath-consulting.biz
