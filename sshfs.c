@@ -214,6 +214,7 @@ struct sshfs {
 	struct fuse_args ssh_args;
 	char *workarounds;
 	int rename_workaround;
+	int renamexdev_workaround;
 	int truncate_workaround;
 	int buflimit_workaround;
 	int unrel_append;
@@ -446,6 +447,8 @@ static struct fuse_opt workaround_opts[] = {
 	SSHFS_OPT("none",       fstat_workaround, 0),
 	SSHFS_OPT("rename",     rename_workaround, 1),
 	SSHFS_OPT("norename",   rename_workaround, 0),
+	SSHFS_OPT("renamexdev",   renamexdev_workaround, 1),
+	SSHFS_OPT("norenamexdev", renamexdev_workaround, 0),
 	SSHFS_OPT("truncate",   truncate_workaround, 1),
 	SSHFS_OPT("notruncate", truncate_workaround, 0),
 	SSHFS_OPT("buflimit",   buflimit_workaround, 1),
@@ -2333,6 +2336,8 @@ static int sshfs_rename(const char *from, const char *to, unsigned int flags)
 			}
 		}
 	}
+	if (err == -EPERM && sshfs.renamexdev_workaround)
+		err = -EXDEV;
 	return err;
 }
 
@@ -3365,6 +3370,7 @@ static void usage(const char *progname)
 "    -o workaround=LIST     colon separated list of workarounds\n"
 "             none             no workarounds enabled\n"
 "             [no]rename       fix renaming to existing file (default: off)\n"
+"             [no]renamexdev   fix moving across filesystems (default: off)\n"
 "             [no]truncate     fix truncate for old servers (default: off)\n"
 "             [no]buflimit     fix buffer fillup bug in server (default: on)\n"
 "             [no]fstat        always use stat() instead of fstat() (default: off)\n"
@@ -3851,6 +3857,7 @@ int main(int argc, char *argv[])
 #else
 	sshfs.rename_workaround = 0;
 #endif
+	sshfs.renamexdev_workaround = 0;
 	sshfs.truncate_workaround = 0;
 	sshfs.buflimit_workaround = 1;
 	sshfs.ssh_ver = 2;

@@ -107,6 +107,8 @@ Options
 
    :rename: Emulate overwriting an existing file by deleting and
         renaming.
+   :renamexdev: Make rename fail with EXDEV instead of the default EPERM
+        to allow moving files across remote filesystems.
    :truncate: Work around servers that don't support truncate by
         coping the whole file, truncating it locally, and sending it
         back.
@@ -226,6 +228,17 @@ workaround=rename`. However, in this case it is still possible that
 someone (or something) recreates the destination file after SSHFS has
 removed it, but before SSHFS had the time to rename the old file. In
 this case, the rename will still fail.
+
+
+Permission denied when moving files across remote filesystems
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Most SFTP servers return only a generic "failure" when failing to rename
+across filesystem boundaries (EXDEV).  sshfs normally converts this generic
+failure to a permission denied error (EPERM).  If the option ``-o
+workaround=renamexdev`` is given, generic failures will be considered EXDEV
+errors which will make programs like `mv(1)` attempt to actually move the
+file after the failed rename.
 
 
 SSHFS hangs
