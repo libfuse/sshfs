@@ -14,8 +14,6 @@ addons:
     - gcc-6
     - python-docutils
     - python3-pip
-before_install:
-   - sudo -H python3 -m pip install pip==8.1.1
 install: test/travis-install.sh
 script: test/travis-build.sh
 
