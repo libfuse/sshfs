@@ -2578,6 +2578,12 @@ static int sshfs_open_common(const char *path, mode_t mode,
 		g_free(sf);
 	}
 	buf_free(&buf);
+
+	if (fi->flags & O_CREAT){
+		fi->flags = fi->flags &~ O_CREAT;
+		return sshfs_open_common(path, mode, fi);
+	}
+
 	return err;
 }
 
