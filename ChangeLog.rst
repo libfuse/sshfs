@@ -4,6 +4,7 @@ Unreleased Changes
 * Make utimens(NULL) result in timestamp "now" -- no more touched files
   dated 1970-01-01
 * New `createmode` workaround.
+* Fix `fstat` workaround regression.
 
 Release 3.3.2 (2018-04-29)
 --------------------------

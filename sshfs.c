@@ -3158,7 +3158,7 @@ static int sshfs_getattr(const char *path, struct stat *stbuf,
 	struct buffer outbuf;
 	struct sshfs_file *sf = NULL;
 
-	if (fi != NULL || sshfs.fstat_workaround) {
+	if (fi != NULL && !sshfs.fstat_workaround) {
 		sf = get_sshfs_file(fi);
 		if (!sshfs_file_is_conn(sf))
 			return -EIO;
