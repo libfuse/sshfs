@@ -219,6 +219,7 @@ struct sshfs {
 	int buflimit_workaround;
 	int unrel_append;
 	int fstat_workaround;
+	int createmode_workaround;
 	int transform_symlinks;
 	int follow_symlinks;
 	int no_check_root;
@@ -455,6 +456,8 @@ static struct fuse_opt workaround_opts[] = {
 	SSHFS_OPT("nobuflimit", buflimit_workaround, 0),
 	SSHFS_OPT("fstat",      fstat_workaround, 1),
 	SSHFS_OPT("nofstat",    fstat_workaround, 0),
+	SSHFS_OPT("createmode",   createmode_workaround, 1),
+	SSHFS_OPT("nocreatemode", createmode_workaround, 0),
 	FUSE_OPT_END
 };
 
@@ -3100,6 +3103,9 @@ static int sshfs_statfs(const char *path, struct statvfs *buf)
 static int sshfs_create(const char *path, mode_t mode,
                         struct fuse_file_info *fi)
 {
+	if (sshfs.createmode_workaround)
+		mode = 0;
+
 	return sshfs_open_common(path, mode, fi);
 }
 
@@ -3374,6 +3380,7 @@ static void usage(const char *progname)
 "             [no]truncate     fix truncate for old servers (default: off)\n"
 "             [no]buflimit     fix buffer fillup bug in server (default: on)\n"
 "             [no]fstat        always use stat() instead of fstat() (default: off)\n"
+"             [no]createmode   always pass mode 0 to create (default: off)\n"
 "    -o idmap=TYPE          user/group ID mapping (default: " IDMAP_DEFAULT ")\n"
 "             none             no translation of the ID space\n"
 "             user             only translate UID/GID of connecting user\n"
@@ -3860,6 +3867,7 @@ int main(int argc, char *argv[])
 	sshfs.renamexdev_workaround = 0;
 	sshfs.truncate_workaround = 0;
 	sshfs.buflimit_workaround = 1;
+	sshfs.createmode_workaround = 0;
 	sshfs.ssh_ver = 2;
 	sshfs.progname = argv[0];
 	sshfs.rfd = -1;

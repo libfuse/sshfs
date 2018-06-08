@@ -115,6 +115,8 @@ Options
    :fstat: Work around broken servers that don't support *fstat()* by
            using *stat* instead.
    :buflimit: Work around OpenSSH "buffer fillup" bug.
+   :createmode: Work around broken servers that produce an error when passing a
+                non-zero mode to create, by always passing a mode of 0.
 
 -o idmap=TYPE
    How to map remote UID/GIDs to local values. Possible values are:
