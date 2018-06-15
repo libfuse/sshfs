@@ -2473,6 +2473,14 @@ static int sshfs_utimens(const char *path, const struct timespec tv[2],
 	int err;
 	struct buffer buf;
 	struct sshfs_file *sf = NULL;
+	time_t asec = tv[0].tv_sec, msec = tv[1].tv_sec;
+
+	struct timeval now;
+	gettimeofday(&now, NULL);
+	if (asec == 0)
+		asec = now.tv_sec;
+	if (msec == 0)
+		msec = now.tv_sec;
 
 	if (fi != NULL) {
 		sf = get_sshfs_file(fi);
@@ -2486,8 +2494,8 @@ static int sshfs_utimens(const char *path, const struct timespec tv[2],
 	else 
 		buf_add_buf(&buf, &sf->handle);
 	buf_add_uint32(&buf, SSH_FILEXFER_ATTR_ACMODTIME);
-	buf_add_uint32(&buf, tv[0].tv_sec);
-	buf_add_uint32(&buf, tv[1].tv_sec);
+	buf_add_uint32(&buf, asec);
+	buf_add_uint32(&buf, msec);
 
 	err = sftp_request(sf == NULL ? SSH_FXP_SETSTAT : SSH_FXP_FSETSTAT,
 			   &buf, SSH_FXP_STATUS, NULL);
