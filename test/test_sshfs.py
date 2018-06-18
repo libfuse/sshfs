@@ -102,6 +102,7 @@ def test_sshfs(tmpdir, debug, cache_timeout, sync_rd, capfd):
         # SSHFS only supports one second resolution when setting
         # file timestamps.
         tst_utimens(mnt_dir, tol=1)
+        tst_utimens_now(mnt_dir)
 
         tst_link(mnt_dir, cache_timeout)
         tst_truncate_path(mnt_dir)
@@ -402,6 +403,18 @@ def tst_utimens(mnt_dir, tol=0):
     if sys.version_info >= (3,3):
         assert abs(fstat.st_atime_ns - atime_ns) < tol*1e9
         assert abs(fstat.st_mtime_ns - mtime_ns) < tol*1e9
+
+def tst_utimens_now(mnt_dir):
+    fullname = pjoin(mnt_dir, name_generator())
+
+    fd = os.open(fullname, os.O_CREAT | os.O_RDWR)
+    os.close(fd)
+    os.utime(fullname, None)
+
+    fstat = os.lstat(fullname)
+    # We should get now-timestamps
+    assert fstat.st_atime != 0
+    assert fstat.st_mtime != 0
 
 def tst_passthrough(src_dir, mnt_dir, cache_timeout):
     name = name_generator()
