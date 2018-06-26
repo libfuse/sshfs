@@ -74,6 +74,9 @@ def test_sshfs(tmpdir, debug, cache_timeout, sync_rd, capfd):
     cmdline += [ '-o', 'entry_timeout=0',
                  '-o', 'attr_timeout=0' ]
 
+
+    cmdline += [ '-o', 'max_conns=3',
+                 '-o', 'workaround=nobuflimit' ]
     
     new_env = dict(os.environ) # copy, don't modify
 

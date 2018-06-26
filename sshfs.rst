@@ -202,6 +202,14 @@ Options
    sets the interval for forced cleaning of the directory cache
    when full.
 
+-o max_conns=N
+   sets the maximum number of simultaneous SSH connections
+   to use. Each connection is established with a separate SSH process.
+   The primary purpose of this feature is to improve the responsiveness of the
+   file system during large file transfers. When using more than once
+   connection, the *password_stdin* and *slave* options can not be
+   used, and the *buflimit* workaround is not supported/
+   
 In addition, SSHFS accepts several options common to all FUSE file
 systems. These are described in the `mount.fuse` manpage (look
 for "general", "libfuse specific", and "high-level API" options).
