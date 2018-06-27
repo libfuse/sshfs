@@ -32,7 +32,7 @@ To unmount the filesystem::
 
     fusermount -u mountpoint
 
-On BSD and OS-X, to unmount the filesystem::
+On BSD and macOS, to unmount the filesystem::
 
     umount mountpoint
 
@@ -42,7 +42,7 @@ Installation
 
 First, download the latest SSHFS release from
 https://github.com/libfuse/sshfs/releases. On Linux and BSD, you will
-also need to install libfuse_ 3.1.0 or newer. On OS-X, you need
+also need to install libfuse_ 3.1.0 or newer. On macOS, you need
 OSXFUSE_ instead. Finally, you need the Glib_ library with development
 headers (which should be available from your operating system's
 package manager).
