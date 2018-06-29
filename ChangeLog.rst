@@ -1,5 +1,5 @@
-Unreleased Changes
-------------------
+Release 3.4.0 (2018-06-29)
+--------------------------
 
 * Make utimens(NULL) result in timestamp "now" -- no more touched files
   dated 1970-01-01
