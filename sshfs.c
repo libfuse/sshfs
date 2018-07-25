@@ -2316,7 +2316,7 @@ static int sshfs_rename(const char *from, const char *to, unsigned int flags)
 	int err;
 
 	if(flags != 0)
-		return EINVAL;
+		return -EINVAL;
 	
 	if (sshfs.ext_posix_rename)
 		err = sshfs_ext_posix_rename(from, to);

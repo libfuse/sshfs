@@ -1,3 +1,8 @@
+Unreleased Changes
+------------------
+
+* Fixed error code returned by rename(), allowing proper fallback.
+
 Release 3.4.0 (2018-06-29)
 --------------------------
 
