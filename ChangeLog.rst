@@ -2,6 +2,7 @@ Unreleased Changes
 ------------------
 
 * Fixed error code returned by rename(), allowing proper fallback.
+* Port to Cygwin.
 
 Release 3.4.0 (2018-06-29)
 --------------------------

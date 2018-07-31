@@ -12,7 +12,7 @@
 #include <fuse.h>
 #include <fuse_opt.h>
 #if !defined(__CYGWIN__)
-#include <fuse_lowlevel.h>
+#  include <fuse_lowlevel.h>
 #endif
 #ifdef __APPLE__
 #  include <fuse_darwin.h>
@@ -3452,7 +3452,39 @@ static int sshfs_opt_proc(void *data, const char *arg, int key,
 			return 0;
 		}
 		else if (!sshfs.mountpoint) {
+#if defined(__CYGWIN__)
+			/*
+			 * On FUSE for Cygwin the mountpoint may be a drive or directory.
+			 * Furthermore the mountpoint must NOT exist prior to mounting.
+			 * So we cannot use realpath(3).
+			 */
+			if ((('A' <= arg[0] && arg[0] <= 'Z') || ('a' <= arg[0] && arg[0] <= 'z'))
+				&& ':' == arg[1] && '\0' == arg[2]) {
+				/* drive: make a copy */
+				sshfs.mountpoint = strdup(arg);
+			} else {
+				/* path: split into dirname, basename and check dirname */
+				char *dir;
+				const char *base;
+				const char *slash = strrchr(arg, '/');
+				if (slash) {
+					char *tmp = strndup(arg, slash == arg ? 1 : slash - arg);
+					dir = tmp ? realpath(tmp, NULL) : 0;
+					base = slash + 1;
+					free(tmp);
+				} else {
+					dir = realpath(".", NULL);
+					base = arg;
+				}
+				if (dir) {
+					slash = '/' == dir[0] && '\0' == dir[1] ? "" : "/";
+					asprintf(&sshfs.mountpoint, "%s%s%s", dir, slash, base);
+					free(dir);
+				}
+			}
+#else
 			sshfs.mountpoint = realpath(arg, NULL);
+#endif
 			if (!sshfs.mountpoint) {
 				fprintf(stderr, "sshfs: bad mount point `%s': %s\n",
 					arg, strerror(errno));
@@ -3912,7 +3944,9 @@ int main(int argc, char *argv[])
 	if (sshfs.show_version) {
 		printf("SSHFS version %s\n", PACKAGE_VERSION);
 		printf("FUSE library version %s\n", fuse_pkgversion());
+#if !defined(__CYGWIN__)
 		fuse_lowlevel_version();
+#endif
 		exit(0);
 	}
 
