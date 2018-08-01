@@ -1,0 +1,19 @@
+version: '{build}'
+
+install:
+
+# install WinFsp
+- appveyor DownloadFile https://github.com/billziss-gh/winfsp/releases/download/v1.4B2/winfsp-1.4.18211.msi
+- for %%f in ("winfsp-*.msi") do start /wait msiexec /i %%f /qn INSTALLLEVEL=1000
+
+# install FUSE for Cygwin (64-bit and 32-bit)
+- C:\cygwin64\bin\env.exe -i PATH=/bin bash "%ProgramFiles(x86)%\WinFsp\opt\cygfuse\install.sh"
+- C:\cygwin\bin\env.exe -i PATH=/bin bash "%ProgramFiles(x86)%\WinFsp\opt\cygfuse\install.sh"
+
+# install additional Cygwin packages (64-bit and 32-bit)
+- C:\cygwin64\setup-x86_64.exe -qnNdO -R C:\cygwin64 -s http://cygwin.mirror.constant.com -l C:\cygwin64\var\cache\setup -P libglib2.0-devel -P meson
+- C:\cygwin\setup-x86.exe -qnNdO -R C:\cygwin -s http://cygwin.mirror.constant.com -l C:\cygwin\var\cache\setup -P libglib2.0-devel -P meson
+
+build_script:
+- C:\cygwin64\bin\env.exe -i PATH=/bin bash test\appveyor-build.sh
+- C:\cygwin\bin\env.exe -i PATH=/bin bash test\appveyor-build.sh
