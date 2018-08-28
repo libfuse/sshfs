@@ -1,5 +1,5 @@
-Unreleased Changes
-------------------
+Release 3.5.0 (2018-08-28)
+--------------------------
 
 * Fixed error code returned by rename(), allowing proper fallback.
 * Port to Cygwin.
