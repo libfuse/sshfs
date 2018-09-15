@@ -25,7 +25,7 @@ if not cc.compiles(code, args: [ '-O0', '-Werror=unused-result' ])
 endif
 
 
-rst2man = find_program('rst2man', required: false)
+rst2man = find_program('rst2man', 'rst2man.py', required: false)
   
 cfg = configuration_data()
 
