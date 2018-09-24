@@ -243,8 +243,8 @@ errors which will make programs like `mv(1)` attempt to actually move the
 file after the failed rename.
 
 
-SSHFS hangs
-~~~~~~~~~~~
+SSHFS hangs for no apparent reason
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In some cases, attempts to access the SSHFS mountpoint may freeze if
 no filesystem activity has occured for some time. This is typically
@@ -252,6 +252,34 @@ caused by the SSH connection being dropped because of inactivity
 without SSHFS being informed about that. As a workaround, you can try
 to mount with ``-o ServerAliveInterval=15``. This will force the SSH
 connection to stay alive even if you have no activity.
+
+
+SSHFS hangs after the connection was interrupted
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, network operations in SSHFS run without timeouts, mirroring the
+default behavior of SSH itself. As a consequence, if the connection to the
+remote host is interrupted (e.g. because a network cable was removed),
+operations on files or directories under the mountpoint will block until the
+connection is either restored or closed altogether (e.g. manually).
+Applications that try to access such files or directories will generally appear
+to "freeze" when this happens.
+
+If it is acceptable to discard data being read or written, a quick workaround
+is to kill the responsible ``sshfs`` process, which will make any blocking
+operations on the mounted filesystem error out and thereby "unfreeze" the
+relevant applications. Note that force unmounting with ``fusermount -zu``, on
+the other hand, does not help in this case and will leave read/write operations
+in the blocking state.
+
+For a more automatic solution, one can use the ``-o ServerAliveInterval=15``
+option mentioned above, which will drop the connection after not receiving a
+response for 3 * 15 = 45 seconds from the remote host. By also supplying ``-o
+reconnect``, one can ensure that the connection is re-established as soon as
+possible afterwards. As before, this will naturally lead to loss of data that
+was in the process of being read or written at the time when the connection was
+interrupted.
+
 
 Mounting from /etc/fstab
 ========================
