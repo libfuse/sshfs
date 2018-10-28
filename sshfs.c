@@ -300,6 +300,7 @@ static const char *ssh_opts[] = {
 	"AddressFamily",
 	"BatchMode",
 	"BindAddress",
+	"BindInterface",
 	"CertificateFile",
 	"ChallengeResponseAuthentication",
 	"CheckHostIP",
