@@ -109,7 +109,7 @@ def test_sshfs(tmpdir, debug, cache_timeout, sync_rd, capfd):
         tst_truncate_fd(mnt_dir)
         tst_open_unlink(mnt_dir)
     except:
-        cleanup(mnt_dir)
+        cleanup(mount_process, mnt_dir)
         raise
     else:
         umount(mount_process, mnt_dir)
