@@ -32,7 +32,7 @@ def cleanup(mount_process, mnt_dir):
     
 
 def umount(mount_process, mnt_dir):
-    subprocess.check_call(['fusermount', '-z', '-u', mnt_dir ])
+    subprocess.check_call(['fusermount3', '-z', '-u', mnt_dir ])
     assert not os.path.ismount(mnt_dir)
 
     # Give mount process a little while to terminate. Popen.wait(timeout)
