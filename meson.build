@@ -1,5 +1,5 @@
 project('sshfs', 'c', version: '3.5.1',
-        meson_version: '>= 0.38',
+        meson_version: '>= 0.40',
         default_options: [ 'buildtype=debugoptimized' ])
 
 add_global_arguments('-D_REENTRANT', '-DHAVE_CONFIG_H',
