@@ -1,4 +1,4 @@
-project('sshfs', 'c', version: '3.5.0',
+project('sshfs', 'c', version: '3.5.1',
         meson_version: '>= 0.38',
         default_options: [ 'buildtype=debugoptimized' ])
 
