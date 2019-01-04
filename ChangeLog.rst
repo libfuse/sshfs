@@ -1,3 +1,8 @@
+Unreleased Changes
+------------------
+
+* Fixed "-o idmap=user" to map both UID and GID on all OSs.
+
 Release 3.5.1 (2018-12-22)
 --------------------------
 
