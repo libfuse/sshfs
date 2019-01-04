@@ -1,10 +1,14 @@
+Unreleased Changes
+------------------
+
+* Fixed "-o idmap=user" to map both UID and GID on all OSs.
+
 Release 3.5.1 (2018-12-22)
 --------------------------
 
 * Documentation updates
 * Build system updates
 * Added "BindInterface" as valid "-o" option.
-* Fixed "-o idmap=user" to map both UID and GID on all OSs.
 
 Release 3.5.0 (2018-08-28)
 --------------------------
