@@ -264,10 +264,8 @@ struct sshfs {
 	int server_version;
 	unsigned remote_uid;
 	unsigned local_uid;
-#ifdef __APPLE__
 	unsigned remote_gid;
 	unsigned local_gid;
-#endif
 	int remote_uid_detected;
 	unsigned blksize;
 	char *progname;
@@ -789,17 +787,12 @@ static int buf_get_attrs(struct buffer *buf, struct stat *stbuf, int *flagsp)
 		}
 	}
 
-#ifdef __APPLE__
 	if (sshfs.remote_uid_detected) {
 		if (uid == sshfs.remote_uid)
 			uid = sshfs.local_uid;
 		if (gid == sshfs.remote_gid)
 			gid = sshfs.local_gid;
 	}
-#else /* !__APPLE__ */
-	if (sshfs.remote_uid_detected && uid == sshfs.remote_uid)
-		uid = sshfs.local_uid;
-#endif /* __APPLE__ */
 	if (sshfs.idmap == IDMAP_FILE && sshfs.uid_map)
 		if (translate_id(&uid, sshfs.uid_map) == -1)
 			return -EPERM;
@@ -1600,10 +1593,8 @@ static void sftp_detect_uid()
 
 	sshfs.remote_uid = stbuf.st_uid;
 	sshfs.local_uid = getuid();
-#ifdef __APPLE__
 	sshfs.remote_gid = stbuf.st_gid;
 	sshfs.local_gid = getgid();
-#endif
 	sshfs.remote_uid_detected = 1;
 	DEBUG("remote_uid = %i\n", sshfs.remote_uid);
 
@@ -2424,17 +2415,12 @@ static int sshfs_chown(const char *path, uid_t uid, gid_t gid,
 			return -EIO;
 	}
 	
-#ifdef __APPLE__
 	if (sshfs.remote_uid_detected) {
 		if (uid == sshfs.local_uid)
 			uid = sshfs.remote_uid;
 		if (gid == sshfs.local_gid)
 			gid = sshfs.remote_gid;
 	}
-#else /* !__APPLE__ */
-	if (sshfs.remote_uid_detected && uid == sshfs.local_uid)
-		uid = sshfs.remote_uid;
-#endif /* __APPLE__ */
 	if (sshfs.idmap == IDMAP_FILE && sshfs.r_uid_map)
 		if(translate_id(&uid, sshfs.r_uid_map) == -1)
 			return -EPERM;
