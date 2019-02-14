@@ -1267,9 +1267,10 @@ static void chunk_put_locked(struct read_chunk *chunk)
 	pthread_mutex_unlock(&sshfs.lock);
 }
 
-static int clean_req(void *key_, struct request *req)
+static int clean_req(void *key_, struct request *req, gpointer user_data_)
 {
 	(void) key_;
+	(void) user_data_;
 
 	req->error = -EIO;
 	if (req->want_reply)
