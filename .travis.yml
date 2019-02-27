@@ -1,5 +1,5 @@
 sudo: required
-dist: trusty
+dist: xenial
 
 language:
     - c
@@ -14,6 +14,8 @@ addons:
     - gcc-6
     - python-docutils
     - python3-pip
+    - python3-setuptools
+    - ninja-build
 install: test/travis-install.sh
 script: test/travis-build.sh
 
