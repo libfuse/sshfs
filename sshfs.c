@@ -3471,7 +3471,19 @@ static int sshfs_opt_proc(void *data, const char *arg, int key,
 				}
 			}
 #else
-			sshfs.mountpoint = realpath(arg, NULL);
+                        int fd, len;
+                        if (sscanf(arg, "/dev/fd/%u%n", &fd, &len) == 1 &&
+                            len == strlen(arg)) {
+                                /*
+                                 * Allow /dev/fd/N unchanged; it can be
+                                 * use for pre-mounting a generic fuse
+                                 * mountpoint to later be completely
+                                 * unprivileged with libfuse >= 3.3.0.
+                                 */
+                                sshfs.mountpoint = arg;
+                        } else {
+                                sshfs.mountpoint = realpath(arg, NULL);
+                        }
 #endif
 			if (!sshfs.mountpoint) {
 				fprintf(stderr, "sshfs: bad mount point `%s': %s\n",
