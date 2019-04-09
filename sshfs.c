@@ -3546,40 +3546,60 @@ static int read_password(void)
 	return 0;
 }
 
+// Behaves similarly to strtok(), but allows for the ' ' delimiter to be escaped
+// by '\ '.
+static char *tokenize_on_space(char *str)
+{
+	static char *pos = NULL;
+	char *start = NULL;
+
+	if (str)
+		pos = str;
+
+	if (!pos)
+		return NULL;
+
+	// trim any leading spaces
+	while (*pos == ' ')
+		pos++;
+
+	start = pos;
+
+	while (pos && *pos != '\0') {
+		// break on space, but not on '\ '
+		if (*pos == ' ' && *(pos - 1) != '\\') {
+			break;
+		}
+		pos++;
+	}
+
+	if (*pos == '\0') {
+		pos = NULL;
+	}
+	else {
+		*pos = '\0';
+		pos++;
+	}
+
+	return start;
+}
+
 static void set_ssh_command(void)
 {
-	char *s;
-	char *d;
+	char *token = NULL;
 	int i = 0;
-	int end = 0;
 
-	d = sshfs.ssh_command;
-	s = sshfs.ssh_command;
-	while (!end) {
-		switch (*s) {
-		case '\0':
-			end = 1;
-		case ' ':
-			*d = '\0';
-			if (i == 0) {
-				replace_arg(&sshfs.ssh_args.argv[0],
-					    sshfs.ssh_command);
-			} else {
-				if (fuse_opt_insert_arg(&sshfs.ssh_args, i,
-						sshfs.ssh_command) == -1)
-					_exit(1);
-			}
-			i++;
-			d = sshfs.ssh_command;
-			break;
-
-		case '\\':
-			if (s[1])
-				s++;
-		default:
-			*d++ = *s;
+	token = tokenize_on_space(sshfs.ssh_command);
+	while (token != NULL) {
+		if (i == 0) {
+			replace_arg(&sshfs.ssh_args.argv[0], token);
+		} else {
+			if (fuse_opt_insert_arg(&sshfs.ssh_args, i, token) == -1)
+				_exit(1);
 		}
-		s++;
+		i++;
+
+		token = tokenize_on_space(NULL);
 	}
 }
 

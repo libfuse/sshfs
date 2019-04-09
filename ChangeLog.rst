@@ -1,3 +1,8 @@
+Unreleased Changes
+-------------------------
+
+* Fixed improper handling of sequential spaces spaces in "ssh_command" option
+
 Release 2.10 (2017-08-03)
 -------------------------
 
