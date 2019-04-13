@@ -1,5 +1,5 @@
-Unreleased Changes
-------------------
+Release 3.5.2 (2019-04-13)
+--------------------------
 
 * Fixed "-o idmap=user" to map both UID and GID on all OSs.
 * Fixed improper handling of sequential spaces spaces in "ssh_command" option
