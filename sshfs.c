@@ -4051,6 +4051,12 @@ int main(int argc, char *argv[])
 		if (res == -1)
 			exit(1);
 
+		if (!mountpoint) {
+			fprintf(stderr, "ERROR: No mount point could be parsed "
+					"from the command-line options\n");
+			exit(1);
+		}
+
 		if (sshfs.slave) {
 			/* Force sshfs to the foreground when using stdin+stdout */
 			foreground = 1;
