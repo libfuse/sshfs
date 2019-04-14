@@ -1,5 +1,5 @@
 sudo: required
-dist: trusty
+dist: xenial
 
 language:
     - c
@@ -15,8 +15,9 @@ addons:
     - fuse
     - libfuse2
     - libfuse-dev
-before_install:
-   - pip install pip==8.1.1 && pip3 install pip==8.1.1
+    - python3-pip
+    - python3-setuptools
+    - ninja-build
 install: test/travis-install.sh
 script: test/travis-build.sh
 
