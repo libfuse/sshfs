@@ -244,6 +244,7 @@ struct sshfs {
 	int sync_write;
 	int sync_read;
 	int sync_readdir;
+  int direct_io;
 	int debug;
 	int foreground;
 	int reconnect;
@@ -408,6 +409,7 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("disable_hardlink",  disable_hardlink, 1),
 	SSHFS_OPT("dir_cache=yes", dir_cache, 1),
 	SSHFS_OPT("dir_cache=no",  dir_cache, 0),
+	SSHFS_OPT("direct_io",  direct_io, 1),
 
 	SSHFS_OPT("-h",		show_help, 1),
 	SSHFS_OPT("--help",	show_help, 1),
@@ -2509,6 +2511,9 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	if (sshfs.dir_cache)
 		wrctr = cache_get_write_ctr();
 
+  if (sshfs.direct_io)
+    fi->direct_io = 1;
+
 	if ((fi->flags & O_ACCMODE) == O_RDONLY)
 		pflags = SSH_FXF_READ;
 	else if((fi->flags & O_ACCMODE) == O_WRONLY)
@@ -3369,6 +3374,7 @@ static void usage(const char *progname)
 "    -o dcache_min_clean_interval=N\n"
 "                           sets the interval for forced cleaning of the\n"
 "                           cache if full (default: 5)\n"
+"    -o direct_io           enable direct i/o\n"
 "    -o workaround=LIST     colon separated list of workarounds\n"
 "             none             no workarounds enabled\n"
 "             [no]rename       fix renaming to existing file (default: off)\n"

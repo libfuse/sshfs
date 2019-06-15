@@ -1,3 +1,13 @@
+Unreleased Changes
+------------------
+
+* Added "-o direct_io" option.
+  This option disables the use of page cache in kernel.
+  This is useful for example if the file size is not known before reading it.
+  For example if you mount /proc dir from a remote host without the direct_io
+  option, the read always will return zero bytes instead of actual data.
+  
+
 Release 3.5.2 (2019-04-13)
 --------------------------
 
