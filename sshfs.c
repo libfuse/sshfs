@@ -38,7 +38,7 @@
 #include <sys/socket.h>
 #include <sys/utsname.h>
 #include <sys/mman.h>
-#include <sys/poll.h>
+#include <poll.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <glib.h>
