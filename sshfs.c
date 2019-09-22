@@ -1740,7 +1740,7 @@ static void *sshfs_init(struct fuse_conn_info *conn,
 		sshfs.sync_read = 1;
 
 	// These workarounds require the "path" argument.
-        cfg->nullpath_ok = ~(sshfs.truncate_workaround || sshfs.fstat_workaround);
+        cfg->nullpath_ok = !(sshfs.truncate_workaround || sshfs.fstat_workaround);
 
         // Lookup of . and .. is supported
         conn->capable |= FUSE_CAP_EXPORT_SUPPORT;
