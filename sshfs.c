@@ -3485,7 +3485,7 @@ static int sshfs_opt_proc(void *data, const char *arg, int key,
                                  * mountpoint to later be completely
                                  * unprivileged with libfuse >= 3.3.0.
                                  */
-                                sshfs.mountpoint = arg;
+                                sshfs.mountpoint = strdup(arg);
                         } else {
                                 sshfs.mountpoint = realpath(arg, NULL);
                         }
