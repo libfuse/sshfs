@@ -1120,11 +1120,14 @@ static int connect_to(char *host, char *port)
 	sock = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
 	if (sock == -1) {
 		perror("failed to create socket");
+		freeaddrinfo(ai);
 		return -1;
 	}
 	err = connect(sock, ai->ai_addr, ai->ai_addrlen);
 	if (err == -1) {
 		perror("failed to connect");
+		freeaddrinfo(ai);
+		close(sock);
 		return -1;
 	}
 	opt = 1;
