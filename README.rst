@@ -1,3 +1,6 @@
+.. image:: https://travis-ci.org/libfuse/sshfs.svg?branch=master
+    :target: https://travis-ci.org/libfuse/sshfs
+
 SSHFS
 =====
 
