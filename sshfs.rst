@@ -206,8 +206,10 @@ Options
    This option disables the use of page cache (file content cache) in 
    the kernel for this filesystem.
    This has several affects:
+
    1. Each read() or write() system call will initiate one or more read or
       write operations, data will not be cached in the kernel.
+
    2. The return value of the read() and write() system calls will correspond 
       to the return values of the read and write operations. This is useful 
       for example if the file size is not known in advance (before reading it).
