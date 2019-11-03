@@ -1745,7 +1745,7 @@ static void *sshfs_init(struct fuse_conn_info *conn,
 		sshfs.sync_read = 1;
 
 	// These workarounds require the "path" argument.
-        cfg->nullpath_ok = ~(sshfs.truncate_workaround || sshfs.fstat_workaround);
+        cfg->nullpath_ok = !(sshfs.truncate_workaround || sshfs.fstat_workaround);
 
         // Lookup of . and .. is supported
         conn->capable |= FUSE_CAP_EXPORT_SUPPORT;
@@ -3494,7 +3494,7 @@ static int sshfs_opt_proc(void *data, const char *arg, int key,
                                  * mountpoint to later be completely
                                  * unprivileged with libfuse >= 3.3.0.
                                  */
-                                sshfs.mountpoint = arg;
+                                sshfs.mountpoint = strdup(arg);
                         } else {
                                 sshfs.mountpoint = realpath(arg, NULL);
                         }
