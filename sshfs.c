@@ -12,10 +12,10 @@
 #include <fuse.h>
 #include <fuse_opt.h>
 #if !defined(__CYGWIN__)
-#  include <fuse_lowlevel.h>
+#include <fuse_lowlevel.h>
 #endif
 #ifdef __APPLE__
-#  include <fuse_darwin.h>
+#include <fuse_darwin.h>
 #endif
 #include <assert.h>
 #include <stdio.h>
@@ -26,7 +26,7 @@
 #include <stdint.h>
 #include <errno.h>
 #ifndef __APPLE__
-#  include <semaphore.h>
+#include <semaphore.h>
 #endif
 #include <pthread.h>
 #include <netdb.h>
@@ -46,9 +46,9 @@
 #include <grp.h>
 #include <limits.h>
 #ifdef __APPLE__
-#  include <strings.h>
-#  include <libgen.h>
-#  include <darwin_compat.h>
+#include <strings.h>
+#include <libgen.h>
+#include <darwin_compat.h>
 #endif
 
 #include "cache.h"
@@ -244,7 +244,7 @@ struct sshfs {
 	int sync_write;
 	int sync_read;
 	int sync_readdir;
-  int direct_io;
+	int direct_io;
 	int debug;
 	int verbose;
 	int foreground;
@@ -568,8 +568,8 @@ static inline void buf_init(struct buffer *buf, size_t size)
 		}
 	} else
 		buf->p = NULL;
-	buf->len = 0;
-	buf->size = size;
+		buf->len = 0;
+		buf->size = size;
 }
 
 static inline void buf_free(struct buffer *buf)
@@ -2518,8 +2518,8 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	if (sshfs.dir_cache)
 		wrctr = cache_get_write_ctr();
 
-  if (sshfs.direct_io)
-    fi->direct_io = 1;
+	if (sshfs.direct_io)
+		fi->direct_io = 1;
 
 	if ((fi->flags & O_ACCMODE) == O_RDONLY)
 		pflags = SSH_FXF_READ;
@@ -2941,7 +2941,7 @@ static void sshfs_write_end(struct request *req)
 		if (req->reply_type != SSH_FXP_STATUS) {
 			fprintf(stderr, "protocol error\n");
 		} else if (buf_get_uint32(&req->reply, &serr) != -1 &&
-			 serr != SSH_FX_OK) {
+			serr != SSH_FX_OK) {
 			sf->write_error = -EIO;
 		}
 	}
@@ -2997,7 +2997,7 @@ static void sshfs_sync_write_end(struct request *req)
 		if (req->reply_type != SSH_FXP_STATUS) {
 			fprintf(stderr, "protocol error\n");
 		} else if (buf_get_uint32(&req->reply, &serr) != -1 &&
-			 serr != SSH_FX_OK) {
+			serr != SSH_FX_OK) {
 			sio->error = -EIO;
 		}
 	}
