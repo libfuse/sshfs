@@ -568,8 +568,8 @@ static inline void buf_init(struct buffer *buf, size_t size)
 		}
 	} else
 		buf->p = NULL;
-		buf->len = 0;
-		buf->size = size;
+	buf->len = 0;
+	buf->size = size;
 }
 
 static inline void buf_free(struct buffer *buf)
