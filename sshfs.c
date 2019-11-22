@@ -46,9 +46,9 @@
 #include <grp.h>
 #include <limits.h>
 #ifdef __APPLE__
-#include <strings.h>
-#include <libgen.h>
-#include <darwin_compat.h>
+# include <strings.h>
+# include <libgen.h>
+# include <darwin_compat.h>
 #endif
 
 #include "cache.h"
