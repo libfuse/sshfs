@@ -12,10 +12,10 @@
 #include <fuse.h>
 #include <fuse_opt.h>
 #if !defined(__CYGWIN__)
-#include <fuse_lowlevel.h>
+#  include <fuse_lowlevel.h>
 #endif
 #ifdef __APPLE__
-#include <fuse_darwin.h>
+#  include <fuse_darwin.h>
 #endif
 #include <assert.h>
 #include <stdio.h>
@@ -26,7 +26,7 @@
 #include <stdint.h>
 #include <errno.h>
 #ifndef __APPLE__
-#include <semaphore.h>
+#  include <semaphore.h>
 #endif
 #include <pthread.h>
 #include <netdb.h>
@@ -54,11 +54,11 @@
 #include "cache.h"
 
 #ifndef MAP_LOCKED
-#define MAP_LOCKED 0
+#  define MAP_LOCKED 0
 #endif
 
 #if !defined(MAP_ANONYMOUS) && defined(MAP_ANON)
-#define MAP_ANONYMOUS MAP_ANON
+#  define MAP_ANONYMOUS MAP_ANON
 #endif
 
 
@@ -139,7 +139,7 @@
 #define MAX_PASSWORD 1024
 
 #ifdef __APPLE__
-static char sshfs_program_path[PATH_MAX] = { 0 };
+   static char sshfs_program_path[PATH_MAX] = { 0 };
 #endif /* __APPLE__ */
 
 struct buffer {
