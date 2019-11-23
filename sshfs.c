@@ -54,11 +54,11 @@
 #include "cache.h"
 
 #ifndef MAP_LOCKED
-#define MAP_LOCKED 0
+#  define MAP_LOCKED 0
 #endif
 
 #if !defined(MAP_ANONYMOUS) && defined(MAP_ANON)
-#define MAP_ANONYMOUS MAP_ANON
+#  define MAP_ANONYMOUS MAP_ANON
 #endif
 
 
@@ -139,7 +139,7 @@
 #define MAX_PASSWORD 1024
 
 #ifdef __APPLE__
-static char sshfs_program_path[PATH_MAX] = { 0 };
+   static char sshfs_program_path[PATH_MAX] = { 0 };
 #endif /* __APPLE__ */
 
 struct buffer {
@@ -2941,7 +2941,7 @@ static void sshfs_write_end(struct request *req)
 		if (req->reply_type != SSH_FXP_STATUS) {
 			fprintf(stderr, "protocol error\n");
 		} else if (buf_get_uint32(&req->reply, &serr) != -1 &&
-			 serr != SSH_FX_OK) {
+			serr != SSH_FX_OK) {
 			sf->write_error = -EIO;
 		}
 	}
@@ -2997,7 +2997,7 @@ static void sshfs_sync_write_end(struct request *req)
 		if (req->reply_type != SSH_FXP_STATUS) {
 			fprintf(stderr, "protocol error\n");
 		} else if (buf_get_uint32(&req->reply, &serr) != -1 &&
-			 serr != SSH_FX_OK) {
+			serr != SSH_FX_OK) {
 			sio->error = -EIO;
 		}
 	}
