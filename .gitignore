@@ -34,3 +34,4 @@ sshfs.1
 /patches
 /m4
 .deps/
+/build
