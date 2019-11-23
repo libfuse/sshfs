@@ -244,7 +244,7 @@ struct sshfs {
 	int sync_write;
 	int sync_read;
 	int sync_readdir;
-  int direct_io;
+	int direct_io;
 	int debug;
 	int verbose;
 	int foreground;
@@ -1745,10 +1745,10 @@ static void *sshfs_init(struct fuse_conn_info *conn,
 		sshfs.sync_read = 1;
 
 	// These workarounds require the "path" argument.
-        cfg->nullpath_ok = !(sshfs.truncate_workaround || sshfs.fstat_workaround);
+	cfg->nullpath_ok = !(sshfs.truncate_workaround || sshfs.fstat_workaround);
 
-        // Lookup of . and .. is supported
-        conn->capable |= FUSE_CAP_EXPORT_SUPPORT;
+	// Lookup of . and .. is supported
+	conn->capable |= FUSE_CAP_EXPORT_SUPPORT;
 
 	if (!sshfs.delay_connect)
 		start_processing_thread();
@@ -2518,8 +2518,8 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	if (sshfs.dir_cache)
 		wrctr = cache_get_write_ctr();
 
-  if (sshfs.direct_io)
-    fi->direct_io = 1;
+	if (sshfs.direct_io)
+		fi->direct_io = 1;
 
 	if ((fi->flags & O_ACCMODE) == O_RDONLY)
 		pflags = SSH_FXF_READ;
@@ -2632,8 +2632,8 @@ static int sshfs_fsync(const char *path, int isdatasync,
 	int err;
 	(void) isdatasync;
 
-        err = sshfs_flush(path, fi);
-        if (err)
+	err = sshfs_flush(path, fi);
+	if (err)
 		return err;
 
 	if (!sshfs.ext_fsync)
@@ -3485,19 +3485,19 @@ static int sshfs_opt_proc(void *data, const char *arg, int key,
 				}
 			}
 #else
-                        int fd, len;
-                        if (sscanf(arg, "/dev/fd/%u%n", &fd, &len) == 1 &&
-                            len == strlen(arg)) {
-                                /*
-                                 * Allow /dev/fd/N unchanged; it can be
-                                 * use for pre-mounting a generic fuse
-                                 * mountpoint to later be completely
-                                 * unprivileged with libfuse >= 3.3.0.
-                                 */
-                                sshfs.mountpoint = strdup(arg);
-                        } else {
-                                sshfs.mountpoint = realpath(arg, NULL);
-                        }
+			int fd, len;
+			if (sscanf(arg, "/dev/fd/%u%n", &fd, &len) == 1 &&
+			    len == strlen(arg)) {
+				/*
+				 * Allow /dev/fd/N unchanged; it can be
+				 * use for pre-mounting a generic fuse
+				 * mountpoint to later be completely
+				 * unprivileged with libfuse >= 3.3.0.
+				 */
+				sshfs.mountpoint = strdup(arg);
+			} else {
+				sshfs.mountpoint = realpath(arg, NULL);
+			}
 #endif
 			if (!sshfs.mountpoint) {
 				fprintf(stderr, "sshfs: bad mount point `%s': %s\n",
@@ -3543,10 +3543,10 @@ static int workaround_opt_proc(void *data, const char *arg, int key,
 static int parse_workarounds(void)
 {
 	int res;
-        /* Need separate variables because literals are const
-           char */
-        char argv0[] = "";
-        char argv1[] = "-o";
+	/* Need separate variables because literals are const
+	   char */
+	char argv0[] = "";
+	char argv1[] = "-o";
 	char *argv[] = { argv0, argv1, sshfs.workarounds, NULL };
 	struct fuse_args args = FUSE_ARGS_INIT(3, argv);
 	char *s = sshfs.workarounds;
@@ -4084,7 +4084,7 @@ int main(int argc, char *argv[])
 	if (sshfs.max_write > 65536)
 		sshfs.max_write = 65536;
 
-        fsname = fsname_escape_commas(fsname);
+	fsname = fsname_escape_commas(fsname);
 	tmp = g_strdup_printf("-osubtype=sshfs,fsname=%s", fsname);
 	fuse_opt_insert_arg(&args, 1, tmp);
 	g_free(tmp);

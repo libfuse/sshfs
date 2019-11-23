@@ -258,7 +258,7 @@ static void *cache_init(struct fuse_conn_info *conn,
 	res = cache.next_oper->init(conn, cfg);
 	
 	// Cache requires a path for each request
-        cfg->nullpath_ok = 0;
+	cfg->nullpath_ok = 0;
 
 	return res;
 }
