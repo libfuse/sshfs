@@ -204,7 +204,6 @@ struct sshfs_file {
 	int is_seq;
 	int connver;
 	int modifver;
-	int refs;
 };
 
 struct sshfs {
@@ -2547,7 +2546,6 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	pthread_cond_init(&sf->write_finished, NULL);
 	/* Assume random read after open */
 	sf->is_seq = 0;
-	sf->refs = 1;
 	sf->next_pos = 0;
 	pthread_mutex_lock(&sshfs.lock);
 	sf->modifver= sshfs.modifver;
@@ -2649,18 +2647,6 @@ static int sshfs_fsync(const char *path, int isdatasync,
 	return err;
 }
 
-static void sshfs_file_put(struct sshfs_file *sf)
-{
-	sf->refs--;
-	if (!sf->refs)
-		g_free(sf);
-}
-
-static void sshfs_file_get(struct sshfs_file *sf)
-{
-	sf->refs++;
-}
-
 static int sshfs_release(const char *path, struct fuse_file_info *fi)
 {
 	struct sshfs_file *sf = get_sshfs_file(fi);
@@ -2671,7 +2657,7 @@ static int sshfs_release(const char *path, struct fuse_file_info *fi)
 	}
 	buf_free(handle);
 	chunk_put_locked(sf->readahead);
-	sshfs_file_put(sf);
+	g_free(sf);
 	return 0;
 }
 
@@ -2925,8 +2911,6 @@ static int sshfs_read(const char *path, char *rbuf, size_t size, off_t offset,
 static void sshfs_write_begin(struct request *req)
 {
 	struct sshfs_file *sf = (struct sshfs_file *) req->data;
-
-	sshfs_file_get(sf);
 	list_add(&req->list, &sf->write_reqs);
 }
 
@@ -2947,7 +2931,6 @@ static void sshfs_write_end(struct request *req)
 	}
 	list_del(&req->list);
 	pthread_cond_broadcast(&sf->write_finished);
-	sshfs_file_put(sf);
 }
 
 static int sshfs_async_write(struct sshfs_file *sf, const char *wbuf,
