@@ -40,6 +40,9 @@ def test_sshfs(tmpdir, debug, cache_timeout, sync_rd, capfd):
     #    capfd.register_output(r'^   unique: [0-9]+, error: -[0-9]+ .+$',
     #                          count=0)
 
+    # Avoid false positives from storing key for localhost 
+    capfd.register_output(r"^Warning: Permanently added 'localhost' .+", count=0)
+    
     # Test if we can ssh into localhost without password
     try:
         res = subprocess.call(['ssh', '-o', 'KbdInteractiveAuthentication=no',
