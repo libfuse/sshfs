@@ -293,6 +293,11 @@ struct sshfs_file {
 	int modifver;
 };
 
+struct conntab_entry {
+	unsigned refcount;
+	struct conn *conn;
+};
+
 struct sshfs {
 	char *directport;
 	char *ssh_command;
@@ -1062,7 +1067,7 @@ static int pty_expect_loop(struct conn *conn)
 static struct conn* get_conn(const struct sshfs_file *sf,
 			     const char *path)
 {
-	struct conn* conn;
+	struct conntab_entry *ce;
 
 	if (sshfs.max_conns == 1)
 		return &sshfs.conns[0];
@@ -1072,11 +1077,14 @@ static struct conn* get_conn(const struct sshfs_file *sf,
 
 	if (path != NULL) {
 		pthread_mutex_lock(&sshfs.lock);
-		conn = g_hash_table_lookup(sshfs.conntab, path);
-		pthread_mutex_unlock(&sshfs.lock);
+		ce = g_hash_table_lookup(sshfs.conntab, path);
 
-		if (conn != NULL)
+		if (ce != NULL) {
+			struct conn *conn = ce->conn;
+			pthread_mutex_unlock(&sshfs.lock);
 			return conn;
+		}
+		pthread_mutex_unlock(&sshfs.lock);
 	}
 
 	int best_index = 0;
@@ -2470,6 +2478,7 @@ static void random_string(char *str, int length)
 static int sshfs_rename(const char *from, const char *to, unsigned int flags)
 {
 	int err;
+	struct conntab_entry *ce;
 
 	if(flags != 0)
 		return -EINVAL;
@@ -2500,9 +2509,9 @@ static int sshfs_rename(const char *from, const char *to, unsigned int flags)
 
 	if (!err && sshfs.max_conns > 1) {
 		pthread_mutex_lock(&sshfs.lock);
-		void *conn = g_hash_table_lookup(sshfs.conntab, from);
-		if (conn != NULL) {
-			g_hash_table_replace(sshfs.conntab, g_strdup(to), conn);
+		ce = g_hash_table_lookup(sshfs.conntab, from);
+		if (ce != NULL) {
+			g_hash_table_replace(sshfs.conntab, g_strdup(to), ce);
 			g_hash_table_remove(sshfs.conntab, from);
 		}
 		pthread_mutex_unlock(&sshfs.lock);
@@ -2683,6 +2692,7 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	struct stat stbuf;
 	struct sshfs_file *sf;
 	struct request *open_req;
+	struct conntab_entry *ce;
 	uint32_t pflags = 0;
 	struct iovec iov;
 	uint8_t type;
@@ -2724,16 +2734,20 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	pthread_mutex_lock(&sshfs.lock);
 	sf->modifver= sshfs.modifver;
 	if (sshfs.max_conns > 1) {
-		sf->conn = g_hash_table_lookup(sshfs.conntab, path);
-		if (!sf->conn) {
-			sf->conn = get_conn(NULL, NULL);
-			g_hash_table_insert(sshfs.conntab, g_strdup(path), sf->conn);
-		} else {
-			assert(sf->conn->file_count > 0);
+		ce = g_hash_table_lookup(sshfs.conntab, path);		
+		if (!ce) {
+			ce = g_malloc(sizeof(struct conntab_entry));
+			ce->refcount = 0;
+			ce->conn = get_conn(NULL, NULL);
+			g_hash_table_insert(sshfs.conntab, g_strdup(path), ce);
 		}
+		sf->conn = ce->conn;
+		ce->refcount++;
 		sf->conn->file_count++;
+		assert(sf->conn->file_count > 0);
 	} else {
 		sf->conn = &sshfs.conns[0];
+		ce = NULL; // only to silence compiler warning
 	}
 	sf->connver = sf->conn->connver;
 	pthread_mutex_unlock(&sshfs.lock);
@@ -2772,8 +2786,11 @@ static int sshfs_open_common(const char *path, mode_t mode,
 			cache_invalidate(path);
 		if (sshfs.max_conns > 1) {
 			pthread_mutex_lock(&sshfs.lock);
-			if(--sf->conn->file_count == 0) {
+			sf->conn->file_count--;
+			ce->refcount--;
+			if(ce->refcount == 0) {
 				g_hash_table_remove(sshfs.conntab, path);
+				g_free(ce);
 			}
 			pthread_mutex_unlock(&sshfs.lock);
 		}
@@ -2844,6 +2861,7 @@ static int sshfs_release(const char *path, struct fuse_file_info *fi)
 {
 	struct sshfs_file *sf = get_sshfs_file(fi);
 	struct buffer *handle = &sf->handle;
+	struct conntab_entry *ce;
 	if (sshfs_file_is_conn(sf)) {
 		sshfs_flush(path, fi);
 		sftp_request(sf->conn, SSH_FXP_CLOSE, handle, 0, NULL);
@@ -2853,8 +2871,12 @@ static int sshfs_release(const char *path, struct fuse_file_info *fi)
 	if (sshfs.max_conns > 1) {
 		pthread_mutex_lock(&sshfs.lock);
 		sf->conn->file_count--;
-		if(!sf->conn->file_count)
+		ce = g_hash_table_lookup(sshfs.conntab, path);
+		ce->refcount--;
+		if(ce->refcount == 0) {
 			g_hash_table_remove(sshfs.conntab, path);
+			g_free(ce);
+		}
 		pthread_mutex_unlock(&sshfs.lock);
 	}
 	g_free(sf);
