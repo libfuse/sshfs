@@ -2499,11 +2499,13 @@ static int sshfs_rename(const char *from, const char *to, unsigned int flags)
 		err = -EXDEV;
 
 	if (!err && sshfs.max_conns > 1) {
+		pthread_mutex_lock(&sshfs.lock);
 		void *conn = g_hash_table_lookup(sshfs.conntab, from);
 		if (conn != NULL) {
 			g_hash_table_replace(sshfs.conntab, g_strdup(to), conn);
 			g_hash_table_remove(sshfs.conntab, from);
 		}
+		pthread_mutex_unlock(&sshfs.lock);
 	}
 	
 	return err;
@@ -2849,6 +2851,7 @@ static int sshfs_release(const char *path, struct fuse_file_info *fi)
 	buf_free(handle);
 	chunk_put_locked(sf->readahead);
 	if (sshfs.max_conns > 1) {
+		pthread_mutex_lock(&sshfs.lock);
 		sf->conn->file_count--;
 		if(!sf->conn->file_count)
 			g_hash_table_remove(sshfs.conntab, path);
