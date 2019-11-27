@@ -1393,7 +1393,9 @@ static int sftp_read(struct conn *conn, uint8_t *type, struct buffer *buf)
 
 static void request_free(struct request *req)
 {
+	pthread_mutex_lock(&sshfs.lock);
 	req->conn->req_count--;
+	pthread_mutex_unlock(&sshfs.lock);
 	buf_free(&req->reply);
 	sem_destroy(&req->ready);
 	g_free(req);
