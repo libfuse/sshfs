@@ -5,6 +5,13 @@ Unreleased Changes
   during large file transfers. Thanks to Timo Savola for doing most of the implementation
   work, and thanks to CEA.fr for sponsoring remaining bugfixes and cleanups!
 
+* The `buflimit` workaround is now disabled by default. The corresponding bug in OpenSSH
+  has been fixed in 2007
+  (cf. https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=365541#37), so this shouldn't be
+  needed anymore. If you depend on this workaround, please let the SSHFS maintainers know,
+  otherwise support for the workaround will be removed completely in a future version.
+
+  
 Release 3.6.0 (2019-11-03)
 --------------------------
 

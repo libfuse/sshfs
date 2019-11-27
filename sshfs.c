@@ -3584,7 +3584,7 @@ static void usage(const char *progname)
 "             [no]rename       fix renaming to existing file (default: off)\n"
 "             [no]renamexdev   fix moving across filesystems (default: off)\n"
 "             [no]truncate     fix truncate for old servers (default: off)\n"
-"             [no]buflimit     fix buffer fillup bug in server (default: on)\n"
+"             [no]buflimit     fix buffer fillup bug in server (default: off)\n"
 "             [no]fstat        always use stat() instead of fstat() (default: off)\n"
 "             [no]createmode   always pass mode 0 to create (default: off)\n"
 "    -o idmap=TYPE          user/group ID mapping (default: " IDMAP_DEFAULT ")\n"
@@ -4142,7 +4142,7 @@ int main(int argc, char *argv[])
 #endif
 	sshfs.renamexdev_workaround = 0;
 	sshfs.truncate_workaround = 0;
-	sshfs.buflimit_workaround = 1;
+	sshfs.buflimit_workaround = 0;
 	sshfs.createmode_workaround = 0;
 	sshfs.ssh_ver = 2;
 	sshfs.progname = argv[0];
