@@ -1596,12 +1596,14 @@ static int sftp_init_reply_ok(struct conn *conn, struct buffer *buf,
 		}
 
 		do {
-			char *ext;
-			char *extdata;
+			char *ext = NULL;
+			char *extdata = NULL;
 
 			if (buf_get_string(&buf2, &ext) == -1 ||
 			    buf_get_string(&buf2, &extdata) == -1) {
 				buf_free(&buf2);
+				free(ext);
+				free(extdata);
 				return -1;
 			}
 
@@ -1621,6 +1623,9 @@ static int sftp_init_reply_ok(struct conn *conn, struct buffer *buf,
 			if (strcmp(ext, SFTP_EXT_FSYNC) == 0 &&
 			    strcmp(extdata, "1") == 0)
 				sshfs.ext_fsync = 1;
+
+			free(ext);
+			free(extdata);
 		} while (buf2.len < buf2.size);
 		buf_free(&buf2);
 	}
