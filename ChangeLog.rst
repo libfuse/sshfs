@@ -1,5 +1,5 @@
-Unreleased Changes
-------------------
+Release 3.7.0 (2020-01-03)
+--------------------------
 
 * New max_conns option enables the use of multiple connections to improve responsiveness
   during large file transfers. Thanks to Timo Savola for doing most of the implementation
