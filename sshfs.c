@@ -2154,6 +2154,9 @@ static int sshfs_readlink(const char *path, char *linkbuf, size_t size)
 	if (sshfs.server_version < 3)
 		return -EPERM;
 
+	if (sshfs.follow_symlinks)
+		return -EPERM;
+
 	buf_init(&buf, 0);
 	buf_add_path(&buf, path);
 	// Commutes with pending write(), so we can use any connection
