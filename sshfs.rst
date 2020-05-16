@@ -37,7 +37,7 @@ credentials that were used to connect to the server. If this is undesired, local
 permission checking can be enabled with ``-o default_permissions``.
 
 By default, only the mounting user will be able to access the filesystem. Access for other
-users can be enabled by passing ``-o allow_others``. In this case you most likely also
+users can be enabled by passing ``-o allow_other``. In this case you most likely also
 want to use ``-o default_permissions``.
 
 It is recommended to run SSHFS as regular user (not as root).  For this to work the
