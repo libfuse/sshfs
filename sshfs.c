@@ -1189,6 +1189,12 @@ static int start_ssh(struct conn *conn)
 			_exit(0);
 		}
 		chdir("/");
+		/*
+		 * Avoid processes hanging trying to stat() OLDPWD if it is in
+		 * the mount point. This can be removed if sshfs opens the
+		 * mount point after establishing the ssh connection.
+		 */
+		unsetenv("OLDPWD");
 
 		if (sshfs.password_stdin) {
 			int sfd;
