@@ -224,7 +224,7 @@ Options
    The primary purpose of this feature is to improve the responsiveness of the
    file system during large file transfers. When using more than once
    connection, the *password_stdin* and *slave* options can not be
-   used, and the *buflimit* workaround is not supported/
+   used, and the *buflimit* workaround is not supported.
 
 In addition, SSHFS accepts several options common to all FUSE file
 systems. These are described in the `mount.fuse` manpage (look
