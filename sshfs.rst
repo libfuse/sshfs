@@ -156,8 +156,11 @@ Options
 -o directport=PORT
    directly connect to PORT bypassing ssh
 
--o slave
-   communicate over stdin and stdout bypassing network
+-o passive
+   communicate over stdin and stdout bypassing network. Useful for
+   mounting local filesystem on the remote side.  An example using
+   dpipe command would be ``dpipe /usr/lib/openssh/sftp-server = ssh
+   RemoteHostname sshfs :/directory/to/be/shared ~/mnt/src -o passive``
 
 -o disable_hardlink
    With this option set, attempts to call `link(2)` will fail with
@@ -223,7 +226,7 @@ Options
    to use. Each connection is established with a separate SSH process.
    The primary purpose of this feature is to improve the responsiveness of the
    file system during large file transfers. When using more than once
-   connection, the *password_stdin* and *slave* options can not be
+   connection, the *password_stdin* and *passive* options can not be
    used, and the *buflimit* workaround is not supported.
 
 In addition, SSHFS accepts several options common to all FUSE file
