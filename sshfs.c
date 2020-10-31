@@ -1068,6 +1068,7 @@ static struct conn* get_conn(const struct sshfs_file *sf,
 			     const char *path)
 {
 	struct conntab_entry *ce;
+	int i;
 
 	if (sshfs.max_conns == 1)
 		return &sshfs.conns[0];
@@ -1089,7 +1090,7 @@ static struct conn* get_conn(const struct sshfs_file *sf,
 
 	int best_index = 0;
 	uint64_t best_score = ~0ULL; /* smaller is better */
-	for (int i = 0; i < sshfs.max_conns; i++) {
+	for (i = 0; i < sshfs.max_conns; i++) {
 		uint64_t score = ((uint64_t) sshfs.conns[i].req_count << 43) +
 				 ((uint64_t) sshfs.conns[i].dir_count << 22) +
 				 ((uint64_t) sshfs.conns[i].file_count << 1) +
