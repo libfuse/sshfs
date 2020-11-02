@@ -3636,7 +3636,7 @@ static void usage(const char *progname)
 "    -o ssh_protocol=N      ssh protocol to use (default: 2)\n"
 "    -o sftp_server=SERV    path to sftp server or subsystem (default: sftp)\n"
 "    -o directport=PORT     directly connect to PORT bypassing ssh\n"
-"    -o passive               communicate over stdin and stdout bypassing network\n"
+"    -o passive             communicate over stdin and stdout bypassing network\n"
 "    -o disable_hardlink    link(2) will return with errno set to ENOSYS\n"
 "    -o transform_symlinks  transform absolute symlinks to relative\n"
 "    -o follow_symlinks     follow symlinks on the server\n"
