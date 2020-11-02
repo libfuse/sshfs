@@ -341,7 +341,7 @@ struct sshfs {
 	int foreground;
 	int reconnect;
 	int delay_connect;
-	int slave;
+	int passive;
 	char *host;
 	char *base_path;
 	GHashTable *reqtab;
@@ -351,7 +351,7 @@ struct sshfs {
 	int max_conns;
 	struct conn *conns;
 	int ptyfd;
-	int ptyslavefd;
+	int ptypassivefd;
 	int connvers;
 	int server_version;
 	unsigned remote_uid;
@@ -497,7 +497,8 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("no_check_root",     no_check_root, 1),
 	SSHFS_OPT("password_stdin",    password_stdin, 1),
 	SSHFS_OPT("delay_connect",     delay_connect, 1),
-	SSHFS_OPT("slave",             slave, 1),
+	SSHFS_OPT("slave",             passive, 1),
+	SSHFS_OPT("passive",           passive, 1),
 	SSHFS_OPT("disable_hardlink",  disable_hardlink, 1),
 	SSHFS_OPT("dir_cache=yes", dir_cache, 1),
 	SSHFS_OPT("dir_cache=no",  dir_cache, 0),
@@ -1147,8 +1148,8 @@ static int start_ssh(struct conn *conn)
 		if (sshfs.ptyfd == -1)
 			return -1;
 
-		sshfs.ptyslavefd = open(ptyname, O_RDWR | O_NOCTTY);
-		if (sshfs.ptyslavefd == -1)
+		sshfs.ptypassivefd = open(ptyname, O_RDWR | O_NOCTTY);
+		if (sshfs.ptypassivefd == -1)
 			return -1;
 	}
 
@@ -1207,7 +1208,7 @@ static int start_ssh(struct conn *conn)
 				_exit(1);
 			}
 			close(sfd);
-			close(sshfs.ptyslavefd);
+			close(sshfs.ptypassivefd);
 			close(sshfs.ptyfd);
 		}
 
@@ -1231,7 +1232,7 @@ static int start_ssh(struct conn *conn)
 	return 0;
 }
 
-static int connect_slave(struct conn *conn)
+static int connect_passive(struct conn *conn)
 {
 	conn->rfd = STDIN_FILENO;
 	conn->wfd = STDOUT_FILENO;
@@ -1538,9 +1539,9 @@ static void close_conn(struct conn *conn)
 		close(sshfs.ptyfd);
 		sshfs.ptyfd = -1;
 	}
-	if (sshfs.ptyslavefd != -1) {
-		close(sshfs.ptyslavefd);
-		sshfs.ptyslavefd = -1;
+	if (sshfs.ptypassivefd != -1) {
+		close(sshfs.ptypassivefd);
+		sshfs.ptypassivefd = -1;
 	}
 }
 
@@ -1831,8 +1832,8 @@ static int connect_remote(struct conn *conn)
 {
 	int err;
 
-	if (sshfs.slave)
-		err = connect_slave(conn);
+	if (sshfs.passive)
+		err = connect_passive(conn);
 	else if (sshfs.directport)
 		err = connect_to(conn, sshfs.host, sshfs.directport);
 	else
@@ -3636,7 +3637,7 @@ static void usage(const char *progname)
 "    -o ssh_protocol=N      ssh protocol to use (default: 2)\n"
 "    -o sftp_server=SERV    path to sftp server or subsystem (default: sftp)\n"
 "    -o directport=PORT     directly connect to PORT bypassing ssh\n"
-"    -o slave               communicate over stdin and stdout bypassing network\n"
+"    -o passive             communicate over stdin and stdout bypassing network\n"
 "    -o disable_hardlink    link(2) will return with errno set to ENOSYS\n"
 "    -o transform_symlinks  transform absolute symlinks to relative\n"
 "    -o follow_symlinks     follow symlinks on the server\n"
@@ -4189,9 +4190,9 @@ int main(int argc, char *argv[])
 	sshfs.show_version = 0;
 	sshfs.singlethread = 0;
 	sshfs.foreground = 0;
-	sshfs.ptyslavefd = -1;
+	sshfs.ptypassivefd = -1;
 	sshfs.delay_connect = 0;
-	sshfs.slave = 0;
+	sshfs.passive = 0;
 	sshfs.detect_uid = 0;
 	if (strcmp(IDMAP_DEFAULT, "none") == 0) {
 		sshfs.idmap = IDMAP_NONE;
@@ -4257,12 +4258,12 @@ int main(int argc, char *argv[])
 	DEBUG("SSHFS version %s\n", PACKAGE_VERSION);
 
 	/* Force sshfs to the foreground when using stdin+stdout */
-	if (sshfs.slave)
+	if (sshfs.passive)
 		sshfs.foreground = 1;
 
 
-	if (sshfs.slave && sshfs.password_stdin) {
-		fprintf(stderr, "the password_stdin and slave options cannot both be specified\n");
+	if (sshfs.passive && sshfs.password_stdin) {
+		fprintf(stderr, "the password_stdin and passive options cannot both be specified\n");
 		exit(1);
 	}
 
@@ -4294,8 +4295,8 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 
-		if (sshfs.slave) {
-			fprintf(stderr, "slave option cannot be specified with parallel connections\n");
+		if (sshfs.passive) {
+			fprintf(stderr, "passive option cannot be specified with parallel connections\n");
 			exit(1);
 		}
 	} else if (sshfs.max_conns <= 0) {
