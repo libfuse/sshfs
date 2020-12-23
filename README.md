@@ -191,7 +191,6 @@ change it there too. -->
 
         # To "Uninstall"
         rm ~/bin/sshfs
-        . ~/.bashrc
         ```
 1. Check your version from another dir to ensure the installation worked correctly.
     ```bash
