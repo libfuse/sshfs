@@ -3,6 +3,8 @@
 
 ## About
 
+SSHFS is part of the [libfuse](https://github.com/libfuse) project. 
+
 SSHFS allows you to mount a remote filesystem using SFTP. Most SSH servers support and enable this
 SFTP access by default, so SSHFS is very simple to use--there's nothing to do on the server-side.
 
@@ -11,11 +13,11 @@ SFTP access by default, so SSHFS is very simple to use--there's nothing to do on
 
 SSHFS is shipped by all major Linux distributions and has been in production use across a wide range
 of systems for many years. However, at present SSHFS does not have any active, regular contributors,
-and there are a number of known issues (see all issues and bugs in the [issue tracker](issues)). The
-current maintainer continues to apply pull requests and makes regular releases, but unfortunately
-has no capacity to do any development beyond addressing high-impact issues. _When reporting bugs,
-please understand that unless you are including a pull request or are reporting a critical issue,
-you will probably not get a response._
+and there are a number of known issues (see all issues and bugs in the [SSHFS issue
+tracker](issues)). The current maintainer continues to apply pull requests and makes regular
+releases, but unfortunately has no capacity to do any development beyond addressing high-impact
+issues. _When reporting bugs, please understand that unless you are including a pull request or are
+reporting a critical issue, you will probably not get a response._
 
 
 ## How to use
@@ -34,7 +36,7 @@ For example, to connect to the username "john" on a host at local IP `10.0.0.1`,
 root directory (`/`) in your local `~/mnt/sshfs` directory, you would do the following:
 
 ```bash
-mkdir -p ~/mnt/sshfs
+mkdir -p ~/mnt/sshfs  # create the ~/mnt/sshfs directory, if it doesn't already exist 
 sshfs john@10.0.0.1:/ ~/mnt/sshfs
 ```
 
@@ -110,7 +112,7 @@ sudo ninja install
 If you need help, please ask on the <fuse-sshfs@lists.sourceforge.net> mailing list. Subscribe at
 https://lists.sourceforge.net/lists/listinfo/fuse-sshfs.
 
-Please report any `libfuse`-related bugs on the GitHub issue tracker at
+Please report any bugs on the GitHub issue tracker for the main parent project (`libfuse`) at
 https://github.com/libfuse/libfuse/issues.
 
 
