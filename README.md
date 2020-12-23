@@ -151,7 +151,8 @@ _Tested 22 Dec. 2020 on Ubuntu 20.04._
 <!-- Important: this HTML anchor is referenced inside "test_sshfs.py". If you change its name here,
 change it there too. -->
 <a id="sshkeygen"></a> 
-1. (Optional, but recommended) test your new `sshfs` executable. 
+1. (Optional, but recommended) test your new `sshfs` executable. [This also includes detailed notes
+   about ssh key generation and setup].
     1. Note: ssh key generation notes come [from GitHub here](https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent).
     ```bash
     # install the `pytest` python3 module in case you don't already have it
@@ -195,7 +196,14 @@ change it there too. -->
 1. Check your version from another dir to ensure the installation worked correctly.
     ```bash
     cd ~
-    sshfs --version 
+    sshfs --version
+    ```
+    Sample version output:
+    ```
+    SSHFS version 3.7.1
+    FUSE library version 3.9.0
+    using FUSE kernel interface version 7.31
+    fusermount3 version: 3.9.0
     ```
 
 
