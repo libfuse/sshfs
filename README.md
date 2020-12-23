@@ -175,6 +175,7 @@ change it there too. -->
     # run the python3 tests in the "test" dir
     python3 -m pytest test/
     ```
+    For [sample test output, see here](test/README.md).
 1. Install `sshfs`:
     1. Normal method:
         ```bash
