@@ -1,5 +1,5 @@
 
-To set up and run the tests, see the [detailed instructions here](../#sshkeygen).
+To set up and run the tests, see the [detailed instructions here](https://github.com/libfuse/sshfs#sshkeygen).
 
 Sample test output:
 
