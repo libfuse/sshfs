@@ -1,5 +1,5 @@
 
-To set up and run the tests, see the [detailed instructions here](../README.md#sshkeygen).
+To set up and run the tests, see the [detailed instructions here](../#sshkeygen).
 
 Sample test output:
 
