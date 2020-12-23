@@ -25,6 +25,11 @@ a pull request or are reporting a critical issue, you will probably not get a re
 Once `sshfs` is installed (see the "[Build and Install](#build)" section below) running it is very
 simple.
 
+```bash
+sshfs -h         # help menu
+sshfs --version  # see version 
+```
+
 ### 1. To mount a remote filesystem with `sshfs`:
 
 General command syntax:
@@ -77,7 +82,44 @@ _ssh_config(5)_ (`man 5 ssh_config`). The remote port number (`-oport=PORT`) is 
 <a id="build"></a>
 ## Build and Install
 
-Tested 22 Dec. 2020 on Ubuntu 20.04. 
+### 1. General overview
+
+First, download the latest SSHFS release from https://github.com/libfuse/sshfs/releases. On Linux
+and BSD (as opposed to MacOS), you will also need to install [libfuse][libfuse] 3.1.0 or newer. On
+MacOS, you need [OSXFUSE][OSXFUSE] instead. Finally, you need the [Glib][Glib] library with
+development headers, which should be available from your operating system's package manager.
+
+To build and install, we recommend you use [Meson][Meson] (version 0.38 or newer) and
+[Ninja][Ninja]. After extracting the `sshfs` tarball, create a (temporary) build directory and run
+Meson:
+
+```bash
+mkdir build; cd build
+meson ..
+```
+
+Normally, the default build options will work fine. If you nevertheless want to adjust them, you can
+do so with the `meson configure` command:
+
+```bash
+meson configure                # list options 
+meson configure -D strip=true  # set an option
+```
+
+To build, test and install SSHFS, you then use Ninja. Running the tests requires the
+[`py.test`][py.test] Python module. It also requires configuring ssh keys for passwordless  login to
+yourself via _localhost_. See the [detailed notes about ssh key generation and setup](#sshkeygen)
+below.
+
+```bash
+ninja
+python3 -m pytest test/  # (Optional, but recommended) run the tests
+sudo ninja install
+```
+
+### 2. Detailed instructions
+
+_Tested 22 Dec. 2020 on Ubuntu 20.04._
 
 1. Download and `cd` into the source code
     1. To download the latest source code:
@@ -132,39 +174,29 @@ change it there too. -->
     # run the python3 tests in the "test" dir
     python3 -m pytest test/
     ```
-1. 
+1. Install `sshfs`:
+    1. Normal method:
+        ```bash
+        sudo ninja install
+        ```
+    1. "Light" method. This technique simply creates a symlink to the executable in your `~/bin` 
+       dir so your Linux distro's install still remain's intact and untouched. (For Ubuntu).
+        ```bash
+        # "Install" via a symlink. Note: ensure you are in the same dir as the new `sshfs` 
+        # executable first. 
+        mkdir -p ~/bin
+        ln -si "$(pwd)/sshfs ~/bin"
+        . ~/.bashrc  # re-source your .bashrc file to bring the ~/bin dir into your PATH
 
-
-
-First, download the latest SSHFS release from https://github.com/libfuse/sshfs/releases. On Linux
-and BSD, you will also need to install [libfuse][libfuse] 3.1.0 or newer. On macOS, you need
-[OSXFUSE][OSXFUSE] instead. Finally, you need the [Glib][Glib] library with development headers
-(which should be available from your operating system's package manager).
-
-To build and install, we recommend to use [Meson][Meson] (version 0.38 or newer) and [Ninja][Ninja].
- After extracting the sshfs tarball, create a (temporary) build directory and run Meson:
-
-```bash
-mkdir build; cd build
-meson ..
-```
-
-Normally, the default build options will work fine. If you nevertheless want to adjust them, you can
-do so with the *mesonconf* command:
-
-```bash
-mesonconf                  # list options 
-mesonconf -D strip=true    # set an option
-```
-
-To build, test and install SSHFS, you then use Ninja (running the tests requires the
-[`py.test`][py.test] Python module):
-
-```bash
-ninja
-python3 -m pytest test/    # optional, but recommended
-sudo ninja install
-```
+        # To "Uninstall"
+        rm ~/bin/sshfs
+        . ~/.bashrc
+        ```
+1. Check your version from another dir to ensure the installation worked correctly.
+    ```bash
+    cd ~
+    sshfs --version 
+    ```
 
 
 ## Getting Help
