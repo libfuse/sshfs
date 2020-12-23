@@ -69,8 +69,9 @@ umount ~/mnt/sshfs
 1. It is recommended to run SSHFS as a regular user (NOT as root). For this to work, the mount point
    must be owned by the user. Therefore, mounting into a `mount` or `mnt` directory you create 
    inside your home directory is a good practice.  
-1. If the username is omitted, SSHFS will use the local username. 
-1. If the directory is omitted, SSHFS will mount the (remote) home directory.
+1. If the username (`user@` part of the command) is omitted, SSHFS will use the local username.
+1. If the directory is omitted (while keeping the colon `:` just before it), SSHFS will mount the
+   (remote) home directory.
 1. If you need to enter a password, SSHFS will ask for it (actually, it just runs `ssh` which asks
    for the password if needed).
 
@@ -89,7 +90,7 @@ and BSD (as opposed to MacOS), you will also need to install [libfuse][libfuse] 
 MacOS, you need [OSXFUSE][OSXFUSE] instead. Finally, you need the [Glib][Glib] library with
 development headers, which should be available from your operating system's package manager.
 
-To build and install, we recommend you use [Meson][Meson] (version 0.38 or newer) and
+To build and install, you must use [Meson][Meson] (version 0.38 or newer) and
 [Ninja][Ninja]. After extracting the `sshfs` tarball, create a (temporary) build directory and run
 Meson:
 
@@ -177,11 +178,13 @@ change it there too. -->
     ```
     For [sample test output, see here](test/README.md).
 1. Install `sshfs`:
-    1. Normal method:
+    1. Normal method. This installs `sshfs` at `/usr/local/bin/sshfs`, whereas your normal Linux 
+    distribution's executable is likely in `/usr/bin/sshfs`.
         ```bash
+        # To install
         sudo ninja install
         ```
-    1. "Light" method. This technique simply creates a symlink to the executable in your `~/bin` 
+    1. Alternative method. This technique simply creates a symlink to the executable in your `~/bin` 
        dir so your Linux distro's install still remain's intact and untouched. (For Ubuntu).
         ```bash
         # "Install" via a symlink. Note: ensure you are in the same dir as the new `sshfs` 
