@@ -14,10 +14,10 @@ SFTP access by default, so SSHFS is very simple to use--there's nothing to do on
 SSHFS is shipped by all major Linux distributions and has been in production use across a wide range
 of systems for many years. However, at present SSHFS does not have any active, regular contributors,
 and there are a number of known issues (see all issues and bugs in the [SSHFS issue
-tracker](issues)). The current maintainer continues to apply pull requests and makes regular
-releases, but unfortunately has no capacity to do any development beyond addressing high-impact
-issues. _When reporting bugs, please understand that unless you are including a pull request or are
-reporting a critical issue, you will probably not get a response._
+tracker](https://github.com/libfuse/sshfs/issues)). The current maintainer continues to apply pull
+requests and makes regular releases, but unfortunately has no capacity to do any development beyond
+addressing high-impact issues. _When reporting bugs, please understand that unless you are including
+a pull request or are reporting a critical issue, you will probably not get a response._
 
 
 ## How to use
@@ -112,7 +112,7 @@ sudo ninja install
 If you need help, please ask on the <fuse-sshfs@lists.sourceforge.net> mailing list. Subscribe at
 https://lists.sourceforge.net/lists/listinfo/fuse-sshfs.
 
-Please report any bugs on the GitHub issue tracker for the main parent project (`libfuse`) at
+Please report any bugs on the main parent project's (`libfuse`'s) GitHub issue tracker here:
 https://github.com/libfuse/libfuse/issues.
 
 
