@@ -22,7 +22,7 @@ a pull request or are reporting a critical issue, you will probably not get a re
 
 ## How to use
 
-Once `sshfs` is installed (see the "[Installation](#installation)" section below) running it is very
+Once `sshfs` is installed (see the "[Build and Install](#build)" section below) running it is very
 simple.
 
 ### 1. To mount a remote filesystem with `sshfs`:
@@ -74,7 +74,67 @@ _ssh_config(5)_ (`man 5 ssh_config`). The remote port number (`-oport=PORT`) is 
 `ssh` options which works with `sshfs`.
 
 
-## Installation
+<a id="build"></a>
+## Build and Install
+
+Tested 22 Dec. 2020 on Ubuntu 20.04. 
+
+1. Download and `cd` into the source code
+    1. To download the latest source code:
+        ```bash
+        git clone https://github.com/libfuse/sshfs.git
+        cd sshfs
+        ```
+    1. OR (recommended): To download the latest `sshfs` _release_:
+        1. Find the release you want here: https://github.com/libfuse/sshfs/releases.
+        1. Find the link to the `*.tar.gz` file you want. Example: https://github.com/libfuse/sshfs/archive/sshfs-3.7.1.tar.gz.
+        1. Download, extract, and `cd` into it:
+            ```bash
+            wget https://github.com/libfuse/sshfs/archive/sshfs-3.7.1.tar.gz
+            tar -xvzf sshfs-3.7.1.tar.gz
+            cd sshfs-sshfs-3.7.1
+            ```
+1. Install dependencies
+    ```bash
+    sudo apt update
+    sudo apt install meson cmake fuse3 libfuse3-dev libglib2.0-dev
+    ```
+1. Create a **build** dir, `cd` into it, run `meson`, and build and link with `ninja`:
+    ```bash
+    mkdir build 
+    cd build 
+    meson ..
+    ninja  # this builds and produces the new `sshfs` executable
+    ```
+<!-- Important: this HTML anchor is referenced inside "test_sshfs.py". If you change its name here,
+change it there too. -->
+<a id="sshkeygen"></a> 
+1. (Optional, but recommended) test your new `sshfs` executable. 
+    1. Note: ssh key generation notes come [from GitHub here](https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent).
+    ```bash
+    # install the `pytest` python3 module in case you don't already have it
+    pip3 install pytest  
+    # install `sshd`
+    sudo apt update 
+    sudo apt install openssh-server
+
+    # Configure passwordless ssh key-based login so you can ssh into yourself
+    # (via `localhost`) for testing; see GitHub link above.
+    # 1. Generate a new public-private key pair. 
+    ssh-keygen -t ed25519 -C "your_email@example.com"
+    eval "$(ssh-agent -s)"
+    ssh-add ~/.ssh/id_ed25519
+    # 2. Now add your new "~/.ssh/id_ed25519.pub" public key to your 
+    # "~/.ssh/authorized_keys" file so you can have key-based password-less
+    # ssh sessions into yourself via `localhost` for testing.
+    cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys 
+
+    # run the python3 tests in the "test" dir
+    python3 -m pytest test/
+    ```
+1. 
+
+
 
 First, download the latest SSHFS release from https://github.com/libfuse/sshfs/releases. On Linux
 and BSD, you will also need to install [libfuse][libfuse] 3.1.0 or newer. On macOS, you need
