@@ -2377,6 +2377,13 @@ static int sshfs_mkdir(const char *path, mode_t mode)
 	// Commutes with pending write(), so we can use any connection
 	err = sftp_request(get_conn(NULL, NULL), SSH_FXP_MKDIR, &buf, SSH_FXP_STATUS, NULL);
 	buf_free(&buf);
+	
+	if (err == -EPERM) {
+		if (sshfs.op->access(path, R_OK) == 0) {
+			return -EEXIST;
+		}
+	}
+	
 	return err;
 }
 
