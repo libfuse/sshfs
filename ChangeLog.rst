@@ -1,3 +1,11 @@
+Unreleased Changes
+--------------------------
+
+* Added a secondary check so if a mkdir request fails with EPERM an access request will be
+  tried - returning EEXIST if the access was successful.
+	Fixes: https://github.com/libfuse/sshfs/issues/243
+
+
 Release 3.7.1 (2020-11-09)
 --------------------------
 
