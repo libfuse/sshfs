@@ -1,21 +1,21 @@
-sudo: required
-dist: xenial
+dist: focal
+sudo: enabled
 
 language:
     - c
 addons:
   apt:
-    sources:
-    - ubuntu-toolchain-r-test
     packages:
     - valgrind
-    - clang
     - gcc
-    - gcc-6
+    - clang
     - python-docutils
     - python3-pip
     - python3-setuptools
     - ninja-build
+    - meson
+    - python3-pytest
+    - libglib2.0-dev
 install: test/travis-install.sh
 script: test/travis-build.sh
 

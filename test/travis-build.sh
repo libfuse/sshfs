@@ -12,7 +12,7 @@ export CC
 TEST_CMD="python3 -m pytest --maxfail=99 test/"
 
 # Standard build with Valgrind
-for CC in gcc gcc-6 clang; do
+for CC in gcc clang; do
     mkdir build-${CC}; cd build-${CC}
     if [ ${CC} == 'gcc-6' ]; then
         build_opts='-D b_lundef=false'
