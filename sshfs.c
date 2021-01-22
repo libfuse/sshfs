@@ -341,6 +341,7 @@ struct sshfs {
 	int foreground;
 	int reconnect;
 	int delay_connect;
+	int idle_disconnect;
 	int passive;
 	char *host;
 	char *base_path;
@@ -492,6 +493,7 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("sshfs_debug",       debug, 1),
 	SSHFS_OPT("sshfs_verbose",     verbose, 1),
 	SSHFS_OPT("reconnect",         reconnect, 1),
+	SSHFS_OPT("idle_disconnect=%u", idle_disconnect, 0),
 	SSHFS_OPT("transform_symlinks", transform_symlinks, 1),
 	SSHFS_OPT("follow_symlinks",   follow_symlinks, 1),
 	SSHFS_OPT("no_check_root",     no_check_root, 1),
@@ -1545,24 +1547,67 @@ static void close_conn(struct conn *conn)
 	}
 }
 
-static void *process_requests(void *data_)
+static void conn_abandon(struct conn *conn)
 {
-	(void) data_;
-	struct conn *conn = data_;
-
-	while (1) {
-		if (process_one_request(conn) == -1)
-			break;
-	}
-
-	pthread_mutex_lock(&sshfs.lock);
 	conn->processing_thread_started = 0;
 	close_conn(conn);
 	g_hash_table_foreach_remove(sshfs.reqtab, (GHRFunc) clean_req, conn);
 	conn->connver = ++sshfs.connvers;
 	sshfs.outstanding_len = 0;
 	pthread_cond_broadcast(&sshfs.outstanding_cond);
+}
+
+static int conn_poll_idle(struct conn *conn)
+{
+	if (sshfs.idle_disconnect <= 0) {
+		return 1;
+	}
+
+	int res;
+	struct pollfd fds[1];
+
+	fds[0].fd = conn->rfd;
+	fds[0].events = POLLIN;
+
+	res = poll(fds, 1, sshfs.idle_disconnect * 1000);
+	if (res == -1) {
+		perror("poll");
+		return -1;
+	}
+
+	if (res > 0) {
+		return res;
+	}
+
+	pthread_mutex_lock(&sshfs.lock);
+
+	if (conn->req_count == 0 && conn->dir_count == 0 && conn->file_count == 0) {
+		conn_abandon(conn);
+	} else {
+		res = 1;
+	}
+
 	pthread_mutex_unlock(&sshfs.lock);
+
+	return res;
+}
+
+static void *process_requests(void *data_)
+{
+	(void) data_;
+	struct conn *conn = data_;
+
+	while (1) {
+		if (conn_poll_idle(conn) <= 0)
+			break;
+
+		if (process_one_request(conn) == -1) {
+			pthread_mutex_lock(&sshfs.lock);
+			conn_abandon(conn);
+			pthread_mutex_unlock(&sshfs.lock);
+			break;
+		}
+	}
 
 	if (!sshfs.reconnect) {
 		/* harakiri */
@@ -2765,12 +2810,12 @@ static int sshfs_open_common(const char *path, mode_t mode,
 		}
 		sf->conn = ce->conn;
 		ce->refcount++;
-		sf->conn->file_count++;
-		assert(sf->conn->file_count > 0);
 	} else {
 		sf->conn = &sshfs.conns[0];
 		ce = NULL; // only to silence compiler warning
 	}
+	sf->conn->file_count++;
+	assert(sf->conn->file_count > 0);
 	sf->connver = sf->conn->connver;
 	pthread_mutex_unlock(&sshfs.lock);
 	buf_init(&buf, 0);
@@ -2806,16 +2851,16 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	} else {
 		if (sshfs.dir_cache)
 			cache_invalidate(path);
+		pthread_mutex_lock(&sshfs.lock);
 		if (sshfs.max_conns > 1) {
-			pthread_mutex_lock(&sshfs.lock);
-			sf->conn->file_count--;
 			ce->refcount--;
 			if(ce->refcount == 0) {
 				g_hash_table_remove(sshfs.conntab, path);
 				g_free(ce);
 			}
-			pthread_mutex_unlock(&sshfs.lock);
 		}
+		sf->conn->file_count--;
+		pthread_mutex_unlock(&sshfs.lock);
 		g_free(sf);
 	}
 	buf_free(&buf);
@@ -2890,17 +2935,17 @@ static int sshfs_release(const char *path, struct fuse_file_info *fi)
 	}
 	buf_free(handle);
 	chunk_put_locked(sf->readahead);
+	pthread_mutex_lock(&sshfs.lock);
+	sf->conn->file_count--;
 	if (sshfs.max_conns > 1) {
-		pthread_mutex_lock(&sshfs.lock);
-		sf->conn->file_count--;
 		ce = g_hash_table_lookup(sshfs.conntab, path);
 		ce->refcount--;
 		if(ce->refcount == 0) {
 			g_hash_table_remove(sshfs.conntab, path);
 			g_free(ce);
 		}
-		pthread_mutex_unlock(&sshfs.lock);
 	}
+	pthread_mutex_unlock(&sshfs.lock);
 	g_free(sf);
 	return 0;
 }
@@ -3605,6 +3650,7 @@ static void usage(const char *progname)
 "    -o opt,[opt...]        mount options\n"
 "    -o reconnect           reconnect to server\n"
 "    -o delay_connect       delay connection to server\n"
+"    -o idle_disconnect=N   disconnect from server when idle for N seconds\n"
 "    -o sshfs_sync          synchronous writes\n"
 "    -o no_readahead        synchronous reads (no speculative readahead)\n"
 "    -o sync_readdir        synchronous readdir\n"
@@ -4290,6 +4336,9 @@ int main(int argc, char *argv[])
 		sshfs.max_outstanding_len = 8388608;
 	else
 		sshfs.max_outstanding_len = ~0;
+
+	if (sshfs.idle_disconnect > 0)
+		sshfs.reconnect = 1;
 
 	if (sshfs.max_conns > 1) {
 		if (sshfs.buflimit_workaround) {
