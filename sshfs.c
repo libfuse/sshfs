@@ -1401,9 +1401,11 @@ static int sftp_read(struct conn *conn, uint8_t *type, struct buffer *buf)
 
 static void request_free(struct request *req)
 {
-	pthread_mutex_lock(&sshfs.lock);
+	if (req->end_func)
+		req->end_func(req);
+
 	req->conn->req_count--;
-	pthread_mutex_unlock(&sshfs.lock);
+
 	buf_free(&req->reply);
 	sem_destroy(&req->ready);
 	g_free(req);
@@ -1449,11 +1451,9 @@ static int clean_req(void *key, struct request *req, gpointer user_data)
 	req->error = -EIO;
 	if (req->want_reply)
 		sem_post(&req->ready);
-	else {
-		if (req->end_func)
-			req->end_func(req);
+	else
 		request_free(req);
-	}
+
 	return TRUE;
 }
 
@@ -1515,12 +1515,9 @@ static int process_one_request(struct conn *conn)
 		if (req->want_reply)
 			sem_post(&req->ready);
 		else {
-			if (req->end_func) {
-				pthread_mutex_lock(&sshfs.lock);
-				req->end_func(req);
-				pthread_mutex_unlock(&sshfs.lock);
-			}
+			pthread_mutex_lock(&sshfs.lock);
 			request_free(req);
+			pthread_mutex_unlock(&sshfs.lock);
 		}
 	} else
 		buf_free(&buf);
@@ -1970,12 +1967,9 @@ static int sftp_request_wait(struct request *req, uint8_t type,
 	}
 
 out:
-	if (req->end_func) {
-		pthread_mutex_lock(&sshfs.lock);
-		req->end_func(req);
-		pthread_mutex_unlock(&sshfs.lock);
-	}
+	pthread_mutex_lock(&sshfs.lock);
 	request_free(req);
+	pthread_mutex_unlock(&sshfs.lock);
 	return err;
 }
 
