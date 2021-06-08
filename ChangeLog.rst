@@ -1,4 +1,4 @@
-Unreleased Changes
+Release 3.7.2 (2021-06-08)
 --------------------------
 
 * Added a secondary check so if a mkdir request fails with EPERM an access request will be
