@@ -63,7 +63,7 @@ def register_output(self, pattern, count=1, flags=re.MULTILINE):
 # relies on tests running sequential (i.e., don't dare to use e.g. the xdist
 # plugin)
 current_capfd = None
-@pytest.yield_fixture(autouse=True)
+@pytest.fixture(autouse=True)
 def save_cap_fixtures(request, capfd):
     global current_capfd
     capfd.false_positives = []
