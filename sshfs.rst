@@ -92,6 +92,10 @@ Options
    Don't immediately connect to server, wait until mountpoint is first
    accessed.
 
+-o idle_disconnect=N
+   Disconnect from server when idle for N seconds. When set, `-o reconnect` is
+   automatically set.
+
 -o sshfs_sync
    synchronous writes. This will slow things down, but may be useful
    in some situations.
