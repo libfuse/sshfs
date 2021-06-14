@@ -55,11 +55,10 @@ Installation
 ------------
 
 First, download the latest SSHFS release from
-https://github.com/libfuse/sshfs/releases. On Linux and BSD, you will
-also need to install libfuse_ 3.1.0 or newer. On macOS, you need
-OSXFUSE_ instead. Finally, you need the Glib_ library with development
-headers (which should be available from your operating system's
-package manager).
+https://github.com/libfuse/sshfs/releases. You also need libfuse_ 3.1.0 or newer (or a
+similar library that provides a libfuse3 compatible interface for your operating
+system). Finally, you need the Glib_ library with development headers (which should be
+available from your operating system's package manager).
 
 To build and install, we recommend to use Meson_ (version 0.38 or
 newer) and Ninja_.  After extracting the sshfs tarball, create a
@@ -83,7 +82,6 @@ tests requires the `py.test`_ Python module)::
     $ sudo ninja install
 
 .. _libfuse: http://github.com/libfuse/libfuse
-.. _OSXFUSE: https://osxfuse.github.io/
 .. _Glib: https://developer.gnome.org/glib/stable/
 .. _Meson: http://mesonbuild.com/
 .. _Ninja: https://ninja-build.org/
