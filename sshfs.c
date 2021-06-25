@@ -32,6 +32,7 @@
 #include <netdb.h>
 #include <signal.h>
 #include <sys/uio.h>
+#include <sys/param.h>
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/wait.h>
@@ -311,6 +312,7 @@ struct sshfs {
 	int unrel_append;
 	int fstat_workaround;
 	int createmode_workaround;
+	int readdir_workaround;
 	int transform_symlinks;
 	int follow_symlinks;
 	int no_check_root;
@@ -543,6 +545,7 @@ static struct fuse_opt workaround_opts[] = {
 	SSHFS_OPT("none",       truncate_workaround, 0),
 	SSHFS_OPT("none",       buflimit_workaround, 0),
 	SSHFS_OPT("none",       fstat_workaround, 0),
+	SSHFS_OPT("none",       readdir_workaround, 0),
 	SSHFS_OPT("rename",     rename_workaround, 1),
 	SSHFS_OPT("norename",   rename_workaround, 0),
 	SSHFS_OPT("renamexdev",   renamexdev_workaround, 1),
@@ -555,6 +558,8 @@ static struct fuse_opt workaround_opts[] = {
 	SSHFS_OPT("nofstat",    fstat_workaround, 0),
 	SSHFS_OPT("createmode",   createmode_workaround, 1),
 	SSHFS_OPT("nocreatemode", createmode_workaround, 0),
+	SSHFS_OPT("readdir",    readdir_workaround, 1),
+	SSHFS_OPT("noreaddir",  readdir_workaround, 0),
 	FUSE_OPT_END
 };
 
@@ -601,6 +606,9 @@ static const char *type_name(uint8_t type)
 
 #define list_entry(ptr, type, member)		\
 	container_of(ptr, type, member)
+
+static int sshfs_releasedir(const char *path, struct fuse_file_info *fi);
+
 
 static void list_init(struct list_head *head)
 {
@@ -1108,7 +1116,11 @@ static int pty_master(char **name)
 {
 	int mfd;
 
+#ifdef __FreeBSD__
+	mfd = posix_openpt(O_RDWR | O_NOCTTY);
+#else
 	mfd = open("/dev/ptmx", O_RDWR | O_NOCTTY);
+#endif
 	if (mfd == -1) {
 		perror("failed to open pty");
 		return -1;
@@ -1891,12 +1903,20 @@ static void *sshfs_init(struct fuse_conn_info *conn,
 	if (conn->capable & FUSE_CAP_ASYNC_READ)
 		sshfs.sync_read = 1;
 
-	// These workarounds require the "path" argument.
-	cfg->nullpath_ok = !(sshfs.truncate_workaround || sshfs.fstat_workaround);
-
-	// When using multiple connections, release() needs to know the path
-	if (sshfs.max_conns > 1)
+	/* These workarounds require the "path" argument:
+	 * - truncate_workaround
+	 * - fstat_workaround
+	 * - readdir_workaround
+	 * Also it required when using multiple connections: release()
+	 * needs to know the path.
+	 */
+	if (sshfs.truncate_workaround ||
+	    sshfs.fstat_workaround ||
+	    sshfs.readdir_workaround ||
+	    sshfs.max_conns > 1)
 		cfg->nullpath_ok = 0;
+	else
+		cfg->nullpath_ok = 1;
 
 	// Lookup of . and .. is supported
 	conn->capable |= FUSE_CAP_EXPORT_SUPPORT;
@@ -2200,6 +2220,7 @@ static int sshfs_req_pending(struct request *req)
 static int sftp_readdir_async(struct conn *conn, struct buffer *handle,
 			      void *buf, off_t offset, fuse_fill_dir_t filler)
 {
+	(void) offset;
 	int err = 0;
 	int outstanding = 0;
 	int max = READDIR_START;
@@ -2278,6 +2299,7 @@ static int sftp_readdir_async(struct conn *conn, struct buffer *handle,
 static int sftp_readdir_sync(struct conn *conn, struct buffer *handle,
 			     void *buf, off_t offset, fuse_fill_dir_t filler)
 {
+	(void) offset;
 	int err;
 	assert(offset == 0);
 	do {
@@ -2327,9 +2349,18 @@ static int sshfs_readdir(const char *path, void *dbuf, fuse_fill_dir_t filler,
 			 off_t offset, struct fuse_file_info *fi,
 			 enum fuse_readdir_flags flags)
 {
-	(void) path; (void) flags;
+	(void) flags;
 	int err;
 	struct dir_handle *handle;
+
+	if (sshfs.readdir_workaround) {
+		if (path == NULL)
+			return -EIO;
+		err = sshfs_opendir(path, fi);
+		if (err)
+			return err;
+		offset = 0;
+	}
 
 	handle = (struct dir_handle*) fi->fh;
 
@@ -2339,6 +2370,9 @@ static int sshfs_readdir(const char *path, void *dbuf, fuse_fill_dir_t filler,
 	else
 		err = sftp_readdir_async(handle->conn, &handle->buf, dbuf,
 					 offset, filler);
+
+	if (sshfs.readdir_workaround)
+		sshfs_releasedir(path, fi);
 
 	return err;
 }
@@ -3625,6 +3659,7 @@ static void usage(const char *progname)
 "             [no]buflimit     fix buffer fillup bug in server (default: off)\n"
 "             [no]fstat        always use stat() instead of fstat() (default: off)\n"
 "             [no]createmode   always pass mode 0 to create (default: off)\n"
+"             [no]readdir      always open/read/close dir on readdir (default: on)\n"
 "    -o idmap=TYPE          user/group ID mapping (default: " IDMAP_DEFAULT ")\n"
 "             none             no translation of the ID space\n"
 "             user             only translate UID/GID of connecting user\n"
@@ -4182,6 +4217,7 @@ int main(int argc, char *argv[])
 	sshfs.truncate_workaround = 0;
 	sshfs.buflimit_workaround = 0;
 	sshfs.createmode_workaround = 0;
+	sshfs.readdir_workaround = 1;
 	sshfs.ssh_ver = 2;
 	sshfs.progname = argv[0];
 	sshfs.max_conns = 1;

@@ -120,6 +120,13 @@ Options
    :buflimit: Work around OpenSSH "buffer fillup" bug.
    :createmode: Work around broken servers that produce an error when passing a
                 non-zero mode to create, by always passing a mode of 0.
+   :readdir: Work around file manager used that keeps dir open while
+             user add/remove files/dirs, that produce an error - all dirs
+             become empty for a while or until remount.
+             This happen because handle cached after opendir() but readdir()
+             does not use offset.
+             Workaround converts readdir() into "getdir()": opendir() and
+             releasedir() not exported to fuse; offset set to 0.
 
 -o idmap=TYPE
    How to map remote UID/GIDs to local values. Possible values are:
