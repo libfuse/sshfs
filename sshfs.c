@@ -126,8 +126,6 @@
 
 #define MY_EOF 1
 
-#define MAX_REPLY_LEN (1 << 17)
-
 #define RENAME_TEMP_CHARS 8
 
 #define SFTP_SERVER_PATH "/usr/lib/sftp-server"
@@ -137,6 +135,8 @@
 #define READDIR_MAX 32
 
 #define MAX_PASSWORD 1024
+#define DEFAULT_MAX_SFTP_MSG_LIMIT 65536
+#define DEFAULT_MIN_SFTP_MSG_LIMIT 32768
 
 /*
    Handling of multiple SFTP connections
@@ -1386,7 +1386,7 @@ static int sftp_read(struct conn *conn, uint8_t *type, struct buffer *buf)
 	if (res != -1) {
 		if ((res = buf_get_uint32(&buf2, &len)) == -1)
 			goto out;
-		if (len > MAX_REPLY_LEN) {
+		if (len > sshfs.max_read) {
 			fprintf(stderr, "reply len too large: %u\n", len);
 			res = -1;
 			goto out;
@@ -1580,8 +1580,10 @@ static int sftp_init_reply_ok(struct conn *conn, struct buffer *buf,
 	if (buf_get_uint32(buf, &len) == -1)
 		return -1;
 
-	if (len < 5 || len > MAX_REPLY_LEN)
+	if (len < 5 || len > DEFAULT_MAX_SFTP_MSG_LIMIT) {
+		DEBUG("Invalid init packet length: %u\n", len);
 		return 1;
+	}
 
 	if (buf_get_uint8(buf, &type) == -1)
 		return -1;
@@ -4173,9 +4175,6 @@ int main(int argc, char *argv[])
 #else
 	sshfs.blksize = 4096;
 #endif
-	/* SFTP spec says all servers should allow at least 32k I/O */
-	sshfs.max_read = 32768;
-	sshfs.max_write = 32768;
 #ifdef __APPLE__
 	sshfs.rename_workaround = 1;
 #else
@@ -4342,11 +4341,6 @@ int main(int argc, char *argv[])
 		exit(1);
 
 	sshfs.randseed = time(0);
-
-	if (sshfs.max_read > 65536)
-		sshfs.max_read = 65536;
-	if (sshfs.max_write > 65536)
-		sshfs.max_write = 65536;
 
 	fsname = fsname_escape_commas(fsname);
 	tmp = g_strdup_printf("-osubtype=sshfs,fsname=%s", fsname);
