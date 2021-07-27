@@ -330,6 +330,7 @@ struct sshfs {
 	GHashTable *r_uid_map;
 	GHashTable *r_gid_map;
 	unsigned max_read;
+	unsigned max_readahead;
 	unsigned max_write;
 	unsigned ssh_ver;
 	int sync_write;
@@ -474,6 +475,7 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("directport=%s",     directport, 0),
 	SSHFS_OPT("ssh_command=%s",    ssh_command, 0),
 	SSHFS_OPT("sftp_server=%s",    sftp_server, 0),
+	SSHFS_OPT("max_readahead=%u",  max_readahead, 0),
 	SSHFS_OPT("max_read=%u",       max_read, 0),
 	SSHFS_OPT("max_write=%u",      max_write, 0),
 	SSHFS_OPT("ssh_protocol=%u",   ssh_ver, 0),
@@ -1911,6 +1913,9 @@ static void *sshfs_init(struct fuse_conn_info *conn,
 
 	// SFTP only supports 1-second time resolution
 	conn->time_gran = 1000000000;
+
+	if (sshfs.max_readahead > 0)
+		conn->max_readahead = sshfs.max_readahead;
 
 	return NULL;
 }
