@@ -1883,48 +1883,21 @@ static int sftp_error_to_errno(uint32_t error)
 static void sftp_detect_uid(struct conn *conn)
 {
 	int flags;
-	uint32_t id = sftp_get_id();
-	uint32_t replid;
-	uint8_t type;
-	struct buffer buf;
-	struct stat stbuf;
-	struct iovec iov[1];
+	struct buffer buf, outbuf;
+	struct stat st;
 
 	buf_init(&buf, 5);
 	buf_add_string(&buf, ".");
-	buf_to_iov(&buf, &iov[0]);
-	if (sftp_send_iov(conn, SSH_FXP_STAT, id, iov, 1) == -1)
+	if (sftp_request_sync(conn, SSH_FXP_STAT, &buf, SSH_FXP_ATTRS, &outbuf) == -1)
 		goto out;
-	buf_clear(&buf);
-	if (sftp_read(conn, &type, &buf) == -1)
+	if (buf_get_attrs(&outbuf, &st, &flags) != 0)
 		goto out;
-	if (type != SSH_FXP_ATTRS && type != SSH_FXP_STATUS) {
-		fprintf(stderr, "protocol error\n");
-		goto out;
-	}
-	if (buf_get_uint32(&buf, &replid) == -1)
-		goto out;
-	if (replid != id) {
-		fprintf(stderr, "bad reply ID\n");
-		goto out;
-	}
-	if (type == SSH_FXP_STATUS) {
-		uint32_t serr;
-		if (buf_get_uint32(&buf, &serr) == -1)
-			goto out;
-
-		fprintf(stderr, "failed to stat home directory (%i)\n", serr);
-		goto out;
-	}
-	if (buf_get_attrs(&buf, &stbuf, &flags) != 0)
-		goto out;
-
 	if (!(flags & SSH_FILEXFER_ATTR_UIDGID))
 		goto out;
 
-	sshfs.remote_uid = stbuf.st_uid;
+	sshfs.remote_uid = st.st_uid;
 	sshfs.local_uid = getuid();
-	sshfs.remote_gid = stbuf.st_gid;
+	sshfs.remote_gid = st.st_gid;
 	sshfs.local_gid = getgid();
 	sshfs.remote_uid_detected = 1;
 	DEBUG("remote_uid = %i\n", sshfs.remote_uid);
@@ -1934,59 +1907,30 @@ out:
 		fprintf(stderr, "failed to detect remote user ID\n");
 
 	buf_free(&buf);
+	buf_free(&outbuf);
 }
 
 static int sftp_check_root(struct conn *conn, const char *base_path)
 {
 	int flags;
-	uint32_t id = sftp_get_id();
-	uint32_t replid;
-	uint8_t type;
-	struct buffer buf;
-	struct stat stbuf;
-	struct iovec iov[1];
 	int err = -1;
+	struct buffer buf, outbuf;
+	struct stat st;
 	const char *remote_dir = base_path[0] ? base_path : ".";
 
 	buf_init(&buf, 0);
 	buf_add_string(&buf, remote_dir);
-	buf_to_iov(&buf, &iov[0]);
-	if (sftp_send_iov(conn, SSH_FXP_LSTAT, id, iov, 1) == -1)
+	if (sftp_request_sync(conn, SSH_FXP_LSTAT, &buf, SSH_FXP_ATTRS, &outbuf) == -1)
 		goto out;
-	buf_clear(&buf);
-	if (sftp_read(conn, &type, &buf) == -1)
-		goto out;
-	if (type != SSH_FXP_ATTRS && type != SSH_FXP_STATUS) {
-		fprintf(stderr, "protocol error\n");
-		goto out;
-	}
-	if (buf_get_uint32(&buf, &replid) == -1)
-		goto out;
-	if (replid != id) {
-		fprintf(stderr, "bad reply ID\n");
-		goto out;
-	}
-	if (type == SSH_FXP_STATUS) {
-		uint32_t serr;
-		if (buf_get_uint32(&buf, &serr) == -1)
-			goto out;
-
-		fprintf(stderr, "%s:%s: %s\n", sshfs.host, remote_dir,
-			strerror(sftp_error_to_errno(serr)));
-
-		goto out;
-	}
-
-	int err2 = buf_get_attrs(&buf, &stbuf, &flags);
-	if (err2) {
-		err = err2;
+	err = buf_get_attrs(&outbuf, &st, &flags);
+	if (err) {
 		goto out;
 	}
 
 	if (!(flags & SSH_FILEXFER_ATTR_PERMISSIONS))
 		goto out;
 
-	if (!S_ISDIR(stbuf.st_mode)) {
+	if (!S_ISDIR(st.st_mode)) {
 		fprintf(stderr, "%s:%s: Not a directory\n", sshfs.host,
 			remote_dir);
 		goto out;
@@ -1996,6 +1940,7 @@ static int sftp_check_root(struct conn *conn, const char *base_path)
 
 out:
 	buf_free(&buf);
+	buf_free(&outbuf);
 	return err;
 }
 
