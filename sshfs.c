@@ -2109,11 +2109,10 @@ static int sftp_request_wait_sync(struct conn *conn, struct request *req, uint8_
 	return sftp_request_wait(req, type, expect_type, outbuf);
 }
 
-static int sftp_request_send(struct conn *conn, uint8_t type, struct iovec *iov,
-			     size_t count, request_func begin_func, request_func end_func,
-			     int want_reply, void *data, struct request **reqp)
+static struct request *sftp_request_build(struct conn *conn, struct iovec *iov, size_t count,
+			     request_func begin_func, request_func end_func, int want_reply,
+			     void *data)
 {
-	int err;
 	uint32_t id;
 	struct request *req = g_new0(struct request, 1);
 
@@ -2122,19 +2121,33 @@ static int sftp_request_send(struct conn *conn, uint8_t type, struct iovec *iov,
 	req->data = data;
 	sem_init(&req->ready, 0, 0);
 	buf_init(&req->reply, 0);
-	pthread_mutex_lock(&sshfs.lock);
 	if (begin_func)
 		begin_func(req);
 	id = sftp_get_id();
 	req->id = id;
 	req->conn = conn;
 	req->conn->req_count++;
+	req->len = iov_length(iov, count) + 9;
+	return req;
+}
+
+static int sftp_request_send(struct conn *conn, uint8_t type, struct iovec *iov,
+			     size_t count, request_func begin_func, request_func end_func,
+			     int want_reply, void *data, struct request **reqp)
+{
+	int err;
+	struct request *req = sftp_request_build(conn, iov, count, begin_func, end_func,
+			want_reply, data);
+	uint32_t id = req->id;
+
+	// in the case of delay_connect, the ssh connection isn't established until
+	// the first filesystem interaction
 	err = start_processing_thread(conn);
 	if (err) {
-		pthread_mutex_unlock(&sshfs.lock);
 		goto out;
 	}
-	req->len = iov_length(iov, count) + 9;
+
+	pthread_mutex_lock(&sshfs.lock);
 	sshfs.outstanding_len += req->len;
 	while (sshfs.outstanding_len > sshfs.max_outstanding_len)
 		pthread_cond_wait(&sshfs.outstanding_cond, &sshfs.lock);
@@ -2181,21 +2194,10 @@ static int sftp_request_send_sync(struct conn *conn, uint8_t type, struct iovec 
 			     int want_reply, void *data, struct request **reqp)
 {
 	int err;
-	uint32_t id;
-	struct request *req = g_new0(struct request, 1);
+	struct request *req = sftp_request_build(conn, iov, count, begin_func, end_func,
+			want_reply, data);
+	uint32_t id = req->id;
 
-	req->want_reply = want_reply;
-	req->end_func = end_func;
-	req->data = data;
-	sem_init(&req->ready, 0, 0);
-	buf_init(&req->reply, 0);
-	if (begin_func)
-		begin_func(req);
-	id = sftp_get_id();
-	req->id = id;
-	req->conn = conn;
-	req->conn->req_count++;
-	req->len = iov_length(iov, count) + 9;
 	if (sshfs.debug) {
 		gettimeofday(&req->start, NULL);
 		sshfs.num_sent++;
