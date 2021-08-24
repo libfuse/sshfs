@@ -40,16 +40,15 @@ By default, only the mounting user will be able to access the filesystem. Access
 users can be enabled by passing ``-o allow_other``. In this case you most likely also
 want to use ``-o default_permissions``.
 
-It is recommended to run SSHFS as regular user (not as root).  For this to work the
-mountpoint must be owned by the user.  If username is omitted SSHFS will use the local
-username. If the directory is omitted, SSHFS will mount the (remote) home directory.  If
+It is recommended to run SSHFS as regular user (not as root). For this to work the
+mountpoint must be owned by the user. If username is omitted SSHFS will use the local
+username. If the directory is omitted, SSHFS will mount the (remote) home directory. If
 you need to enter a password SSHFS will ask for it (actually it just runs ssh which ask
 for the password if needed).
 
 
 Options
 =======
-
 
 -o opt,[opt...]
    mount options, see below for details. A a variety of SSH options can
@@ -158,7 +157,7 @@ Options
 
 -o passive
    communicate over stdin and stdout bypassing network. Useful for
-   mounting local filesystem on the remote side.  An example using
+   mounting local filesystem on the remote side. An example using
    dpipe command would be ``dpipe /usr/lib/openssh/sftp-server = ssh
    RemoteHostname sshfs :/directory/to/be/shared ~/mnt/src -o passive``
 
@@ -186,7 +185,7 @@ Options
    read password from stdin (only for pam_mount!)
 
 -o dir_cache=BOOL
-   Enables (*yes*) or disables (*no*) the SSHFS directory cache.  The
+   Enables (*yes*) or disables (*no*) the SSHFS directory cache. The
    directory cache holds the names of directory entries. Enabling it
    allows `readdir(3)` system calls to be processed without network
    access.
@@ -198,7 +197,7 @@ Options
    sets timeout for directory cache in seconds.
 
 -o dcache_{stat,link,dir}_timeout=N
-   sets separate timeout for {attributes, symlinks, names} in  the
+   sets separate timeout for {attributes, symlinks, names} in the
    directory cache.
 
 -o dcache_clean_interval=N
@@ -263,8 +262,8 @@ Permission denied when moving files across remote filesystems
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Most SFTP servers return only a generic "failure" when failing to rename
-across filesystem boundaries (EXDEV).  SSHFS normally converts this generic
-failure to a permission denied error (EPERM).  If the option ``-o
+across filesystem boundaries (EXDEV). SSHFS normally converts this generic
+failure to a permission denied error (EPERM). If the option ``-o
 workaround=renamexdev`` is given, generic failures will be considered EXDEV
 errors which will make programs like `mv(1)` attempt to actually move the
 file after the failed rename.

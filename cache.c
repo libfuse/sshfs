@@ -300,7 +300,6 @@ static int cache_readlink(const char *path, char *buf, size_t size)
 	return err;
 }
 
-
 static int cache_opendir(const char *path, struct fuse_file_info *fi)
 {
 	(void) path;

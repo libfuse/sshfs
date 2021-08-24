@@ -20,12 +20,10 @@ Release 3.7.2 (2021-06-08)
   tried - returning EEXIST if the access was successful.
 	Fixes: https://github.com/libfuse/sshfs/issues/243
 
-
 Release 3.7.1 (2020-11-09)
 --------------------------
 
 * Minor bugfixes.
-
 
 Release 3.7.0 (2020-01-03)
 --------------------------
@@ -40,7 +38,6 @@ Release 3.7.0 (2020-01-03)
   needed anymore. If you depend on this workaround, please let the SSHFS maintainers know,
   otherwise support for the workaround will be removed completely in a future version.
 
-
 Release 3.6.0 (2019-11-03)
 --------------------------
 
@@ -52,7 +49,6 @@ Release 3.6.0 (2019-11-03)
 * Added --verbose option.
 * Fixed a number of compiler warnings.
 * Improved performance under OS X.
-
 
 Release 3.5.2 (2019-04-13)
 --------------------------
