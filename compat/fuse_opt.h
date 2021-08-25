@@ -18,7 +18,7 @@ extern "C" {
 /**
  * Option description
  *
- * This structure describes a single option, and and action associated
+ * This structure describes a single option, and an action associated
  * with it, in case it matches.
  *
  * More than one such match may occur, in which case the action for
