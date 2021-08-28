@@ -256,7 +256,7 @@ static void *cache_init(struct fuse_conn_info *conn,
 {
 	void *res;
 	res = cache.next_oper->init(conn, cfg);
-	
+
 	// Cache requires a path for each request
 	cfg->nullpath_ok = 0;
 
@@ -318,9 +318,9 @@ static int cache_releasedir(const char *path, struct fuse_file_info *fi)
 {
 	int err;
 	struct file_handle *cfi;
-	
+
 	cfi = (struct file_handle*) fi->fh;
-	
+
 	if(cfi->is_open) {
 		fi->fh = cfi->fs_fh;
 		err = cache.next_oper->releasedir(path, fi);
@@ -365,7 +365,7 @@ static int cache_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	struct node *node;
 
 	assert(offset == 0);
-	
+
 	pthread_mutex_lock(&cache.lock);
 	node = cache_lookup(path);
 	if (node != NULL && node->dir != NULL) {
@@ -391,8 +391,8 @@ static int cache_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 		}
 		cfi->is_open = 1;
 		cfi->fs_fh = fi->fh;
-	} 
-	
+	}
+
 	ch.path = path;
 	ch.buf = buf;
 	ch.filler = filler;

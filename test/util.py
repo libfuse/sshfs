@@ -29,7 +29,7 @@ def cleanup(mount_process, mnt_dir):
         mount_process.wait(1)
     except subprocess.TimeoutExpired:
         mount_process.kill()
-    
+
 
 def umount(mount_process, mnt_dir):
     subprocess.check_call(['fusermount3', '-z', '-u', mnt_dir ])

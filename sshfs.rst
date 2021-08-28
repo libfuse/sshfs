@@ -190,17 +190,17 @@ Options
    directory cache holds the names of directory entries. Enabling it
    allows `readdir(3)` system calls to be processed without network
    access.
-   
+
 -o dcache_max_size=N
    sets the maximum size of the directory cache.
-   
+
 -o dcache_timeout=N
    sets timeout for directory cache in seconds.
-   
+
 -o dcache_{stat,link,dir}_timeout=N
    sets separate timeout for {attributes, symlinks, names} in  the
    directory cache.
-   
+
 -o dcache_clean_interval=N
    sets the interval for automatic cleaning of the directory cache.
 
@@ -209,17 +209,17 @@ Options
    when full.
 
 -o direct_io
-   This option disables the use of page cache (file content cache) in 
+   This option disables the use of page cache (file content cache) in
    the kernel for this filesystem.
    This has several affects:
 
    1. Each read() or write() system call will initiate one or more read or
       write operations, data will not be cached in the kernel.
 
-   2. The return value of the read() and write() system calls will correspond 
-      to the return values of the read and write operations. This is useful 
+   2. The return value of the read() and write() system calls will correspond
+      to the return values of the read and write operations. This is useful
       for example if the file size is not known in advance (before reading it).
-      e.g. /proc filesystem 
+      e.g. /proc filesystem
 
 -o max_conns=N
    sets the maximum number of simultaneous SSH connections
