@@ -7,39 +7,31 @@ set -e
 export ASAN_OPTIONS="detect_leaks=0"
 
 export LSAN_OPTIONS="suppressions=${PWD}/test/lsan_suppress.txt"
-export CC
 
 TEST_CMD="python3 -m pytest --maxfail=99 test/"
 
+build_opts='-D werror=true'
+
+if [ -n "$SANITIZER" ]; then
+    build_type=$SANITIZER
+    build_opts="${build_opts} -D b_sanitize=${SANITIZER}"
+else
+    build_type=$CC
+    export TEST_WITH_VALGRIND=true
+fi
+
+# b_lundef=false is required to work around clang
+# bug, cf. https://groups.google.com/forum/#!topic/mesonbuild/tgEdAXIIdC4
+if [[ "${CC}" == 'gcc-6'  || "${CC}" =~ "clang" ]]; then
+    build_opts="${build_opts} -D b_lundef=false"
+fi
+
 # Standard build with Valgrind
-for CC in gcc clang; do
-    (
-    mkdir "build-${CC}"; cd "build-${CC}"
-    if [ "${CC}" == 'gcc-6' ]; then
-        build_opts='-D b_lundef=false'
-    else
-        build_opts=''
-    fi
-    # shellcheck disable=SC2086
-    meson -D werror=true ${build_opts} ../
-    ninja
+mkdir "build-${build_type}"
+cd "build-${build_type}"
+#shellcheck disable=SC2086
+meson ${build_opts} ..
+ninja
 
-    TEST_WITH_VALGRIND=true ${TEST_CMD}
-    )
-done
-(cd "build-${CC}"; sudo ninja install)
-
-# Sanitized build
-CC=clang
-for san in undefined address; do
-    (
-    mkdir "build-${san}"
-    cd "build-${san}"
-    # b_lundef=false is required to work around clang
-    # bug, cf. https://groups.google.com/forum/#!topic/mesonbuild/tgEdAXIIdC4
-    meson -D b_sanitize=${san} -D b_lundef=false -D werror=true ..
-    ninja
-    ${TEST_CMD}
-    sudo ninja install
-    )
-done
+${TEST_CMD}
+sudo ninja install

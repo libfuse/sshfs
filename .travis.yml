@@ -4,14 +4,13 @@ language: c
 
 cache:
   - pip
+  - ccache
 
 addons:
   apt:
     packages:
     - shellcheck
     - valgrind
-    - gcc
-    - clang
     - python-docutils
     - python3-pip
     - python3-setuptools
@@ -19,6 +18,7 @@ addons:
     - meson
     - python3-pytest
     - libglib2.0-dev
+    - ccache
 
 install: test/travis-install.sh
 
@@ -27,5 +27,17 @@ jobs:
     - name: Lint
       script: ./test/lint.sh
       install: skip
-    - name: Build + Test
+    - name: Build + Test (clang)
+      compiler: clang
+      script: test/travis-build.sh
+    - name: Build + Test (gcc)
+      compiler: gcc
+      script: test/travis-build.sh
+    - name: Build with sanitizer (undefined)
+      compiler: clang
+      env: SANITIZER=undefined
+      script: test/travis-build.sh
+    - name: Build with sanitizer (address)
+      compiler: clang
+      env: SANITIZER=address
       script: test/travis-build.sh
