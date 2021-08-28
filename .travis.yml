@@ -1,8 +1,6 @@
 dist: focal
-sudo: enabled
 
-language:
-    - c
+language: c
 
 cache:
   - pip
