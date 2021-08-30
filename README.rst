@@ -72,7 +72,7 @@ Normally, the default build options will work fine. If you
 nevertheless want to adjust them, you can do so with the *mesonconf*
 command::
 
-    $ mesonconf                  # list options 
+    $ mesonconf                  # list options
     $ mesonconf -D strip=true    # set an option
 
 To build, test and install SSHFS, you then use Ninja (running the

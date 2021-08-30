@@ -35,15 +35,15 @@ def name_generator(__ctr=[0]):
 @pytest.mark.parametrize("sync_rd", (True, False))
 @pytest.mark.parametrize("multiconn", (True,False))
 def test_sshfs(tmpdir, debug, cache_timeout, sync_rd, multiconn, capfd):
-    
+
     # Avoid false positives from debug messages
     #if debug:
     #    capfd.register_output(r'^   unique: [0-9]+, error: -[0-9]+ .+$',
     #                          count=0)
 
-    # Avoid false positives from storing key for localhost 
+    # Avoid false positives from storing key for localhost
     capfd.register_output(r"^Warning: Permanently added 'localhost' .+", count=0)
-    
+
     # Test if we can ssh into localhost without password
     try:
         res = subprocess.call(['ssh', '-o', 'KbdInteractiveAuthentication=no',
@@ -80,12 +80,12 @@ def test_sshfs(tmpdir, debug, cache_timeout, sync_rd, multiconn, capfd):
 
     if multiconn:
         cmdline += [ '-o', 'max_conns=3' ]
-    
+
     new_env = dict(os.environ) # copy, don't modify
 
     # Abort on warnings from glib
     new_env['G_DEBUG'] = 'fatal-warnings'
-    
+
     mount_process = subprocess.Popen(cmdline, env=new_env)
     try:
         wait_for_mount(mount_process, mnt_dir)
@@ -299,7 +299,7 @@ def tst_link(mnt_dir, cache_timeout):
     # we need to wait until the cached value has expired.
     if cache_timeout:
         safe_sleep(cache_timeout)
-    
+
     fstat1 = os.lstat(name1)
     fstat2 = os.lstat(name2)
     for attr in ('st_mode', 'st_dev', 'st_uid', 'st_gid',

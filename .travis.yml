@@ -1,11 +1,14 @@
 dist: focal
-sudo: enabled
 
-language:
-    - c
+language: c
+
+cache:
+  - pip
+
 addons:
   apt:
     packages:
+    - shellcheck
     - valgrind
     - gcc
     - clang
@@ -16,6 +19,13 @@ addons:
     - meson
     - python3-pytest
     - libglib2.0-dev
-install: test/travis-install.sh
-script: test/travis-build.sh
 
+install: test/travis-install.sh
+
+jobs:
+  include:
+    - name: Lint
+      script: ./test/lint.sh
+      install: skip
+    - name: Build + Test
+      script: test/travis-build.sh

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 machine=$(uname -m)
 mkdir "build-$machine"
