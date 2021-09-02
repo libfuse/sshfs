@@ -1655,6 +1655,7 @@ static int sftp_init_limits(struct conn *conn) {
 		return res;
 	}
 	DEBUG("Parsed limits reply:\nread: %u write: %u\n", NULL);
+	apply_sftp_limits(&limits);
 	return 0;
 
 }
