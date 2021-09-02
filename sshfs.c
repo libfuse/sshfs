@@ -121,6 +121,7 @@
 #define SFTP_EXT_STATVFS "statvfs@openssh.com"
 #define SFTP_EXT_HARDLINK "hardlink@openssh.com"
 #define SFTP_EXT_FSYNC "fsync@openssh.com"
+#define SFTP_EXT_LIMITS "limits@openssh.com"
 
 #define PROTO_VERSION 3
 
@@ -255,6 +256,13 @@ struct request {
 	size_t len;
 	struct list_head list;
 	struct conn *conn;
+};
+
+struct sftp_limits {
+        uint64_t packet_length;
+        uint64_t read_length;
+        uint64_t write_length;
+        uint64_t open_handles;
 };
 
 struct sshfs_io {
@@ -1623,6 +1631,32 @@ static void *process_requests(void *data_)
 		kill(getpid(), SIGTERM);
 	}
 	return NULL;
+}
+
+static int sftp_init_limits(struct conn *conn) {
+	int res;
+	struct buffer buf, outbuf;
+	struct sftp_limits limits;
+	memset(&limits, 0, sizeof(limits));
+	buf_init(&buf, 0);
+	buf_add_string(&buf, SFTP_EXT_LIMITS);
+	res = sftp_request(conn, SSH_FXP_EXTENDED, &buf, SSH_FXP_EXTENDED_REPLY, &outbuf);
+	buf_free(&buf);
+	if (res != 0) {
+		return res;
+	}
+        DEBUG("Received limits reply\n", NULL);
+
+        if ((res = buf_get_uint64(&outbuf, &limits.packet_length)) != 0 ||
+            (res = buf_get_uint64(&outbuf, &limits.read_length)) != 0 ||
+            (res = buf_get_uint64(&outbuf, &limits.write_length)) != 0 ||
+            (res = buf_get_uint64(&outbuf, &limits.open_handles)) != 0) {
+		buf_free(&outbuf);
+		return res;
+	}
+	DEBUG("Parsed limits reply:\nread: %u write: %u\n", NULL);
+	return 0;
+
 }
 
 static int sftp_init_reply_ok(struct conn *conn, struct buffer *buf,
