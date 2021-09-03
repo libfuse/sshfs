@@ -1633,6 +1633,67 @@ static void *process_requests(void *data_)
 	return NULL;
 }
 
+static void apply_naive_sftp_limits() {
+	// OpenSSH SFTP server < v8.6p1 limit is 65536 bytes
+        // TODO: Allow override?
+	int warn = 0;
+	if (sshfs.max_read > DEFAULT_MAX_SFTP_MSG_LIMIT) {
+		sshfs.max_read = DEFAULT_MAX_SFTP_MSG_LIMIT;
+		warn = 1;
+	} else if (sshfs.max_read == 0) {
+		sshfs.max_read = DEFAULT_MIN_SFTP_MSG_LIMIT;
+	}
+
+	if (sshfs.max_write > DEFAULT_MAX_SFTP_MSG_LIMIT) {
+		sshfs.max_write = DEFAULT_MAX_SFTP_MSG_LIMIT;
+		warn = 1;
+	} else if (sshfs.max_write == 0) {
+		sshfs.max_write = DEFAULT_MIN_SFTP_MSG_LIMIT;
+	}
+
+	if (warn) {
+		fprintf(stderr, "OpenSSH SFTP server read/write limit is 64KB\n");
+	}
+}
+
+/* If server has limits feature:
+ *  * if server limit is 0:
+ *    [x] if user limit, set to user limit
+ *    [x] otherwise default to 1MB
+ *  * if server limit > 0:
+ *    [x] if user limit less than server limit, use user limit
+ *      [ ] warn?
+ *    [x] if user limit > server limit, use server limit
+ *      [ ] warn
+ *    [x] else use server limit
+ *
+ */
+static void apply_sftp_limits(struct sftp_limits *limits) {
+	if (limits->read_length == 0) {
+		if (sshfs.max_read == 0) {
+			// TODO: Pick a bigger number, maybe dynamically somehow?
+			sshfs.max_read = 1048576;
+		}
+		// else sshfs.max_read already has a value
+	} else if (limits->read_length > 0) {
+		if (sshfs.max_read == 0 || sshfs.max_read > limits->read_length) {
+			sshfs.max_read = limits->read_length;
+		}
+	}
+
+	if (limits->write_length == 0) {
+		if (sshfs.max_write == 0) {
+			// TODO: Pick a bigger number, maybe dynamically somehow?
+			sshfs.max_write = DEFAULT_MAX_SFTP_MSG_LIMIT * 8;
+		}
+		// else sshfs.max_write already has a value
+	} else if (limits->write_length > 0) {
+		if (sshfs.max_write == 0 || sshfs.max_write > limits->write_length) {
+			sshfs.max_write = limits->write_length;
+		}
+	}
+}
+
 static int sftp_init_limits(struct conn *conn) {
 	int res;
 	struct buffer buf, outbuf;
