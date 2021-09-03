@@ -2030,6 +2030,7 @@ static void *sshfs_init(struct fuse_conn_info *conn,
 	// SFTP only supports 1-second time resolution
 	conn->time_gran = 1000000000;
 
+	// TODO: Should this be based upon max_read?
 	if (sshfs.max_readahead > 0)
 		conn->max_readahead = sshfs.max_readahead;
 
