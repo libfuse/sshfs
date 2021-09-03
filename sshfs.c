@@ -1858,6 +1858,15 @@ static int sftp_init(struct conn *conn)
 		apply_naive_sftp_limits();
 	}
 
+	if (sshfs.detect_uid) {
+		sftp_detect_uid(conn);
+		sshfs.detect_uid = 0;
+	}
+
+	if (!sshfs.no_check_root &&
+	    (res = sftp_check_root(conn, sshfs.base_path)) != 0)
+		goto out;
+
 	res = 0;
 
 out:
@@ -1979,11 +1988,6 @@ static int start_processing_thread(struct conn *conn)
 		err = connect_remote(conn);
 		if (err)
 			return -EIO;
-	}
-
-	if (sshfs.detect_uid) {
-		sftp_detect_uid(conn);
-		sshfs.detect_uid = 0;
 	}
 
 	sigemptyset(&newset);
@@ -4160,10 +4164,6 @@ static int ssh_connect(void)
 
 	if (!sshfs.delay_connect) {
 		if (connect_remote(&sshfs.conns[0]) == -1)
-			return -1;
-
-		if (!sshfs.no_check_root &&
-		    sftp_check_root(&sshfs.conns[0], sshfs.base_path) != 0)
 			return -1;
 
 	}
