@@ -597,6 +597,9 @@ static const char *type_name(uint8_t type)
 	}
 }
 
+static int sftp_request_sync(struct conn *conn, uint8_t type, const struct buffer *buf,
+			uint8_t expect_type, struct buffer *outbuf);
+
 #define container_of(ptr, type, member) ({				\
 			const typeof( ((type *)0)->member ) *__mptr = (ptr); \
 			(type *)( (char *)__mptr - offsetof(type,member) );})
@@ -1462,6 +1465,55 @@ static int clean_req(void *key, struct request *req, gpointer user_data)
 	return TRUE;
 }
 
+static int sftp_request_process_sync(struct conn *conn, struct request *req, uint8_t type)
+{
+	int res;
+	struct buffer buf;
+	uint32_t id;
+
+	buf_init(&buf, 0);
+	res = sftp_read(conn, &type, &buf);
+	if (res == -1)
+		return -1;
+	if (buf_get_uint32(&buf, &id) == -1)
+		return -1;
+
+	if (req != NULL) {
+		if (sshfs.debug) {
+			struct timeval now;
+			unsigned int difftime;
+			unsigned msgsize = buf.size + 5;
+
+			gettimeofday(&now, NULL);
+			difftime = (now.tv_sec - req->start.tv_sec) * 1000;
+			difftime += (now.tv_usec - req->start.tv_usec) / 1000;
+			DEBUG("  [%05i] %14s %8ubytes (%ims)\n", id,
+			      type_name(type), msgsize, difftime);
+
+			if (difftime < sshfs.min_rtt || !sshfs.num_received)
+				sshfs.min_rtt = difftime;
+			if (difftime > sshfs.max_rtt)
+				sshfs.max_rtt = difftime;
+			sshfs.total_rtt += difftime;
+			sshfs.num_received++;
+			sshfs.bytes_received += msgsize;
+		}
+		req->reply = buf;
+		req->reply_type = type;
+		req->replied = 1;
+		if (req->want_reply)
+			sem_post(&req->ready);
+		else {
+			pthread_mutex_lock(&sshfs.lock);
+			request_free(req);
+			pthread_mutex_unlock(&sshfs.lock);
+		}
+	} else
+		buf_free(&buf);
+
+	return 0;
+}
+
 static int process_one_request(struct conn *conn)
 {
 	int res;
@@ -1937,7 +1989,7 @@ static int sftp_request_wait(struct request *req, uint8_t type,
 	err = -EIO;
 	if (req->reply_type != expect_type &&
 	    req->reply_type != SSH_FXP_STATUS) {
-		fprintf(stderr, "protocol error\n");
+		fprintf(stderr, "request wait: protocol error\n");
 		goto out;
 	}
 	if (req->reply_type == SSH_FXP_STATUS) {
@@ -1981,6 +2033,15 @@ out:
 	request_free(req);
 	pthread_mutex_unlock(&sshfs.lock);
 	return err;
+}
+
+static int sftp_request_wait_sync(struct conn *conn, struct request *req, uint8_t type,
+                             uint8_t expect_type, struct buffer *outbuf)
+{
+	int err;
+	if ((err = sftp_request_process_sync(conn, req, type)) != 0)
+		return err;
+	return sftp_request_wait(req, type, expect_type, outbuf);
 }
 
 static int sftp_request_send(struct conn *conn, uint8_t type, struct iovec *iov,
@@ -2050,6 +2111,68 @@ out:
 	return err;
 }
 
+static int sftp_request_send_sync(struct conn *conn, uint8_t type, struct iovec *iov,
+			     size_t count, request_func begin_func, request_func end_func,
+			     int want_reply, void *data, struct request **reqp)
+{
+	int err;
+	uint32_t id;
+	struct request *req = g_new0(struct request, 1);
+
+	req->want_reply = want_reply;
+	req->end_func = end_func;
+	req->data = data;
+	sem_init(&req->ready, 0, 0);
+	buf_init(&req->reply, 0);
+	if (begin_func)
+		begin_func(req);
+	id = sftp_get_id();
+	req->id = id;
+	req->conn = conn;
+	req->conn->req_count++;
+	req->len = iov_length(iov, count) + 9;
+	if (sshfs.debug) {
+		gettimeofday(&req->start, NULL);
+		sshfs.num_sent++;
+		sshfs.bytes_sent += req->len;
+	}
+	DEBUG("[%05i] %s\n", id, type_name(type));
+	err = -EIO;
+	if (sftp_send_iov(conn, type, id, iov, count) == -1) {
+		if (!want_reply) {
+			/* request already freed */
+			return err;
+		}
+		goto out;
+	}
+	if (want_reply)
+		*reqp = req;
+	return 0;
+
+out:
+	req->error = err;
+	if (!want_reply)
+		sftp_request_wait_sync(conn, req, type, 0, NULL);
+	else
+		*reqp = req;
+
+	return err;
+
+}
+
+static int sftp_request_iov_sync(struct conn *conn, uint8_t type, struct iovec *iov,
+			    size_t count, uint8_t expect_type, struct buffer *outbuf)
+{
+	int err;
+	struct request *req;
+
+	err = sftp_request_send_sync(conn, type, iov, count, NULL, NULL,
+				expect_type, NULL, &req);
+	if (expect_type == 0)
+		return err;
+	return sftp_request_wait_sync(conn, req, type, expect_type, outbuf);
+}
+
 static int sftp_request_iov(struct conn *conn, uint8_t type, struct iovec *iov,
 			    size_t count, uint8_t expect_type, struct buffer *outbuf)
 {
@@ -2060,8 +2183,16 @@ static int sftp_request_iov(struct conn *conn, uint8_t type, struct iovec *iov,
 				expect_type, NULL, &req);
 	if (expect_type == 0)
 		return err;
-
 	return sftp_request_wait(req, type, expect_type, outbuf);
+}
+
+static int sftp_request_sync(struct conn *conn, uint8_t type, const struct buffer *buf,
+			uint8_t expect_type, struct buffer *outbuf)
+{
+	struct iovec iov;
+
+	buf_to_iov(buf, &iov);
+	return sftp_request_iov_sync(conn, type, &iov, 1, expect_type, outbuf);
 }
 
 static int sftp_request(struct conn *conn, uint8_t type, const struct buffer *buf,
