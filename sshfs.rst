@@ -43,7 +43,7 @@ want to use ``-o default_permissions``.
 It is recommended to run SSHFS as regular user (not as root).  For this to work the
 mountpoint must be owned by the user.  If username is omitted SSHFS will use the local
 username. If the directory is omitted, SSHFS will mount the (remote) home directory.  If
-you need to enter a password sshfs will ask for it (actually it just runs ssh which ask
+you need to enter a password SSHFS will ask for it (actually it just runs ssh which ask
 for the password if needed).
 
 
@@ -263,7 +263,7 @@ Permission denied when moving files across remote filesystems
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Most SFTP servers return only a generic "failure" when failing to rename
-across filesystem boundaries (EXDEV).  sshfs normally converts this generic
+across filesystem boundaries (EXDEV).  SSHFS normally converts this generic
 failure to a permission denied error (EPERM).  If the option ``-o
 workaround=renamexdev`` is given, generic failures will be considered EXDEV
 errors which will make programs like `mv(1)` attempt to actually move the
