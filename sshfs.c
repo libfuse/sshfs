@@ -1827,6 +1827,8 @@ static int sftp_find_init_reply(struct conn *conn, uint32_t *version)
 	return res;
 }
 
+static int sftp_check_root(struct conn *conn, const char *base_path);
+static void sftp_detect_uid(struct conn *conn);
 static int sftp_init(struct conn *conn)
 {
 	int res = -1;
