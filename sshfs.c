@@ -139,6 +139,7 @@
 #define MAX_PASSWORD 1024
 #define DEFAULT_MAX_SFTP_MSG_LIMIT 65536
 #define DEFAULT_MIN_SFTP_MSG_LIMIT 32768
+#define SFTP_PACKET_HEADER_PADDING 1024
 
 /*
    Handling of multiple SFTP connections
@@ -1401,7 +1402,7 @@ static int sftp_read(struct conn *conn, uint8_t *type, struct buffer *buf)
 	if (res != -1) {
 		if ((res = buf_get_uint32(&buf2, &len)) == -1)
 			goto out;
-		if (len > sshfs.max_read) {
+		if (len > (sshfs.max_read + SFTP_PACKET_HEADER_PADDING)) {
 			fprintf(stderr, "reply len too large: %u\n", len);
 			res = -1;
 			goto out;
@@ -1639,18 +1640,18 @@ static void apply_naive_sftp_limits() {
 	// OpenSSH SFTP server < v8.6p1 limit is 65536 bytes
         // TODO: Allow override?
 	int warn = 0;
-	if (sshfs.max_read > (DEFAULT_MAX_SFTP_MSG_LIMIT - 1024)) {
-		sshfs.max_read = DEFAULT_MAX_SFTP_MSG_LIMIT - 1024;
+	if (sshfs.max_read > (DEFAULT_MAX_SFTP_MSG_LIMIT - SFTP_PACKET_HEADER_PADDING)) {
+		sshfs.max_read = DEFAULT_MAX_SFTP_MSG_LIMIT - SFTP_PACKET_HEADER_PADDING;
 		warn = 1;
 	} else if (sshfs.max_read == 0) {
-		sshfs.max_read = DEFAULT_MIN_SFTP_MSG_LIMIT - 1024;
+		sshfs.max_read = DEFAULT_MIN_SFTP_MSG_LIMIT - SFTP_PACKET_HEADER_PADDING;
 	}
 
 	if (sshfs.max_write > DEFAULT_MAX_SFTP_MSG_LIMIT) {
-		sshfs.max_write = DEFAULT_MAX_SFTP_MSG_LIMIT - 1024;
+		sshfs.max_write = DEFAULT_MAX_SFTP_MSG_LIMIT - SFTP_PACKET_HEADER_PADDING;
 		warn = 1;
 	} else if (sshfs.max_write == 0) {
-		sshfs.max_write = DEFAULT_MIN_SFTP_MSG_LIMIT - 1024;
+		sshfs.max_write = DEFAULT_MIN_SFTP_MSG_LIMIT - SFTP_PACKET_HEADER_PADDING;
 	}
 
 	if (warn) {
@@ -1660,25 +1661,25 @@ static void apply_naive_sftp_limits() {
 
 static void apply_sftp_limits(struct sftp_limits *limits) {
 	// sshfs.max_read has a user-set value or a default
-	if (sshfs.max_read > (limits->packet_length - 1024)) {
+	if (sshfs.max_read > (limits->packet_length - SFTP_PACKET_HEADER_PADDING)) {
 		fprintf(stderr,
 			"Read size too large. "
 			"OpenSSH SFTP server message limit is %" PRIu64 "\n",
-			(limits->packet_length - 1024));
+			(limits->packet_length - SFTP_PACKET_HEADER_PADDING));
 		abort();
 	}
 	// sshfs.max_read has a user-set value or a default
-	if (sshfs.max_write > (limits->packet_length - 1024)) {
+	if (sshfs.max_write > (limits->packet_length - SFTP_PACKET_HEADER_PADDING)) {
 		fprintf(stderr,
 			"Write size too large. "
 			"OpenSSH SFTP server message limit is %" PRIu64 "\n",
-			(limits->packet_length - 1024));
+			(limits->packet_length - SFTP_PACKET_HEADER_PADDING));
 		abort();
 	}
 	if (limits->read_length == 0) {
 		if (sshfs.max_read == 0) {
-			sshfs.max_read = MAX(DEFAULT_MAX_SFTP_MSG_LIMIT - 1024,
-					limits->packet_length - 1024);
+			sshfs.max_read = MAX(DEFAULT_MAX_SFTP_MSG_LIMIT - SFTP_PACKET_HEADER_PADDING,
+					limits->packet_length - SFTP_PACKET_HEADER_PADDING);
 		}
 	} else if (limits->read_length > 0) {
 		if (sshfs.max_read == 0 || sshfs.max_read > limits->read_length) {
@@ -1688,8 +1689,8 @@ static void apply_sftp_limits(struct sftp_limits *limits) {
 
 	if (limits->write_length == 0) {
 		if (sshfs.max_write == 0) {
-			sshfs.max_read = MAX(DEFAULT_MAX_SFTP_MSG_LIMIT - 1024,
-					limits->packet_length - 1024);
+			sshfs.max_read = MAX(DEFAULT_MAX_SFTP_MSG_LIMIT - SFTP_PACKET_HEADER_PADDING,
+					limits->packet_length - SFTP_PACKET_HEADER_PADDING);
 		}
 	} else if (limits->write_length > 0) {
 		if (sshfs.max_write == 0 || sshfs.max_write > limits->write_length) {
