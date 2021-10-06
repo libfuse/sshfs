@@ -432,7 +432,7 @@ static const char *ssh_opts[] = {
 	"ProxyCommand",
 	"ProxyJump",
 	"ProxyUseFdpass",
-	"PubkeyAcceptedKeyTypes"
+	"PubkeyAcceptedKeyTypes",
 	"PubkeyAuthentication",
 	"RekeyLimit",
 	"RevokedHostKeys",
