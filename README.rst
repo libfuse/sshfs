@@ -36,7 +36,7 @@ this to work the mountpoint must be owned by the user.  If username is
 omitted SSHFS will use the local username. If the directory is
 omitted, SSHFS will mount the (remote) home directory.  If you need to
 enter a password sshfs will ask for it (actually it just runs ssh
-which ask for the password if needed).
+which asks for the password if needed).
 
 Also many ssh options can be specified (see the manual pages for
 *sftp(1)* and *ssh_config(5)*), including the remote port number
