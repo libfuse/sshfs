@@ -274,7 +274,7 @@ SSHFS hangs for no apparent reason
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In some cases, attempts to access the SSHFS mountpoint may freeze if
-no filesystem activity has occured for some time. This is typically
+no filesystem activity has occurred for some time. This is typically
 caused by the SSH connection being dropped because of inactivity
 without SSHFS being informed about that. As a workaround, you can try
 to mount with ``-o ServerAliveInterval=15``. This will force the SSH
