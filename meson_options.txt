@@ -1,0 +1,1 @@
+option('build-manual', type: 'feature', value: 'auto')
