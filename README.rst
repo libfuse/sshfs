@@ -1,3 +1,15 @@
+This Project is Orphaned
+========================
+
+This project is no longer maintained or developed. Github issue tracking and pull requests have
+therefore been disabled. The mailing list (see below) is still available for use.
+
+If you would like to take over this project, you are welcome to do so. Please fork it and
+develop the fork for a while. Once there has been 6 months of reasonable activity, please
+contact Nikolaus@rath.org and I'll be happy to give you ownership of this repository or
+replace with a pointer to the fork.
+
+
 SSHFS
 =====
 
