@@ -1,0 +1,51 @@
+name: build and test
+on:
+  push:
+
+  pull_request:
+
+  workflow_dispatch: # this is a nice option that will enable a button w/ inputs
+    inputs:
+      git-ref:
+        description: Git Ref (Optional)    
+        required: false
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install valgrind gcc ninja-build meson libglib2.0-dev libfuse3-dev
+
+      - name: Install meson
+        run: pip3 install meson pytest
+
+      - name: build
+        run: |
+          mkdir build; cd build
+          meson ..
+          ninja
+
+      # cd does not persist across steps
+      - name: upload build artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: sshfs
+          path: build/sshfs
+
+      - name: make ssh into localhost without prompt possible for tests
+        run: |
+          ssh-keygen -b 2048 -t rsa  -f ~/.ssh/id_rsa -q -N ""
+          cat ~/.ssh/id_rsa.pub > ~/.ssh/authorized_keys
+
+      - name: run tests
+        run: |
+          cd build
+          python3 -m pytest test/
