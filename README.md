@@ -1,3 +1,4 @@
+
 # SSHFS
 
 
@@ -14,8 +15,8 @@ very simple to use - there's nothing to do on the server-side.
 SSHFS is shipped by all major Linux distributions and has been in
 production use across a wide range of systems for many years. However,
 at present SSHFS does not have any active, regular contributors, and
-there are a number of known issues (see the [bugtracker](https://github.com/deadbeefsociety/sshfs/issues)).  The current
-maintainer continues to apply pull requests and makes regular
+there are a number of known issues (see the [bugtracker](https://github.com/libfuse/sshfs/issues)).  
+The current maintainer continues to apply pull requests and makes regular
 releases, but unfortunately has no capacity to do any development
 beyond addressing high-impact issues. When reporting bugs, please
 understand that unless you are including a pull request or are
@@ -58,7 +59,7 @@ umount mountpoint
 
 
 First, download the latest SSHFS release from
-https://github.com/deadbeefsociety/sshfs/releases. You also need [libfuse](http://github.com/libfuse/libfuse) 3.1.0 or newer (or a
+https://github.com/libfuse/sshfs/releases. You also need [libfuse](http://github.com/libfuse/libfuse) 3.1.0 or newer (or a
 similar library that provides a libfuse3 compatible interface for your operating
 system). Finally, you need the [Glib](https://developer.gnome.org/glib/stable/) library with development headers (which should be
 available from your operating system's package manager).
@@ -98,7 +99,7 @@ mailing list (subscribe at
 https://lists.sourceforge.net/lists/listinfo/fuse-sshfs).
 
 Please report any bugs on the GitHub issue tracker at
-https://github.com/deadbeefsociety/sshfs/issues.
+https://github.com/libfuse/sshfs/issues.
 
 ## Packaging Status
 
