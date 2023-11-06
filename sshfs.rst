@@ -156,6 +156,9 @@ Options
 -o directport=PORT
    directly connect to PORT bypassing ssh
 
+-o vsock=CID:PORT
+   directly connect using a vsock to CID:PORT bypassing ssh
+
 -o passive
    communicate over stdin and stdout bypassing network. Useful for
    mounting local filesystem on the remote side.  An example using

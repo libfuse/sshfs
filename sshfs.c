@@ -50,6 +50,9 @@
 #  include <libgen.h>
 #  include <darwin_compat.h>
 #endif
+#ifdef __linux__
+#  include <linux/vm_sockets.h>
+#endif
 
 #include "cache.h"
 
@@ -349,6 +352,7 @@ struct sshfs {
 	pthread_mutex_t lock;
 	unsigned int randseed;
 	int max_conns;
+	char *vsock;
 	struct conn *conns;
 	int ptyfd;
 	int ptypassivefd;
@@ -504,6 +508,7 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("dir_cache=no",  dir_cache, 0),
 	SSHFS_OPT("direct_io",  direct_io, 1),
 	SSHFS_OPT("max_conns=%u",  max_conns, 1),
+	SSHFS_OPT("vsock=%s",      vsock, 0),
 
 	SSHFS_OPT("-h",		show_help, 1),
 	SSHFS_OPT("--help",	show_help, 1),
@@ -1281,6 +1286,60 @@ static int connect_to(struct conn *conn, char *host, char *port)
 	return 0;
 }
 
+static int connect_vsock(struct conn *conn, char *vsock)
+{
+#ifndef __linux__
+	fprintf(stderr, "vsock is not available\n");
+	return -1;
+#else
+	int err;
+	int sock;
+	struct sockaddr_vm addr;
+	unsigned int cid;
+	unsigned int port;
+	char *delim;
+
+	delim = strchr(vsock, ':');
+	if (delim == NULL) {
+		fprintf(stderr, "invalid vsock, expecting CID:PORT\n");
+		return -1;
+	}
+	*delim = '\0';
+	errno = 0;
+	cid = strtoul(vsock, NULL, 10);
+	if (errno) {
+		perror("invalid cid");
+		return -1;
+	}
+	errno = 0;
+	port = strtoul(delim + 1, NULL, 10);
+	if (errno) {
+		perror("invalid port");
+		return -1;
+	}
+
+	sock = socket(AF_VSOCK, SOCK_STREAM, 0);
+	if (sock == -1) {
+		perror("failed to create socket");
+		return -1;
+	}
+	memset(&addr, 0, sizeof(addr));
+	addr.svm_family = AF_VSOCK;
+	addr.svm_cid = cid;
+	addr.svm_port = port;
+	err = connect(sock, (const struct sockaddr *)&addr, sizeof(addr));
+	if (err == -1) {
+		perror("failed to connect vsock");
+		close(sock);
+		return -1;
+	}
+
+	conn->rfd = sock;
+	conn->wfd = sock;
+	return 0;
+#endif
+}
+
 static int do_write(struct conn *conn, struct iovec *iov, size_t count)
 {
 	int res;
@@ -1833,6 +1892,8 @@ static int connect_remote(struct conn *conn)
 		err = connect_passive(conn);
 	else if (sshfs.directport)
 		err = connect_to(conn, sshfs.host, sshfs.directport);
+	else if (sshfs.vsock)
+		err = connect_vsock(conn, sshfs.vsock);
 	else
 		err = start_ssh(conn);
 	if (!err)
@@ -3645,6 +3706,7 @@ static void usage(const char *progname)
 "    -o no_check_root       don't check for existence of 'dir' on server\n"
 "    -o password_stdin      read password from stdin (only for pam_mount!)\n"
 "    -o max_conns=N         open parallel SSH connections\n"
+"    -o vsock=CID:PORT      connect to the given vsock\n"
 "    -o SSHOPT=VAL          ssh options (see man ssh_config)\n"
 "\n"
 "FUSE Options:\n",
