@@ -319,6 +319,7 @@ struct sshfs {
 	int nomap;
 	int disable_hardlink;
 	int dir_cache;
+	int hard_remove;
 	int show_version;
 	int show_help;
 	int singlethread;
@@ -523,7 +524,8 @@ static struct fuse_opt sshfs_opts[] = {
 	/* For backwards compatibility */
 	SSHFS_OPT("cache=yes", dir_cache, 1),
 	SSHFS_OPT("cache=no",  dir_cache, 0),
-	
+	SSHFS_OPT("hard_remove", hard_remove, 1),
+
 	FUSE_OPT_KEY("writeback_cache=no", FUSE_OPT_KEY_DISCARD),
 	FUSE_OPT_KEY("unreliable_append", FUSE_OPT_KEY_DISCARD),
 
@@ -1909,7 +1911,10 @@ static void *sshfs_init(struct fuse_conn_info *conn,
 
 	// SFTP only supports 1-second time resolution
 	conn->time_gran = 1000000000;
-	
+
+	// force immediate file removal
+	cfg->hard_remove = sshfs.hard_remove;
+
 	return NULL;
 }
 
@@ -4186,6 +4191,7 @@ int main(int argc, char *argv[])
 	sshfs.max_conns = 1;
 	sshfs.ptyfd = -1;
 	sshfs.dir_cache = 1;
+	sshfs.hard_remove = 0;
 	sshfs.show_help = 0;
 	sshfs.show_version = 0;
 	sshfs.singlethread = 0;
