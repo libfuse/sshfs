@@ -37,14 +37,13 @@ credentials that were used to connect to the server. If this is undesired, local
 permission checking can be enabled with ``-o default_permissions``.
 
 By default, only the mounting user will be able to access the filesystem. Access for other
-users can be enabled by passing ``-o allow_other``. In this case you most likely also
+users can be enabled by passing ``-o allow_other``. In this case, you most likely also
 want to use ``-o default_permissions``.
 
-It is recommended to run SSHFS as regular user (not as root).  For this to work the
-mountpoint must be owned by the user.  If username is omitted SSHFS will use the local
-username. If the directory is omitted, SSHFS will mount the (remote) home directory.  If
-you need to enter a password sshfs will ask for it (actually it just runs ssh which ask
-for the password if needed).
+It is recommended to run SSHFS as a regular user (not as root). For this to work, the
+mountpoint must be owned by the user. If the username is omitted, SSHFS will use the local
+username. If the directory is omitted, SSHFS will mount the (remote) home directory. If
+you need to enter a password, sshfs will ask for it (since it runs ssh under the hood).
 
 
 Options
