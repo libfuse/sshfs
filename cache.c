@@ -67,6 +67,7 @@ static void free_node(gpointer node_)
 {
 	struct node *node = (struct node *) node_;
 	g_strfreev(node->dir);
+	g_free(node->link);
 	g_free(node);
 }
 
