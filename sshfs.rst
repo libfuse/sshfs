@@ -29,7 +29,7 @@ Description
 
 SSHFS allows you to mount a remote filesystem using SSH (more precisely, the SFTP
 subsystem). Most SSH servers support and enable this SFTP access by default, so SSHFS is
-very simple to use - there's nothing to do on the server-side.
+very simple to use - there's nothing to do on the server side.
 
 By default, file permissions are ignored by SSHFS. Any user that can access the filesystem
 will be able to perform any operation that the remote server permits - based on the
@@ -40,10 +40,10 @@ By default, only the mounting user will be able to access the filesystem. Access
 users can be enabled by passing ``-o allow_other``. In this case you most likely also
 want to use ``-o default_permissions``.
 
-It is recommended to run SSHFS as regular user (not as root).  For this to work the
-mountpoint must be owned by the user.  If username is omitted SSHFS will use the local
-username. If the directory is omitted, SSHFS will mount the (remote) home directory.  If
-you need to enter a password sshfs will ask for it (actually it just runs ssh which ask
+It is recommended to run SSHFS as regular user (not as root). For this to work the
+mountpoint must be owned by the user. If the username is omitted, SSHFS will use the local
+username. If the directory is omitted, SSHFS will mount the (remote) home directory. If
+you need to enter a password, SSHFS will ask for it (actually it just runs SSH which asks
 for the password if needed).
 
 
@@ -52,39 +52,39 @@ Options
 
 
 -o opt,[opt...]
-   mount options, see below for details. A a variety of SSH options can
+   Mount options, see below for details. A variety of SSH options can
    be given here as well, see the manual pages for *sftp(1)* and
    *ssh_config(5)*.
 
 -h, --help
-   print help and exit.
+   Print help and exit.
 
 -V, --version
-   print version information and exit.
+   Print version information and exit.
 
 -d, --debug
-   print debugging information.
+   Print debugging information.
 
 -p PORT
-   equivalent to '-o port=PORT'
+   Equivalent to '-o port=PORT'.
 
 -f
-   do not daemonize, stay in foreground.
+   Do not daemonize, stay in foreground.
 
 -s
-   Single threaded operation.
+   Single-threaded operation.
 
 -C
-   equivalent to '-o compression=yes'
+   Equivalent to '-o compression=yes'.
 
 -F ssh_configfile
-   specifies alternative ssh configuration file
+   Specifies alternative SSH configuration file.
 
 -1
-   equivalent to '-o ssh_protocol=1'
+   Equivalent to '-o ssh_protocol=1'.
 
 -o reconnect
-   automatically reconnect to server if connection is
+   Automatically reconnect to server if connection is
    interrupted. Attempts to access files that were opened before the
    reconnection will give errors and need to be re-opened.
 
@@ -93,7 +93,7 @@ Options
    accessed.
 
 -o sshfs_sync
-   synchronous writes. This will slow things down, but may be useful
+   Synchronous writes. This will slow things down, but may be useful
    in some situations.
 
 -o no_readahead
@@ -101,7 +101,7 @@ Options
    speculatively reading more to anticipate the next read request.
 
 -o sync_readdir
-   synchronous readdir. This will slow things down, but may be useful
+   Synchronous readdir. This will slow things down, but may be useful
    in some situations.
 
 -o workaround=LIST
@@ -113,7 +113,7 @@ Options
    :renamexdev: Make rename fail with EXDEV instead of the default EPERM
         to allow moving files across remote filesystems.
    :truncate: Work around servers that don't support truncate by
-        coping the whole file, truncating it locally, and sending it
+        copying the whole file, truncating it locally, and sending it
         back.
    :fstat: Work around broken servers that don't support *fstat()* by
            using *stat* instead.
@@ -133,88 +133,88 @@ Options
             and `--gidfile`.
 
 -o uidfile=FILE
-   file containing ``username:uid`` mappings for `-o idmap=file`
+   File containing ``username:uid`` mappings for `-o idmap=file`.
 
 -o gidfile=FILE
-   file containing ``groupname:gid`` mappings for `-o idmap=file`
+   File containing ``groupname:gid`` mappings for `-o idmap=file`.
 
 -o nomap=TYPE
-   with idmap=file, how to handle missing mappings:
+   With idmap=file, how to handle missing mappings:
 
-   :ignore: don't do any re-mapping
-   :error:  return an error (default)
+   :ignore: don't do any re-mapping.
+   :error:  return an error (default).
 
 -o ssh_command=CMD
-   execute CMD instead of 'ssh'
+   Execute CMD instead of 'ssh'
 
 -o ssh_protocol=N
-   ssh protocol to use (default: 2)
+   SSH protocol to use (default: 2).
 
 -o sftp_server=SERV
-   path to sftp server or subsystem (default: sftp)
+   Path to SFTP server or subsystem (default: sftp).
 
 -o directport=PORT
-   directly connect to PORT bypassing ssh
+   Directly connect to PORT bypassing SSH.
 
 -o vsock=CID:PORT
-   directly connect using a vsock to CID:PORT bypassing ssh
+   Directly connect using a vsock to CID:PORT bypassing SSH.
 
 -o passive
-   communicate over stdin and stdout bypassing network. Useful for
-   mounting local filesystem on the remote side.  An example using
+   Communicate over stdin and stdout bypassing network. Useful for
+   mounting local filesystem on the remote side. An example using
    dpipe command would be ``dpipe /usr/lib/openssh/sftp-server = ssh
-   RemoteHostname sshfs :/directory/to/be/shared ~/mnt/src -o passive``
+   RemoteHostname sshfs :/directory/to/be/shared ~/mnt/src -o passive``.
 
 -o disable_hardlink
    With this option set, attempts to call `link(2)` will fail with
    error code ENOSYS.
 
 -o transform_symlinks
-   transform absolute symlinks on remote side to relative
+   Transform absolute symlinks on remote side to relative
    symlinks. This means that if e.g. on the server side
    ``/foo/bar/com`` is a symlink to ``/foo/blub``, SSHFS will
    transform the link target to ``../blub`` on the client side.
 
 -o follow_symlinks
-   follow symlinks on the server, i.e. present them as regular
+   Follow symlinks on the server, i.e. present them as regular
    files on the client. If a symlink is dangling (i.e, the target does
    not exist) the behavior depends on the remote server - the entry
    may appear as a symlink on the client, or it may appear as a
    regular file that cannot be accessed.
 
 -o no_check_root
-   don't check for existence of 'dir' on server
+   Don't check for existence of 'dir' on server.
 
 -o password_stdin
-   read password from stdin (only for pam_mount!)
+   Read password from stdin (only for pam_mount!).
 
 -o dir_cache=BOOL
-   Enables (*yes*) or disables (*no*) the SSHFS directory cache.  The
+   Enables (*yes*) or disables (*no*) the SSHFS directory cache. The
    directory cache holds the names of directory entries. Enabling it
    allows `readdir(3)` system calls to be processed without network
    access.
 
 -o dcache_max_size=N
-   sets the maximum size of the directory cache.
+   Sets the maximum size of the directory cache.
 
 -o dcache_timeout=N
-   sets timeout for directory cache in seconds.
+   Sets timeout for directory cache in seconds.
 
 -o dcache_{stat,link,dir}_timeout=N
-   sets separate timeout for {attributes, symlinks, names} in  the
+   Sets separate timeout for {attributes, symlinks, names} in the
    directory cache.
 
 -o dcache_clean_interval=N
-   sets the interval for automatic cleaning of the directory cache.
+   Sets the interval for automatic cleaning of the directory cache.
 
 -o dcache_min_clean_interval=N
-   sets the interval for forced cleaning of the directory cache
+   Sets the interval for forced cleaning of the directory cache
    when full.
 
 -o direct_io
    This option disables the use of page cache (file content cache) in
    the kernel for this filesystem.
-   This has several affects:
+   This has several effects:
 
    1. Each read() or write() system call will initiate one or more read or
       write operations, data will not be cached in the kernel.
@@ -222,14 +222,14 @@ Options
    2. The return value of the read() and write() system calls will correspond
       to the return values of the read and write operations. This is useful
       for example if the file size is not known in advance (before reading it).
-      e.g. /proc filesystem
+      E.g. ``/proc`` filesystem.
 
 -o max_conns=N
-   sets the maximum number of simultaneous SSH connections
+   Sets the maximum number of simultaneous SSH connections
    to use. Each connection is established with a separate SSH process.
    The primary purpose of this feature is to improve the responsiveness of the
-   file system during large file transfers. When using more than once
-   connection, the *password_stdin* and *passive* options can not be
+   filesystem during large file transfers. When using more than one
+   connection, the *password_stdin* and *passive* options cannot be
    used, and the *buflimit* workaround is not supported.
 
 In addition, SSHFS accepts several options common to all FUSE file
@@ -266,8 +266,8 @@ Permission denied when moving files across remote filesystems
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Most SFTP servers return only a generic "failure" when failing to rename
-across filesystem boundaries (EXDEV).  sshfs normally converts this generic
-failure to a permission denied error (EPERM).  If the option ``-o
+across filesystem boundaries (EXDEV). SSHFS normally converts this generic
+failure to a permission denied error (EPERM). If the option ``-o
 workaround=renamexdev`` is given, generic failures will be considered EXDEV
 errors which will make programs like `mv(1)` attempt to actually move the
 file after the failed rename.
@@ -315,7 +315,7 @@ Mounting from /etc/fstab
 ========================
 
 To mount an SSHFS filesystem from ``/etc/fstab``, simply use ``sshfs``
-as the file system type. (For backwards compatibility, you may also
+as the filesystem type. (For backwards compatibility, you may also
 use ``fuse.sshfs``).
 
 
