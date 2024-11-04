@@ -14,6 +14,7 @@
 #include <errno.h>
 #include <glib.h>
 #include <pthread.h>
+#include <sys/stat.h>
 
 #define DEFAULT_CACHE_TIMEOUT_SECS 20
 #define DEFAULT_MAX_CACHE_SIZE 10000
@@ -40,7 +41,7 @@ static struct cache cache;
 struct node {
 	struct stat stat;
 	time_t stat_valid;
-	char **dir;
+	GPtrArray *dir;
 	time_t dir_valid;
 	char *link;
 	time_t link_valid;
@@ -63,12 +64,26 @@ struct file_handle {
 	unsigned long fs_fh;
 };
 
+struct cache_dirent {
+	char *name;
+	struct stat stat;
+};
+
 static void free_node(gpointer node_)
 {
 	struct node *node = (struct node *) node_;
-	g_strfreev(node->dir);
-	g_free(node->link);
+	if (node->dir != NULL) {
+		g_ptr_array_free(node->dir, TRUE);
+  }
 	g_free(node);
+}
+
+static void free_cache_dirent(gpointer data) {
+	struct cache_dirent *cache_dirent = (struct cache_dirent *) data;
+	if (cache_dirent != NULL) {
+		g_free(cache_dirent->name);
+		g_free(cache_dirent);
+	}
 }
 
 static int cache_clean_entry(void *key_, struct node *node, time_t *now)
@@ -187,13 +202,15 @@ void cache_add_attr(const char *path, const struct stat *stbuf, uint64_t wrctr)
 	pthread_mutex_unlock(&cache.lock);
 }
 
-static void cache_add_dir(const char *path, char **dir)
+static void cache_add_dir(const char *path, GPtrArray *dir)
 {
 	struct node *node;
 
 	pthread_mutex_lock(&cache.lock);
 	node = cache_get(path);
-	g_strfreev(node->dir);
+	if (node->dir != NULL) {
+		g_ptr_array_free(node->dir, TRUE);
+  }
 	node->dir = dir;
 	node->dir_valid = time(NULL) + cache.dir_timeout_secs;
 	if (node->dir_valid > node->valid)
@@ -342,7 +359,10 @@ static int cache_dirfill (void *buf, const char *name,
 	ch = (struct readdir_handle*) buf;
 	err = ch->filler(ch->buf, name, stbuf, off, flags);
 	if (!err) {
-		g_ptr_array_add(ch->dir, g_strdup(name));
+		struct cache_dirent *cdent = g_malloc(sizeof(struct cache_dirent));
+		cdent->name = g_strdup(name);
+		cdent->stat = *stbuf;
+		g_ptr_array_add(ch->dir, cdent);
 		if (stbuf->st_mode & S_IFMT) {
 			char *fullpath;
 			const char *basepath = !ch->path[1] ? "" : ch->path;
@@ -362,8 +382,9 @@ static int cache_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	struct readdir_handle ch;
 	struct file_handle *cfi;
 	int err;
-	char **dir;
+	GPtrArray *dir;
 	struct node *node;
+	struct cache_dirent **cdent;
 
 	assert(offset == 0);
 
@@ -372,9 +393,9 @@ static int cache_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	if (node != NULL && node->dir != NULL) {
 		time_t now = time(NULL);
 		if (node->dir_valid - now >= 0) {
-			for(dir = node->dir; *dir != NULL; dir++)
-				// FIXME: What about st_mode?
-				filler(buf, *dir, NULL, 0, 0);
+			for(cdent = (struct cache_dirent**)node->dir->pdata; *cdent != NULL; cdent++) {
+				filler(buf, (*cdent)->name, &(*cdent)->stat, 0, 0);
+      }
 			pthread_mutex_unlock(&cache.lock);
 			return 0;
 		}
@@ -398,16 +419,16 @@ static int cache_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	ch.buf = buf;
 	ch.filler = filler;
 	ch.dir = g_ptr_array_new();
+	g_ptr_array_set_free_func(ch.dir, free_cache_dirent);
 	ch.wrctr = cache_get_write_ctr();
 	err = cache.next_oper->readdir(path, &ch, cache_dirfill, offset, fi, flags);
 	g_ptr_array_add(ch.dir, NULL);
-	dir = (char **) ch.dir->pdata;
+	dir = ch.dir;
 	if (!err) {
 		cache_add_dir(path, dir);
 	} else {
-		g_strfreev(dir);
+		g_ptr_array_free(dir, TRUE);
 	}
-	g_ptr_array_free(ch.dir, FALSE);
 
 	return err;
 }
