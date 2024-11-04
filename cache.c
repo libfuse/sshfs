@@ -72,8 +72,9 @@ struct cache_dirent {
 static void free_node(gpointer node_)
 {
 	struct node *node = (struct node *) node_;
-	if (node->dir != NULL)
+	if (node->dir != NULL) {
 		g_ptr_array_free(node->dir, TRUE);
+  }
 	g_free(node);
 }
 
@@ -207,8 +208,9 @@ static void cache_add_dir(const char *path, GPtrArray *dir)
 
 	pthread_mutex_lock(&cache.lock);
 	node = cache_get(path);
-	if (node->dir != NULL)
+	if (node->dir != NULL) {
 		g_ptr_array_free(node->dir, TRUE);
+  }
 	node->dir = dir;
 	node->dir_valid = time(NULL) + cache.dir_timeout_secs;
 	if (node->dir_valid > node->valid)
@@ -391,8 +393,9 @@ static int cache_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	if (node != NULL && node->dir != NULL) {
 		time_t now = time(NULL);
 		if (node->dir_valid - now >= 0) {
-			for(cdent = (struct cache_dirent**)node->dir->pdata; *cdent != NULL; cdent++)
+			for(cdent = (struct cache_dirent**)node->dir->pdata; *cdent != NULL; cdent++) {
 				filler(buf, (*cdent)->name, &(*cdent)->stat, 0, 0);
+      }
 			pthread_mutex_unlock(&cache.lock);
 			return 0;
 		}
