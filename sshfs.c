@@ -1227,6 +1227,13 @@ static int start_ssh(struct conn *conn)
 			fprintf(stderr, "\n");
 		}
 
+#if defined(__CYGWIN__)
+		/* 
+		 * Windows native OpenSSH stdio behavior. For details check
+		 * https://github.com/PowerShell/openssh-portable/pull/759
+		 */
+		putenv("OPENSSH_STDIO_MODE=nonsock");
+#endif
 		execvp(sshfs.ssh_args.argv[0], sshfs.ssh_args.argv);
 		fprintf(stderr, "failed to execute '%s': %s\n",
 			sshfs.ssh_args.argv[0], strerror(errno));
