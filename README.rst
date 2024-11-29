@@ -46,7 +46,7 @@ To unmount the filesystem::
 
     fusermount -u mountpoint
 
-On BSD and OS-X, to unmount the filesystem::
+On BSD and macOS, to unmount the filesystem::
 
     umount mountpoint
 
@@ -56,7 +56,7 @@ Installation
 
 First, download the latest SSHFS release from
 https://github.com/libfuse/sshfs/releases. On Linux and BSD, you will
-also need to have libfuse_ installed. On OS-X, you need OSXFUSE_
+also need to have libfuse_ installed. On macOS, you need macFUSE_
 instead. Finally, you need the Glib_ development package (which should
 be available from your operating system's package manager).
 
@@ -82,7 +82,7 @@ tests requires the `py.test`_ Python module)::
     $ sudo ninja install
 
 .. _libfuse: http://github.com/libfuse/libfuse
-.. _OSXFUSE: https://osxfuse.github.io/
+.. _macFUSE: https://macfuse.io/
 .. _Glib: https://developer.gnome.org/glib/stable/
 .. _Meson: http://mesonbuild.com/
 .. _Ninja: https://ninja-build.org/
