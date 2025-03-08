@@ -14,9 +14,6 @@
 #if !defined(__CYGWIN__)
 #  include <fuse_lowlevel.h>
 #endif
-#ifdef __APPLE__
-#  include <fuse_darwin.h>
-#endif
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -3801,6 +3798,16 @@ static int sshfs_opt_proc(void *data, const char *arg, int key,
 				sshfs.mountpoint = strdup(arg);
 			} else {
 				sshfs.mountpoint = realpath(arg, NULL);
+#ifdef __APPLE__
+				if (!sshfs.mountpoint) {
+					/*
+					 * The mountpoint does not exist, yet.
+					 * macFUSE will try to create it before
+					 * mounting the volume.
+					 */
+					sshfs.mountpoint = strdup(arg);
+				}
+#endif
 			}
 #endif
 			if (!sshfs.mountpoint) {
