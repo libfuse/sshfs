@@ -35,7 +35,7 @@ jobs:
 
       # cd does not persist across steps
       - name: upload build artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: sshfs
           path: build/sshfs
