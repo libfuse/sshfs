@@ -57,33 +57,53 @@ umount mountpoint
 
 ## Installation
 
+First, you need to install the following dependencies:
+- [libfuse](http://github.com/libfuse/libfuse) 3.1.0 or newer
+- [Glib](https://developer.gnome.org/glib/stable/) library with development headers
+- [Meson](http://mesonbuild.com/) version 0.40 or newer
+- [Ninja](https://ninja-build.org/)
 
-First, download the latest SSHFS release from
-https://github.com/libfuse/sshfs/releases. You also need [libfuse](http://github.com/libfuse/libfuse) 3.1.0 or newer (or a
-similar library that provides a libfuse3 compatible interface for your operating
-system). Finally, you need the [Glib](https://developer.gnome.org/glib/stable/) library with development headers (which should be
-available from your operating system's package manager).
+On a Debian-based system, you can install them with:
+```
+$ sudo apt-get install gcc meson ninja-build libglib2.0-dev libfuse3-dev
+```
 
-To build and install, we recommend to use [Meson](http://mesonbuild.com/) (version 0.38 or
-newer) and [Ninja](https://ninja-build.org/).  After extracting the sshfs tarball, create a
-(temporary) build directory and run Meson:
+Once the dependencies are installed, you can build and install SSHFS with the
+standard `./configure && make` process:
 
+```
+$ ./configure
+$ make
+$ make test          # optional, but recommended
+$ sudo make install
+```
+
+The `configure` script is a wrapper around `meson` and accepts the same
+arguments. For example, you can change the installation prefix:
+`./configure --prefix=/usr/local`.
+
+### Building with Meson
+
+For a more fine-grained control over the build process, you can use `meson`
+directly.
+
+To configure the build, create a (temporary) build directory and run `meson`:
 ```
 $ mkdir build; cd build
 $ meson ..
 ```
 
 Normally, the default build options will work fine. If you
-nevertheless want to adjust them, you can do so with the *mesonconf*
+nevertheless want to adjust them, you can do so with the `meson`
 command:
 
 ```
-$ mesonconf                  # list options
-$ mesonconf -D strip=true    # set an option
+$ meson configure             # list options
+$ meson configure -D strip=true    # set an option
 ```
 
-To build, test and install SSHFS, you then use Ninja (running the
-tests requires the [py.test](http://www.pytest.org/) Python module):
+To build, test and install SSHFS, you then use `ninja` (running the
+tests requires `pytest`):
 
 ```
 $ ninja
