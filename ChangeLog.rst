@@ -1,3 +1,13 @@
+Release 3.7.5 (2025-11-11)
+--------------------------
+
+* New maintainers added
+* Main documentation updates to using Markdown
+* Updated Windows and macOS support
+* Added IPv6 support in -o directport
+* Added -o vsock option
+* Minor bugfixes
+
 Release 3.7.3 (2022-05-26)
 --------------------------
 
