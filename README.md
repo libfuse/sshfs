@@ -55,6 +55,39 @@ On BSD and macOS, to unmount the filesystem:
 umount mountpoint
 ```
 
+### Bypassing SSH
+
+#### Using directport
+
+Using direct connections to sftp-server to bypass SSH for performance is also possible. To do this, start a network service using sftp-server (part of OpenSSH) on a server, then connect directly using `-o directport=PORT` option.
+
+On server (listen on port 1234 using socat):
+
+`socat tcp-listen:1234,reuseaddr,fork  exec:/usr/lib/openssh/sftp-server`
+
+On client:
+
+`sshfs -o directport=1234 127.0.0.1:/tmp /tmp/mnt`
+
+Note that this is insecure as connection will happen without encryption. Only use this on localhost or trusted networks. This option is sometimes used by other projects to mount folders inside VMs.
+
+IPv6 is also possible:
+
+`socat tcp6-listen:1234,reuseaddr,fork exec:/usr/lib/openssh/sftp-server`
+
+`sshfs -o directport=1234 [::1]:/tmp /tmp/mnt`
+
+#### Using vsock
+
+Similarly to above, Linux [vsock](https://man7.org/linux/man-pages/man7/vsock.7.html) can be used to connect directly to sockets within VMs using `-o vsock=CID:PORT`.
+
+```
+# on the host
+socat VSOCK-LISTEN:12345 EXEC:"/usr/lib/openssh/sftp-server",nofork
+# on the clientside
+sshfs -o vsock=2:12345 unused_host: ./tmp
+```
+
 ## Installation
 
 
