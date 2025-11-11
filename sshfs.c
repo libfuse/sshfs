@@ -1258,6 +1258,10 @@ static int connect_to(struct conn *conn, char *host, char *port)
 
 	memset(&hint, 0, sizeof(hint));
 	hint.ai_family = PF_INET;
+	if (strstr(host, ":") != NULL) { // only ipv6 should have : in it, normal IP and domains do not.
+		hint.ai_family = PF_INET6;
+		DEBUG("using ipv6 to connect to host %s\n", host);
+	}
 	hint.ai_socktype = SOCK_STREAM;
 	err = getaddrinfo(host, port, &hint, &ai);
 	if (err) {
