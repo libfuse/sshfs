@@ -29,6 +29,7 @@
 #include <netdb.h>
 #include <signal.h>
 #include <sys/uio.h>
+#include <sys/param.h>
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/wait.h>
@@ -604,6 +605,9 @@ static const char *type_name(uint8_t type)
 #define list_entry(ptr, type, member)		\
 	container_of(ptr, type, member)
 
+static int sshfs_releasedir(const char *path, struct fuse_file_info *fi);
+
+
 static void list_init(struct list_head *head)
 {
 	head->next = head;
@@ -1110,7 +1114,11 @@ static int pty_master(char **name)
 {
 	int mfd;
 
+#ifdef __FreeBSD__
+	mfd = posix_openpt(O_RDWR | O_NOCTTY);
+#else
 	mfd = open("/dev/ptmx", O_RDWR | O_NOCTTY);
+#endif
 	if (mfd == -1) {
 		perror("failed to open pty");
 		return -1;
@@ -1960,12 +1968,8 @@ static void *sshfs_init(struct fuse_conn_info *conn,
 	if (conn->capable & FUSE_CAP_ASYNC_READ)
 		sshfs.sync_read = 1;
 
-	// These workarounds require the "path" argument.
-	cfg->nullpath_ok = !(sshfs.truncate_workaround || sshfs.fstat_workaround);
-
-	// When using multiple connections, release() needs to know the path
-	if (sshfs.max_conns > 1)
-		cfg->nullpath_ok = 0;
+	/* Allways require the "path" argument. */
+	cfg->nullpath_ok = 0;
 
 	// Lookup of . and .. is supported
 	conn->capable |= FUSE_CAP_EXPORT_SUPPORT;
@@ -2269,6 +2273,7 @@ static int sshfs_req_pending(struct request *req)
 static int sftp_readdir_async(struct conn *conn, struct buffer *handle,
 			      void *buf, off_t offset, fuse_fill_dir_t filler)
 {
+	(void) offset;
 	int err = 0;
 	int outstanding = 0;
 	int max = READDIR_START;
@@ -2347,6 +2352,7 @@ static int sftp_readdir_async(struct conn *conn, struct buffer *handle,
 static int sftp_readdir_sync(struct conn *conn, struct buffer *handle,
 			     void *buf, off_t offset, fuse_fill_dir_t filler)
 {
+	(void) offset;
 	int err;
 	assert(offset == 0);
 	do {
@@ -2396,9 +2402,16 @@ static int sshfs_readdir(const char *path, void *dbuf, fuse_fill_dir_t filler,
 			 off_t offset, struct fuse_file_info *fi,
 			 enum fuse_readdir_flags flags)
 {
-	(void) path; (void) flags;
+	(void) flags;
 	int err;
 	struct dir_handle *handle;
+
+	if (path == NULL)
+		return -EIO;
+	err = sshfs_opendir(path, fi);
+	if (err)
+		return err;
+	offset = 0;
 
 	handle = (struct dir_handle*) fi->fh;
 
@@ -2408,6 +2421,8 @@ static int sshfs_readdir(const char *path, void *dbuf, fuse_fill_dir_t filler,
 	else
 		err = sftp_readdir_async(handle->conn, &handle->buf, dbuf,
 					 offset, filler);
+
+	sshfs_releasedir(path, fi);
 
 	return err;
 }
