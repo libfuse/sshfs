@@ -3082,8 +3082,9 @@ static int wait_chunk(struct read_chunk *chunk, char *buf, size_t size)
 
 		if (rreq->res < 0) {
 			chunk->sio.error = rreq->res;
+			res = chunk->sio.error;
 			break;
-		} if (rreq->res == 0) {
+		} else if (rreq->res == 0) {
 			chunk->sio.error = MY_EOF;
 			break;
 		} else if (size < (size_t) rreq->res) {
