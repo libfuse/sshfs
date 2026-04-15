@@ -337,7 +337,6 @@ struct sshfs {
 	int sync_readdir;
 	int direct_io;
 	int debug;
-	int verbose;
 	int foreground;
 	int reconnect;
 	int delay_connect;
@@ -491,7 +490,6 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("no_readahead",      sync_read, 1),
 	SSHFS_OPT("sync_readdir",      sync_readdir, 1),
 	SSHFS_OPT("sshfs_debug",       debug, 1),
-	SSHFS_OPT("sshfs_verbose",     verbose, 1),
 	SSHFS_OPT("reconnect",         reconnect, 1),
 	SSHFS_OPT("transform_symlinks", transform_symlinks, 1),
 	SSHFS_OPT("follow_symlinks",   follow_symlinks, 1),
@@ -513,8 +511,6 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("--version",	show_version, 1),
 	SSHFS_OPT("-d",		debug, 1),
 	SSHFS_OPT("debug",	debug, 1),
-	SSHFS_OPT("-v",		verbose, 1),
-	SSHFS_OPT("verbose",	verbose, 1),
 	SSHFS_OPT("-f",		foreground, 1),
 	SSHFS_OPT("-s",		singlethread, 1),
 
@@ -1176,7 +1172,7 @@ static int start_ssh(struct conn *conn)
 			perror("failed to redirect input/output");
 			_exit(1);
 		}
-		if (!sshfs.verbose && !sshfs.foreground && devnull != -1)
+		if (!sshfs.foreground && devnull != -1)
 			dup2(devnull, 2);
 
 		close(devnull);
@@ -3672,7 +3668,6 @@ static void usage(const char *progname)
 "    -o no_readahead        synchronous reads (no speculative readahead)\n"
 "    -o sync_readdir        synchronous readdir\n"
 "    -d, --debug            print some debugging information (implies -f)\n"
-"    -v, --verbose          print ssh replies and messages\n"
 "    -o dir_cache=BOOL      enable caching of directory contents (names,\n"
 "                           attributes, symlink targets) {yes,no} (default: yes)\n"
 "    -o dcache_max_size=N   sets the maximum size of the directory cache (default: 10000)\n"
