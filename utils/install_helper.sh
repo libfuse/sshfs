@@ -12,8 +12,8 @@ prefix="${MESON_INSTALL_DESTDIR_PREFIX}"
 
 mkdir -p "${prefix}/${sbindir}"
 
-ln -svf --relative "${prefix}/${bindir}/sshfs" \
+ln -svf "${MESON_INSTALL_PREFIX}/${bindir}/sshfs" \
    "${prefix}/${sbindir}/mount.sshfs"
 
-ln -svf --relative "${prefix}/${bindir}/sshfs" \
+ln -svf "${MESON_INSTALL_PREFIX}/${bindir}/sshfs" \
    "${prefix}/${sbindir}/mount.fuse.sshfs"
