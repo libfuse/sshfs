@@ -135,7 +135,7 @@ def test_sshfs(
     try:
         wait_for_mount(mount_process, mnt_dir)
 
-        tst_statvfs(mnt_dir)
+        tst_statvfs(src_dir, mnt_dir)
         tst_readdir(src_dir, mnt_dir)
         tst_open_read(src_dir, mnt_dir)
         tst_open_write(src_dir, mnt_dir)
@@ -145,6 +145,10 @@ def test_sshfs(
         tst_passthrough(src_dir, mnt_dir, cache_timeout)
         tst_mkdir(mnt_dir)
         tst_rmdir(src_dir, mnt_dir, cache_timeout)
+        tst_rename(mnt_dir)
+        tst_rename_over(mnt_dir)
+        tst_chmod(mnt_dir)
+        tst_fsync(src_dir, mnt_dir)
         tst_unlink(src_dir, mnt_dir, cache_timeout)
         tst_symlink(mnt_dir)
         if os.getuid() == 0:
@@ -206,6 +210,80 @@ def tst_rmdir(src_dir, mnt_dir, cache_timeout):
     assert exc_info.value.errno == errno.ENOENT
     assert name not in os.listdir(mnt_dir)
     assert name not in os.listdir(src_dir)
+
+
+def tst_rename(mnt_dir):
+    src_name = pjoin(mnt_dir, name_generator())
+    dst_name = pjoin(mnt_dir, name_generator())
+    data = b"rename test data\n"
+
+    with open(src_name, "wb") as fh:
+        fh.write(data)
+    assert os.path.exists(src_name)
+
+    os.rename(src_name, dst_name)
+
+    assert not os.path.exists(src_name)
+    with open(dst_name, "rb") as fh:
+        assert fh.read() == data
+
+    os.unlink(dst_name)
+
+
+def tst_rename_over(mnt_dir):
+    src_name = pjoin(mnt_dir, name_generator())
+    dst_name = pjoin(mnt_dir, name_generator())
+    src_data = b"source content\n"
+    dst_data = b"destination content\n"
+
+    with open(src_name, "wb") as fh:
+        fh.write(src_data)
+    with open(dst_name, "wb") as fh:
+        fh.write(dst_data)
+
+    os.rename(src_name, dst_name)
+
+    assert not os.path.exists(src_name)
+    with open(dst_name, "rb") as fh:
+        assert fh.read() == src_data
+
+    os.unlink(dst_name)
+
+
+def tst_chmod(mnt_dir):
+    filename = pjoin(mnt_dir, name_generator())
+    with open(filename, "wb") as fh:
+        fh.write(b"chmod test\n")
+
+    os.chmod(filename, 0o644)
+    fstat = os.stat(filename)
+    assert stat.S_IMODE(fstat.st_mode) == 0o644
+
+    os.chmod(filename, 0o755)
+    fstat = os.stat(filename)
+    assert stat.S_IMODE(fstat.st_mode) == 0o755
+
+    os.unlink(filename)
+
+
+def tst_fsync(src_dir, mnt_dir):
+    name = name_generator()
+    mnt_name = pjoin(mnt_dir, name)
+    src_name = pjoin(src_dir, name)
+    data = b"fsync test data\n"
+
+    fd = os.open(mnt_name, os.O_CREAT | os.O_WRONLY)
+    try:
+        os.write(fd, data)
+        os.fsync(fd)
+        # Read from backing store while fd is still open, before
+        # close/release has a chance to flush
+        with open(src_name, "rb") as fh:
+            assert fh.read() == data
+    finally:
+        os.close(fd)
+
+    os.unlink(mnt_name)
 
 
 def tst_symlink(mnt_dir):
@@ -321,8 +399,20 @@ def tst_open_unlink(mnt_dir):
         assert fh.read() == data1 + data2
 
 
-def tst_statvfs(mnt_dir):
-    os.statvfs(mnt_dir)
+def tst_statvfs(src_dir, mnt_dir):
+    vfs = os.statvfs(mnt_dir)
+    ref = os.statvfs(src_dir)
+    # When the server supports statvfs@openssh.com, values should
+    # match the backing store. Otherwise sshfs returns synthetic
+    # values that still pass the loose checks.
+    if vfs.f_bsize == ref.f_bsize:
+        assert vfs.f_frsize == ref.f_frsize
+        assert vfs.f_blocks == ref.f_blocks
+        assert vfs.f_namemax == ref.f_namemax
+    else:
+        assert vfs.f_bsize > 0
+        assert vfs.f_blocks > 0
+        assert vfs.f_namemax > 0
 
 
 def tst_link(mnt_dir, cache_timeout):
