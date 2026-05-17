@@ -313,6 +313,7 @@ struct sshfs {
 	int fstat_workaround;
 	int createmode_workaround;
 	int transform_symlinks;
+	int contain_symlinks;
 	int follow_symlinks;
 	int no_check_root;
 	int detect_uid;
@@ -493,6 +494,8 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("sshfs_debug",       debug, 1),
 	SSHFS_OPT("reconnect",         reconnect, 1),
 	SSHFS_OPT("transform_symlinks", transform_symlinks, 1),
+	SSHFS_OPT("contain_symlinks", contain_symlinks, 1),
+	SSHFS_OPT("no_contain_symlinks", contain_symlinks, 0),
 	SSHFS_OPT("follow_symlinks",   follow_symlinks, 1),
 	SSHFS_OPT("no_check_root",     no_check_root, 1),
 	SSHFS_OPT("password_stdin",    password_stdin, 1),
@@ -2175,6 +2178,36 @@ static void strip_common(const char **sp, const char **tp)
 	} while ((*s == *t && *s) || (!*s && *t == '/') || (*s == '/' && !*t));
 }
 
+/*
+ * Reject symlink targets that could escape the mount root: absolute
+ * paths and any target containing a ".." component.  Returns 1 if
+ * the target is safe to expose to the kernel, 0 otherwise.
+ */
+static int symlink_target_is_contained(const char *target)
+{
+	const char *p = target;
+
+	if (*p == '/')
+		return 0;
+
+	while (*p) {
+		const char *comp = p;
+
+		while (*p && *p != '/')
+			p++;
+		/*
+		 * Reject any ".." rather than try to normalize: in an
+		 * adversarial filesystem the server controls intermediate
+		 * components, so lexical normalization cannot be trusted.
+		 */
+		if (p - comp == 2 && comp[0] == '.' && comp[1] == '.')
+			return 0;
+		while (*p == '/')
+			p++;
+	}
+	return 1;
+}
+
 static void transform_symlink(const char *path, char **linkp)
 {
 	const char *l = *linkp;
@@ -2239,6 +2272,13 @@ static int sshfs_readlink(const char *path, char *linkbuf, size_t size)
 		   buf_get_string(&name, &link) != -1) {
 			if (sshfs.transform_symlinks)
 				transform_symlink(path, &link);
+			if (sshfs.contain_symlinks &&
+			    !symlink_target_is_contained(link)) {
+				free(link);
+				buf_free(&name);
+				buf_free(&buf);
+				return -EPERM;
+			}
 			strncpy(linkbuf, link, size - 1);
 			linkbuf[size - 1] = '\0';
 			free(link);
@@ -3720,6 +3760,9 @@ static void usage(const char *progname)
 "    -o passive             communicate over stdin and stdout bypassing network\n"
 "    -o disable_hardlink    link(2) will return with errno set to ENOSYS\n"
 "    -o transform_symlinks  transform absolute symlinks to relative\n"
+"    -o contain_symlinks    reject absolute symlinks and symlinks containing ..\n"
+"                           (enabled by default; disable with no_contain_symlinks)\n"
+"    -o no_contain_symlinks allow all symlink targets including absolute and ..\n"
 "    -o follow_symlinks     follow symlinks on the server\n"
 "    -o no_check_root       don't check for existence of 'dir' on server\n"
 "    -o password_stdin      read password from stdin (only for pam_mount!)\n"
@@ -4277,6 +4320,7 @@ int main(int argc, char *argv[])
 	sshfs.max_conns = 1;
 	sshfs.ptyfd = -1;
 	sshfs.dir_cache = 1;
+	sshfs.contain_symlinks = 1;
 	sshfs.show_help = 0;
 	sshfs.show_version = 0;
 	sshfs.singlethread = 0;
@@ -4326,6 +4370,12 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "see `%s -h' for usage\n", argv[0]);
 		exit(1);
 	}
+
+	if (sshfs.transform_symlinks && sshfs.contain_symlinks)
+		fprintf(stderr, "warning: transform_symlinks with "
+			"contain_symlinks may reject transformed links "
+			"containing '..' - consider adding "
+			"-o no_contain_symlinks\n");
 
 	if (sshfs.idmap == IDMAP_USER)
 		sshfs.detect_uid = 1;
