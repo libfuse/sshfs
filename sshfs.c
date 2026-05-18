@@ -3926,6 +3926,7 @@ static char *tokenize_on_space(char *str)
 {
 	static char *pos = NULL;
 	char *start = NULL;
+	char *end = NULL;
 
 	if (str)
 		pos = str;
@@ -3938,22 +3939,27 @@ static char *tokenize_on_space(char *str)
 		pos++;
 
 	start = pos;
+	end = pos;
 
 	while (pos && *pos != '\0') {
 		// break on space, but not on '\ '
-		if (*pos == ' ' && *(pos - 1) != '\\') {
-			break;
+		if (*pos == ' ') {
+			if (*(pos - 1) == '\\') {
+				end--;
+			} else {
+				break;
+			}
 		}
-		pos++;
+		*end++ = *pos++;
 	}
 
 	if (*pos == '\0') {
 		pos = NULL;
 	}
 	else {
-		*pos = '\0';
 		pos++;
 	}
+	*end = '\0';
 
 	return start;
 }
