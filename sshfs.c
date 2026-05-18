@@ -280,6 +280,11 @@ struct read_chunk {
 	struct sshfs_io sio;
 };
 
+struct conntab_entry {
+	unsigned refcount;
+	struct conn *conn;
+};
+
 struct sshfs_file {
 	struct buffer handle;
 	struct list_head write_reqs;
@@ -289,13 +294,9 @@ struct sshfs_file {
 	off_t next_pos;
 	int is_seq;
 	struct conn *conn;
+	struct conntab_entry *ce;
 	int connver;
 	int modifver;
-};
-
-struct conntab_entry {
-	unsigned refcount;
-	struct conn *conn;
 };
 
 struct sshfs {
@@ -2768,6 +2769,12 @@ static int sshfs_utimens(const char *path, const struct timespec tv[2],
 	return err;
 }
 
+static gboolean conntab_entry_is(gpointer key, gpointer value, gpointer data)
+{
+	(void) key;
+	return value == data;
+}
+
 static int sshfs_open_common(const char *path, mode_t mode,
                              struct fuse_file_info *fi)
 {
@@ -2828,12 +2835,13 @@ static int sshfs_open_common(const char *path, mode_t mode,
 			g_hash_table_insert(sshfs.conntab, g_strdup(path), ce);
 		}
 		sf->conn = ce->conn;
+		sf->ce = ce;
 		ce->refcount++;
 		sf->conn->file_count++;
 		assert(sf->conn->file_count > 0);
 	} else {
 		sf->conn = &sshfs.conns[0];
-		ce = NULL; // only to silence compiler warning
+		sf->ce = NULL;
 	}
 	sf->connver = sf->conn->connver;
 	pthread_mutex_unlock(&sshfs.lock);
@@ -2873,10 +2881,12 @@ static int sshfs_open_common(const char *path, mode_t mode,
 		if (sshfs.max_conns > 1) {
 			pthread_mutex_lock(&sshfs.lock);
 			sf->conn->file_count--;
-			ce->refcount--;
-			if(ce->refcount == 0) {
-				g_hash_table_remove(sshfs.conntab, path);
-				g_free(ce);
+			sf->ce->refcount--;
+			if (sf->ce->refcount == 0) {
+				g_hash_table_foreach_remove(sshfs.conntab,
+							    conntab_entry_is,
+							    sf->ce);
+				g_free(sf->ce);
 			}
 			pthread_mutex_unlock(&sshfs.lock);
 		}
@@ -2947,7 +2957,6 @@ static int sshfs_release(const char *path, struct fuse_file_info *fi)
 {
 	struct sshfs_file *sf = get_sshfs_file(fi);
 	struct buffer *handle = &sf->handle;
-	struct conntab_entry *ce;
 	if (sshfs_file_is_conn(sf)) {
 		sshfs_flush(path, fi);
 		sftp_request(sf->conn, SSH_FXP_CLOSE, handle, 0, NULL);
@@ -2955,12 +2964,13 @@ static int sshfs_release(const char *path, struct fuse_file_info *fi)
 	buf_free(handle);
 	chunk_put_locked(sf->readahead);
 	if (sshfs.max_conns > 1) {
+		struct conntab_entry *ce = sf->ce;
 		pthread_mutex_lock(&sshfs.lock);
 		sf->conn->file_count--;
-		ce = g_hash_table_lookup(sshfs.conntab, path);
 		ce->refcount--;
-		if(ce->refcount == 0) {
-			g_hash_table_remove(sshfs.conntab, path);
+		if (ce->refcount == 0) {
+			g_hash_table_foreach_remove(sshfs.conntab,
+						    conntab_entry_is, ce);
 			g_free(ce);
 		}
 		pthread_mutex_unlock(&sshfs.lock);
