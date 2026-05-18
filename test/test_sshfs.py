@@ -168,6 +168,7 @@ def test_sshfs(
         tst_mkdir_exist(mnt_dir)
         tst_readdir_repeated(mnt_dir)
         tst_rename_sibling(mnt_dir)
+        tst_rename_open_release(mnt_dir)
     except Exception as exc:
         cleanup(mount_process, mnt_dir)
         raise exc
@@ -501,6 +502,23 @@ def tst_rename_sibling(mnt_dir):
 
     os.unlink(name_b)
     os.unlink(name_c)
+
+
+def tst_rename_open_release(mnt_dir):
+    src = pjoin(mnt_dir, name_generator())
+    dst = pjoin(mnt_dir, name_generator())
+
+    fd = os.open(src, os.O_CREAT | os.O_RDWR)
+    try:
+        os.write(fd, b"data")
+        os.rename(src, dst)
+    finally:
+        os.close(fd)
+
+    assert not os.path.exists(src)
+    with open(dst, "rb") as fh:
+        assert fh.read() == b"data"
+    os.unlink(dst)
 
 
 def tst_link(mnt_dir, cache_timeout):
