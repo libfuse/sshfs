@@ -3382,7 +3382,7 @@ static int sshfs_statfs(const char *path, struct statvfs *buf)
 		return sshfs_ext_statvfs(path, buf);
 
 	buf->f_namemax = 255;
-	buf->f_bsize = sshfs.blksize;
+	buf->f_bsize = sshfs.blksize ? sshfs.blksize : 4096;
 	/*
 	 * df seems to use f_bsize instead of f_frsize, so make them
 	 * the same
