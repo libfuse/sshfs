@@ -1441,23 +1441,24 @@ static int do_read(struct conn *conn, struct buffer *buf)
 
 static int sftp_read(struct conn *conn, uint8_t *type, struct buffer *buf)
 {
-	int res;
+	int res = -1;
 	struct buffer buf2;
 	uint32_t len;
 	buf_init(&buf2, 5);
-	res = do_read(conn, &buf2);
-	if (res != -1) {
-		if (buf_get_uint32(&buf2, &len) == -1)
-			return -1;
-		if (len > MAX_REPLY_LEN) {
-			fprintf(stderr, "reply len too large: %u\n", len);
-			return -1;
-		}
-		if (buf_get_uint8(&buf2, type) == -1)
-			return -1;
-		buf_init(buf, len - 1);
-		res = do_read(conn, buf);
+	if (do_read(conn, &buf2) == -1)
+		goto out;
+	if (buf_get_uint32(&buf2, &len) == -1)
+		goto out;
+	if (len < 1 || len > MAX_REPLY_LEN) {
+		fprintf(stderr, "bad reply len: %u\n", len);
+		goto out;
 	}
+	if (buf_get_uint8(&buf2, type) == -1)
+		goto out;
+	buf_init(buf, len - 1);
+	res = do_read(conn, buf);
+
+out:
 	buf_free(&buf2);
 	return res;
 }
@@ -1530,10 +1531,14 @@ static int process_one_request(struct conn *conn)
 
 	buf_init(&buf, 0);
 	res = sftp_read(conn, &type, &buf);
-	if (res == -1)
+	if (res == -1) {
+		buf_free(&buf);
 		return -1;
-	if (buf_get_uint32(&buf, &id) == -1)
+	}
+	if (buf_get_uint32(&buf, &id) == -1) {
+		buf_free(&buf);
 		return -1;
+	}
 
 	pthread_mutex_lock(&sshfs.lock);
 	req = (struct request *)

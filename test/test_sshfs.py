@@ -851,3 +851,44 @@ def test_direct_io(tmpdir, capfd):
         raise
     else:
         umount(mount_process, mnt_dir)
+
+
+def test_bad_sftp_reply_len(tmpdir):
+    """sshfs must reject a zero-length SFTP reply instead of underflowing."""
+    helper = tmpdir.join("bad_sftp.py")
+    helper.write(
+        '#!/usr/bin/env python3\n'
+        'import os, struct, sys\n'
+        'def read_pkt():\n'
+        '    hdr = os.read(0, 4)\n'
+        '    if len(hdr) < 4: sys.exit(0)\n'
+        '    n = struct.unpack(">I", hdr)[0]\n'
+        '    while n:\n'
+        '        c = os.read(0, n)\n'
+        '        if not c: sys.exit(0)\n'
+        '        n -= len(c)\n'
+        'read_pkt()\n'
+        'os.write(1, struct.pack(">IBI", 5, 2, 3))\n'  # SSH_FXP_VERSION v3
+        'read_pkt()\n'
+        'os.write(1, struct.pack(">IB", 0, 0))\n'  # len=0 reply (5 bytes on wire)
+    )
+    helper.chmod(0o755)
+
+    mnt_dir = str(tmpdir.mkdir("mnt"))
+    cmdline = base_cmdline + [
+        pjoin(basename, "sshfs"),
+        "-f",
+        "dummy:/",
+        mnt_dir,
+        "-o", f"ssh_command={helper}",
+    ]
+    res = subprocess.run(
+        cmdline,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=10,
+        text=True,
+    )
+    assert res.returncode != 0
+    assert "bad reply len: 0" in res.stderr
