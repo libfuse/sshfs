@@ -1,0 +1,53 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+  schedule:
+    - cron: '23 4 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze C
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@bc0b696b4103f5fe60f15749af68a046868d511a # v4
+        with:
+          languages: c-cpp
+          build-mode: manual
+          queries: security-extended
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc ninja-build pkg-config libglib2.0-dev libfuse3-dev
+          pip3 install meson
+
+      - name: Build
+        run: |
+          meson setup build --buildtype=debug
+          ninja -C build sshfs
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@bc0b696b4103f5fe60f15749af68a046868d511a # v4
