@@ -7,45 +7,77 @@ on:
   workflow_dispatch: # this is a nice option that will enable a button w/ inputs
     inputs:
       git-ref:
-        description: Git Ref (Optional)    
+        description: Git Ref (Optional)
         required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     name: Build and test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: actions/setup-python@v4
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install valgrind gcc ninja-build meson libglib2.0-dev libfuse3-dev
+          sudo apt-get install -y valgrind gcc ninja-build libglib2.0-dev libfuse3-dev openssh-server openssh-client fuse3
+
+      - name: Check FUSE availability
+        run: |
+          test -e /dev/fuse
+          command -v fusermount3
 
       - name: Install meson
-        run: pip3 install meson pytest
+        run: pip3 install meson pytest pytest-timeout
 
       - name: build
         run: |
-          mkdir build; cd build
-          meson ..
-          ninja
+          meson setup build
+          ninja -C build
 
       # cd does not persist across steps
       - name: upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sshfs
           path: build/sshfs
+          if-no-files-found: ignore
 
-      - name: make ssh into localhost without prompt possible for tests
+      - name: Setup SSH
         run: |
-          ssh-keygen -b 2048 -t rsa  -f ~/.ssh/id_rsa -q -N ""
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keygen -b 2048 -t rsa -f ~/.ssh/id_rsa -q -N ""
           cat ~/.ssh/id_rsa.pub > ~/.ssh/authorized_keys
+          chmod 600 ~/.ssh/authorized_keys
+          sudo systemctl start ssh || sudo service ssh start
+          ssh -o StrictHostKeyChecking=no -o BatchMode=yes localhost true
 
       - name: run tests
         run: |
           cd build
-          python3 -m pytest test/
+          python3 -m pytest test/ --timeout=300 --junitxml=test-results.xml --maxfail=99
+        timeout-minutes: 20
+
+      - name: upload test results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: test-results
+          path: |
+            build/test-results.xml
+            build/meson-logs/
