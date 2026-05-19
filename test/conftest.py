@@ -1,4 +1,5 @@
 import sys
+import os
 import pytest
 import time
 import re
@@ -85,6 +86,13 @@ def register_output(self, pattern, count=1, flags=re.MULTILINE):
 current_capfd = None
 
 
+_running_with_valgrind = os.environ.get("TEST_WITH_VALGRIND", "no").lower().strip() not in (
+    "no",
+    "false",
+    "0",
+)
+
+
 @pytest.fixture(autouse=True)
 def save_cap_fixtures(request, capfd):
     global current_capfd
@@ -92,6 +100,12 @@ def save_cap_fixtures(request, capfd):
 
     # Monkeypatch in a function to register false positives
     type(capfd).register_output = register_output
+
+    # When running under Valgrind, its ==pid== summary lines on stderr are
+    # expected. Register them as false positives so check_test_output does
+    # not mistake them for suspicious output.
+    if _running_with_valgrind:
+        capfd.false_positives.append((r"^==[0-9]+==[^\n]*\n", re.MULTILINE, 0))
 
     if request.config.getoption("capture") == "no":
         capfd = None

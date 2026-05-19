@@ -9,6 +9,14 @@ from contextlib import contextmanager
 
 basename = pjoin(os.path.dirname(__file__), "..")
 
+_valgrind_timeout_multiplier = (
+    4
+    if os.environ.get("TEST_WITH_VALGRIND", "no").lower().strip()
+    not in ("no", "false", "0")
+    else 1
+)
+_mount_timeout = 30 * _valgrind_timeout_multiplier
+
 
 def os_create(name):
     os.close(os.open(name, os.O_CREAT | os.O_RDWR))
@@ -25,7 +33,7 @@ def os_open(name, flags):
 
 def wait_for_mount(mount_process, mnt_dir, test_fn=os.path.ismount):
     elapsed = 0
-    while elapsed < 30:
+    while elapsed < _mount_timeout:
         if test_fn(mnt_dir):
             return True
         if mount_process.poll() is not None:
@@ -37,7 +45,7 @@ def wait_for_mount(mount_process, mnt_dir, test_fn=os.path.ismount):
 
 def cleanup(mount_process, mnt_dir):
     subprocess.call(
-        ["fusermount", "-z", "-u", mnt_dir],
+        ["fusermount3", "-z", "-u", mnt_dir],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.STDOUT,
     )
@@ -55,7 +63,7 @@ def umount(mount_process, mnt_dir):
     # Give mount process a little while to terminate. Popen.wait(timeout)
     # was only added in 3.3...
     elapsed = 0
-    while elapsed < 30:
+    while elapsed < _mount_timeout:
         code = mount_process.poll()
         if code is not None:
             if code == 0:
@@ -93,12 +101,12 @@ def fuse_test_marker():
         return pytest.mark.skip(reason=reason)
 
     with subprocess.Popen(
-        ["which", "fusermount"], stdout=subprocess.PIPE, universal_newlines=True
+        ["which", "fusermount3"], stdout=subprocess.PIPE, universal_newlines=True
     ) as which:
         fusermount_path = which.communicate()[0].strip()
 
     if not fusermount_path or which.returncode != 0:
-        return skip("Can't find fusermount executable")
+        return skip("Can't find fusermount3 executable")
 
     if not os.path.exists("/dev/fuse"):
         return skip("FUSE kernel module does not seem to be loaded")
@@ -126,6 +134,11 @@ if os.environ.get("TEST_WITH_VALGRIND", "no").lower().strip() not in (
     "false",
     "0",
 ):
-    base_cmdline = ["valgrind", "-q", "--"]
+    import shlex
+    valgrind_options_env = os.environ.get("VALGRIND_OPTIONS", "")
+    if valgrind_options_env:
+        base_cmdline = ["valgrind"] + shlex.split(valgrind_options_env) + ["--"]
+    else:
+        base_cmdline = ["valgrind", "-q", "--"]
 else:
     base_cmdline = []
