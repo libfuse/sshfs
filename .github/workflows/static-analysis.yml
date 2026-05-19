@@ -1,0 +1,134 @@
+name: static analysis
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clang-tidy:
+    name: clang-tidy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang clang-tidy ninja-build pkg-config libglib2.0-dev libfuse3-dev
+          pip3 install meson
+
+      - name: Build compile database
+        env:
+          CC: clang
+        run: meson setup build
+
+      - name: Run clang-tidy
+        run: run-clang-tidy -p build sshfs.c cache.c
+
+  clang-tidy-extended:
+    name: clang-tidy (extended)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang clang-tidy ninja-build pkg-config libglib2.0-dev libfuse3-dev
+          pip3 install meson
+
+      - name: Build compile database
+        env:
+          CC: clang
+        run: meson setup build
+
+      - name: Run extended clang-tidy
+        run: |
+          run-clang-tidy -p build \
+            -checks='-*,bugprone-*,cert-*,clang-analyzer-*,performance-*,portability-*' \
+            sshfs.c cache.c
+
+  tsan:
+    name: ThreadSanitizer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm ninja-build pkg-config libglib2.0-dev libfuse3-dev fuse3 openssh-client openssh-server
+          pip3 install meson pytest pytest-timeout
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -q -N ""
+          cat ~/.ssh/id_ed25519.pub > ~/.ssh/authorized_keys
+          chmod 600 ~/.ssh/authorized_keys
+          sudo systemctl start ssh || sudo service ssh start
+          ssh -o StrictHostKeyChecking=no -o BatchMode=yes localhost true
+
+      - name: Build with TSan
+        env:
+          CC: clang
+        run: |
+          meson setup build -Db_sanitize=thread -Db_lundef=false -Dwerror=true
+          ninja -C build
+
+      - name: Check FUSE availability
+        run: |
+          test -e /dev/fuse
+          command -v fusermount3
+
+      - name: Create TSan log directory
+        run: mkdir -p tsan-logs
+
+      - name: Test
+        env:
+          TSAN_OPTIONS: "halt_on_error=1:second_deadlock_stack=1:log_path=${{ github.workspace }}/tsan-logs/tsan"
+        run: |
+          cd build
+          python3 -m pytest test/ --timeout=180 --maxfail=99 --junitxml=test-results.xml
+        timeout-minutes: 20
+
+      - name: Upload test results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: test-results-tsan
+          path: |
+            build/test-results.xml
+            build/meson-logs/
+            tsan-logs/
