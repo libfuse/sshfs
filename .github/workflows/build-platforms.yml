@@ -1,0 +1,109 @@
+name: platform builds
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-compat:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ubuntu-22.04
+            runner: ubuntu-22.04
+          - name: ubuntu-24.04-arm
+            runner: ubuntu-24.04-arm
+          - name: ubuntu-24.04-release
+            runner: ubuntu-24.04
+            buildtype: release
+          - name: ubuntu-24.04-debug
+            runner: ubuntu-24.04
+            buildtype: debug
+          - name: ubuntu-24.04-hardened
+            runner: ubuntu-24.04
+            extra_cflags: "-D_FORTIFY_SOURCE=3 -fstack-protector-strong"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc ninja-build pkg-config libglib2.0-dev libfuse3-dev
+          pip3 install meson
+
+      - name: Build
+        env:
+          CFLAGS: ${{ matrix.extra_cflags || '' }}
+        run: |
+          meson setup build ${{ matrix.buildtype && format('--buildtype={0}', matrix.buildtype) || '' }}
+          ninja -C build
+
+      - name: Upload build logs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: build-logs-${{ matrix.name }}
+          path: build/meson-logs/
+
+  alpine-musl:
+    name: alpine-musl
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Build in Alpine container
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work alpine:3.21 sh -euxc '
+            apk add --no-cache gcc musl-dev meson ninja pkgconf glib-dev fuse3-dev
+            meson setup build-alpine
+            ninja -C build-alpine
+          '
+
+      - name: Upload build logs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: build-logs-alpine-musl
+          path: build-alpine/meson-logs/
+
+  freebsd:
+    name: freebsd-14
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Build on FreeBSD
+        uses: vmactions/freebsd-vm@d1e65811565151536c0c894fff74f06351ed26e6 # v1.4.5
+        with:
+          usesh: true
+          prepare: |
+            pkg install -y fusefs-libs3 glib meson ninja pkgconf
+          run: |
+            meson setup build-freebsd
+            ninja -C build-freebsd
+
+      - name: Upload build logs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: build-logs-freebsd
+          path: build-freebsd/meson-logs/
