@@ -61,8 +61,8 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          ssh-keygen -b 2048 -t rsa -f ~/.ssh/id_rsa -q -N ""
-          cat ~/.ssh/id_rsa.pub > ~/.ssh/authorized_keys
+          ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -q -N ""
+          cat ~/.ssh/id_ed25519.pub > ~/.ssh/authorized_keys
           chmod 600 ~/.ssh/authorized_keys
           sudo systemctl start ssh || sudo service ssh start
           ssh -o StrictHostKeyChecking=no -o BatchMode=yes localhost true
