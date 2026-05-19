@@ -1,0 +1,8 @@
+# GLib internal allocations that are intentionally never freed
+leak:g_malloc
+leak:g_realloc
+leak:g_slice_alloc
+# FUSE library internals
+leak:libfuse
+leak:fuse_new
+leak:fuse_session_new
