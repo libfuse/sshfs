@@ -1,0 +1,2 @@
+Checks: '-*,bugprone-unsafe-functions,bugprone-signal-handler,cert-env33-c,cert-err33-c,cert-str34-c'
+WarningsAsErrors: ''
