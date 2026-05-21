@@ -19,9 +19,19 @@ concurrency:
 
 jobs:
   build-and-test:
-    name: Build and test
+    name: ${{ matrix.compiler }} / ${{ matrix.buildtype }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        buildtype: [debugoptimized, release]
+        include:
+          - compiler: gcc
+            cc: gcc
+          - compiler: clang
+            cc: clang
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -34,50 +44,101 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y valgrind gcc ninja-build libglib2.0-dev libfuse3-dev openssh-server openssh-client fuse3
+          sudo apt-get install -y gcc clang ninja-build libglib2.0-dev libfuse3-dev openssh-server openssh-client fuse3
+
+      - name: Install meson
+        run: pip3 install meson pytest pytest-timeout
+
+      - name: Print tool versions
+        run: |
+          ${{ matrix.cc }} --version
+          meson --version
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -q -N ""
+          cat ~/.ssh/id_ed25519.pub > ~/.ssh/authorized_keys
+          chmod 600 ~/.ssh/authorized_keys
+          sudo systemctl start ssh || sudo service ssh start
+          ssh -o StrictHostKeyChecking=no -o BatchMode=yes localhost true
 
       - name: Check FUSE availability
         run: |
           test -e /dev/fuse
           command -v fusermount3
 
-      - name: Install meson
-        run: pip3 install meson pytest pytest-timeout
-
-      - name: build
+      - name: Build
+        env:
+          CC: ${{ matrix.cc }}
         run: |
-          meson setup build
+          meson setup build --buildtype=${{ matrix.buildtype }} -Dwerror=true
           ninja -C build
 
-      # cd does not persist across steps
-      - name: upload build artifact
+      - name: Upload build artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: sshfs
+          name: sshfs-${{ matrix.compiler }}-${{ matrix.buildtype }}
           path: build/sshfs
           if-no-files-found: ignore
 
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          ssh-keygen -b 2048 -t rsa -f ~/.ssh/id_rsa -q -N ""
-          cat ~/.ssh/id_rsa.pub > ~/.ssh/authorized_keys
-          chmod 600 ~/.ssh/authorized_keys
-          sudo systemctl start ssh || sudo service ssh start
-          ssh -o StrictHostKeyChecking=no -o BatchMode=yes localhost true
-
-      - name: run tests
+      - name: Run tests
+        timeout-minutes: 20
         run: |
           cd build
-          python3 -m pytest test/ --timeout=300 --junitxml=test-results.xml --maxfail=99
-        timeout-minutes: 20
+          python3 -m pytest --maxfail=99 --timeout=300 --junitxml=test-results.xml test/
 
-      - name: upload test results
+      - name: Upload test results
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: test-results
+          name: test-results-${{ matrix.compiler }}-${{ matrix.buildtype }}
           path: |
             build/test-results.xml
             build/meson-logs/
+
+  strict-warnings:
+    name: ${{ matrix.compiler }} / strict warnings
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            cc: gcc
+            extra_cflags: "-Wformat=2 -Wformat-security -Wundef -Wstrict-prototypes -Wold-style-definition -Wmissing-prototypes -Wnull-dereference"
+          - compiler: clang
+            cc: clang
+            extra_cflags: "-Wformat=2 -Wformat-security -Wundef -Wstrict-prototypes -Wold-style-definition -Wmissing-prototypes -Wnull-dereference"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc clang ninja-build libglib2.0-dev libfuse3-dev
+
+      - name: Install meson
+        run: pip3 install meson
+
+      - name: Print tool versions
+        run: |
+          ${{ matrix.cc }} --version
+          meson --version
+
+      - name: Build with strict warnings
+        env:
+          CC: ${{ matrix.cc }}
+          CFLAGS: ${{ matrix.extra_cflags }}
+        run: |
+          meson setup build -Dwerror=true
+          ninja -C build
