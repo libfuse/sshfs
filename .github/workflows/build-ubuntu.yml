@@ -102,7 +102,6 @@ jobs:
     name: ${{ matrix.compiler }} / strict warnings
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:

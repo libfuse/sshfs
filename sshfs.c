@@ -3954,7 +3954,7 @@ static char *tokenize_on_space(char *str)
 
 	start = pos;
 
-	while (pos && *pos != '\0') {
+	while (*pos != '\0') {
 		// break on space, but not on '\ '
 		if (*pos == ' ' && *(pos - 1) != '\\') {
 			break;
