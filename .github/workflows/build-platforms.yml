@@ -1,0 +1,170 @@
+name: platform builds
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-compat:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ubuntu-22.04
+            runner: ubuntu-22.04
+            run_tests: true
+          - name: ubuntu-24.04-arm
+            runner: ubuntu-24.04-arm
+            run_tests: true
+          - name: ubuntu-24.04-release
+            runner: ubuntu-24.04
+            buildtype: release
+          - name: ubuntu-24.04-debug
+            runner: ubuntu-24.04
+            buildtype: debug
+          - name: ubuntu-24.04-hardened
+            runner: ubuntu-24.04
+            extra_cflags: "-D_FORTIFY_SOURCE=3 -fstack-protector-strong"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc ninja-build pkg-config libglib2.0-dev libfuse3-dev ${{ matrix.run_tests && 'openssh-server openssh-client fuse3' || '' }}
+          pip3 install meson ${{ matrix.run_tests && 'pytest pytest-timeout' || '' }}
+
+      - name: Build
+        env:
+          CFLAGS: ${{ matrix.extra_cflags || '' }}
+        run: |
+          meson setup build ${{ matrix.buildtype && format('--buildtype={0}', matrix.buildtype) || '' }}
+          ninja -C build
+
+      - name: Setup SSH
+        if: matrix.run_tests
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -q -N ""
+          cat ~/.ssh/id_ed25519.pub > ~/.ssh/authorized_keys
+          chmod 600 ~/.ssh/authorized_keys
+          sudo systemctl start ssh || sudo service ssh start
+          ssh -o StrictHostKeyChecking=no -o BatchMode=yes localhost true
+
+      - name: Check FUSE availability
+        if: matrix.run_tests
+        run: |
+          test -e /dev/fuse
+          command -v fusermount3
+
+      - name: Run tests
+        if: matrix.run_tests
+        timeout-minutes: 20
+        run: |
+          cd build
+          python3 -m pytest test/ --timeout=300 --maxfail=99 --junitxml=test-results.xml
+
+      - name: Upload test results
+        if: matrix.run_tests && always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-${{ matrix.name }}
+          path: |
+            build/test-results.xml
+            build/meson-logs/
+
+      - name: Upload build logs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: build-logs-${{ matrix.name }}
+          path: build/meson-logs/
+
+  alpine-musl:
+    name: alpine-musl
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Build in Alpine container
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d sh -euxc '
+            apk add --no-cache gcc musl-dev meson ninja pkgconf glib-dev fuse3-dev
+            meson setup build-alpine
+            ninja -C build-alpine
+          '
+
+      - name: Upload build logs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: build-logs-alpine-musl
+          path: build-alpine/meson-logs/
+
+  freebsd:
+    name: freebsd-14
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Build on FreeBSD
+        uses: vmactions/freebsd-vm@d1e65811565151536c0c894fff74f06351ed26e6 # v1.4.5
+        with:
+          usesh: true
+          prepare: |
+            pkg install -y fusefs-libs3 glib meson ninja pkgconf
+          run: |
+            meson setup build-freebsd
+            ninja -C build-freebsd
+
+      - name: Upload build logs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: build-logs-freebsd
+          path: build-freebsd/meson-logs/
+
+  macos:
+    name: macOS
+    runs-on: macos-14
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install dependencies
+        run: |
+          brew install macfuse glib meson ninja pkg-config
+
+      - name: Build
+        env:
+          PKG_CONFIG_PATH: "/usr/local/lib/pkgconfig:/opt/homebrew/lib/pkgconfig"
+        run: |
+          meson setup build
+          ninja -C build
+
+      - name: Upload build logs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: build-logs-macos
+          path: build/meson-logs/
