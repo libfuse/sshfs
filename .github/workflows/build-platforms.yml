@@ -4,6 +4,8 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: '0 7 * * 1'
 
 permissions:
   contents: read
@@ -123,6 +125,148 @@ jobs:
         with:
           name: build-logs-alpine-musl
           path: build-alpine/meson-logs/
+
+  centos-stream9:
+    name: centos-stream9
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Build in CentOS Stream 9 container
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work quay.io/centos/centos:stream9@sha256:a0e8c66bbc94c61b4be618c8b38d24406156d3233545a16bc71f9106131182f0 sh -euxc '
+            dnf install -y gcc meson ninja-build pkg-config glib2-devel fuse3-devel
+            meson setup build-centos -Dwerror=true
+            ninja -C build-centos
+          '
+
+      - name: Upload build logs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: build-logs-centos-stream9
+          path: build-centos/meson-logs/
+
+  centos-stream9-test:
+    name: centos-stream9 (runtime)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Build and test in CentOS Stream 9 container
+        run: |
+          docker run --rm --privileged --device /dev/fuse \
+            -v "$PWD:/work" -w /work \
+            quay.io/centos/centos:stream9@sha256:a0e8c66bbc94c61b4be618c8b38d24406156d3233545a16bc71f9106131182f0 sh -euxc '
+            dnf install -y gcc meson ninja-build pkg-config glib2-devel fuse3-devel \
+              fuse3 openssh-server openssh-clients python3-pip
+            pip3 install pytest pytest-timeout
+            meson setup build-centos-test
+            ninja -C build-centos-test
+            mkdir -p ~/.ssh
+            chmod 700 ~/.ssh
+            ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -q -N ""
+            cat ~/.ssh/id_ed25519.pub > ~/.ssh/authorized_keys
+            chmod 600 ~/.ssh/authorized_keys
+            ssh-keygen -A
+            /usr/sbin/sshd
+            ssh -o StrictHostKeyChecking=no -o BatchMode=yes localhost true
+            cd build-centos-test
+            python3 -m pytest test/ --timeout=300 --maxfail=99 --junitxml=test-results.xml
+          '
+
+      - name: Upload test results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: test-results-centos-stream9
+          path: build-centos-test/test-results.xml
+
+  fedora-latest:
+    name: fedora-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Build in Fedora container
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work fedora:latest@sha256:498c452f32a739b61f0ef215bce9924ebc4866cbe44710f58157d77723b7a6d2 sh -euxc '
+            dnf install -y gcc meson ninja-build pkg-config glib2-devel fuse3-devel
+            meson setup build-fedora -Dwerror=true
+            ninja -C build-fedora
+          '
+
+      - name: Upload build logs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: build-logs-fedora-latest
+          path: build-fedora/meson-logs/
+
+  fedora-latest-test:
+    name: fedora-latest (runtime)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Build and test in Fedora container
+        run: |
+          docker run --rm --privileged --device /dev/fuse \
+            -v "$PWD:/work" -w /work \
+            fedora:latest@sha256:498c452f32a739b61f0ef215bce9924ebc4866cbe44710f58157d77723b7a6d2 sh -euxc '
+            dnf install -y gcc meson ninja-build pkg-config glib2-devel fuse3-devel \
+              fuse3 openssh-server openssh-clients python3-pip python3-pytest
+            pip3 install pytest-timeout
+            meson setup build-fedora-test
+            ninja -C build-fedora-test
+            mkdir -p ~/.ssh
+            chmod 700 ~/.ssh
+            ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -q -N ""
+            cat ~/.ssh/id_ed25519.pub > ~/.ssh/authorized_keys
+            chmod 600 ~/.ssh/authorized_keys
+            ssh-keygen -A
+            /usr/sbin/sshd
+            ssh -o StrictHostKeyChecking=no -o BatchMode=yes localhost true
+            cd build-fedora-test
+            python3 -m pytest test/ --timeout=300 --maxfail=99 --junitxml=test-results.xml
+          '
+
+      - name: Upload test results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: test-results-fedora-latest
+          path: build-fedora-test/test-results.xml
+
+  fedora-rawhide:
+    name: fedora-rawhide
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Build in Fedora Rawhide container
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work registry.fedoraproject.org/fedora:rawhide sh -euxc '
+            dnf install -y gcc meson ninja-build pkg-config glib2-devel fuse3-devel
+            meson setup build-rawhide -Dwerror=true
+            ninja -C build-rawhide
+          '
+
+      - name: Upload build logs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: build-logs-fedora-rawhide
+          path: build-rawhide/meson-logs/
 
   freebsd:
     name: freebsd-14
