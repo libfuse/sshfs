@@ -1,0 +1,79 @@
+name: valgrind
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  valgrind-memcheck:
+    name: Valgrind memcheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind gcc ninja-build libglib2.0-dev libfuse3-dev openssh-server openssh-client fuse3
+          pip3 install meson pytest pytest-timeout
+
+      - name: Build
+        run: |
+          meson setup build
+          ninja -C build
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -q -N ""
+          cat ~/.ssh/id_ed25519.pub > ~/.ssh/authorized_keys
+          chmod 600 ~/.ssh/authorized_keys
+          sudo systemctl start ssh || sudo service ssh start
+          ssh -o StrictHostKeyChecking=no -o BatchMode=yes localhost true
+
+      - name: Check FUSE availability
+        run: |
+          test -e /dev/fuse
+          command -v fusermount3
+
+      - name: Create Valgrind log directory
+        run: mkdir -p valgrind-logs
+
+      - name: Run tests under Valgrind memcheck
+        timeout-minutes: 30
+        env:
+          TEST_WITH_VALGRIND: "true"
+          VALGRIND_OPTIONS: "--tool=memcheck --leak-check=full --show-leak-kinds=definite,indirect --errors-for-leak-kinds=definite,indirect --error-exitcode=99 --num-callers=25 --suppressions=${{ github.workspace }}/test/valgrind.supp --log-file=${{ github.workspace }}/valgrind-logs/memcheck.%p.log -q"
+          G_DEBUG: "fatal-warnings,gc-friendly"
+          G_SLICE: "always-malloc"
+        run: |
+          cd build
+          python3 -m pytest -q --tb=short --maxfail=99 --timeout=300 \
+            test/ \
+            --junitxml=test-results-valgrind.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-valgrind
+          path: |
+            build/test-results-valgrind.xml
+            build/meson-logs/
+            valgrind-logs/
