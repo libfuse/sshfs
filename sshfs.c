@@ -691,6 +691,10 @@ static void buf_resize(struct buffer *buf, size_t len)
 
 static inline void buf_check_add(struct buffer *buf, size_t len)
 {
+	if (len > SIZE_MAX - buf->len) {
+		fprintf(stderr, "sshfs: buffer size overflow\n");
+		abort();
+	}
 	if (buf->len + len > buf->size)
 		buf_resize(buf, len);
 }
