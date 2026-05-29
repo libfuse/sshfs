@@ -1,3 +1,15 @@
+Release 3.7.6 (2026-05-30)
+--------------------------
+
+* Added new maintainer: abhinavagarwal07 Abhinav Agarwal
+* Fixed critical vulnerability CVE-2026-47187 - Symlink Escape: Rogue SFTP Server to Local File Read/Write), credit to abhinavagarwal07
+* New -o contain_symlinks and -o no_contain_symlinks to control symlink containment behavior
+* Fixed high severity vulnerability CVE-2026-48711 - Improper Neutralization of Argument Delimiters in a Command ('Argument Injection'), credit to abhinavagarwal07
+* Fixed null-deref warning in tokenize_on_space, promote strict-warnings to required
+* Added a number of tests in CI, including rename, chmod, fsync, statvfs values, error paths, option coverage
+* Fixed malformed SFTP reply handling
+* Hardened Github Actions workflow with SHA pins, permissions, timeouts, and dependabot
+
 Release 3.7.5 (2025-11-11)
 --------------------------
 
