@@ -1,5 +1,5 @@
 test_scripts = [ 'conftest.py', 'pytest.ini', 'test_sshfs.py',
-                 'util.py' ]
+                 'test_hostname_validation.py', 'util.py' ]
 custom_target('test_scripts', input: test_scripts,
               output: test_scripts, build_by_default: true,
               command: ['cp', '-fPp',
