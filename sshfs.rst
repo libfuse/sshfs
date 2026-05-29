@@ -175,6 +175,21 @@ Options
    ``/foo/bar/com`` is a symlink to ``/foo/blub``, SSHFS will
    transform the link target to ``../blub`` on the client side.
 
+-o contain_symlinks
+   reject symlink targets that are absolute or contain ``..``
+   components.  When a blocked symlink is encountered, readlink
+   returns EPERM.  This is enabled by default to prevent a
+   malicious server from inducing local file reads or writes
+   through crafted symlink targets.  Note that this is stricter
+   than ``transform_symlinks``: the two options should not normally
+   be combined, since transformed results often contain ``..``
+   and would be rejected by containment.
+
+-o no_contain_symlinks
+   disable symlink containment and allow all symlink targets
+   through unchanged, including absolute paths and paths
+   containing ``..``.  Only use this with fully trusted servers.
+
 -o follow_symlinks
    follow symlinks on the server, i.e. present them as regular
    files on the client. If a symlink is dangling (i.e, the target does

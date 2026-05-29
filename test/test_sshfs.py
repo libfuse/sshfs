@@ -15,6 +15,7 @@ import shutil
 import filecmp
 import errno
 from tempfile import NamedTemporaryFile
+from contextlib import contextmanager
 from util import (
     wait_for_mount,
     umount,
@@ -122,6 +123,9 @@ def test_sshfs(
 
     # FUSE Cache
     cmdline += ["-o", "entry_timeout=0", "-o", "attr_timeout=0"]
+
+    # Disable containment so tst_symlink can test absolute targets
+    cmdline += ["-o", "no_contain_symlinks"]
 
     if multiconn:
         cmdline += ["-o", "max_conns=3"]
@@ -304,6 +308,12 @@ def tst_symlink(mnt_dir):
     assert os.readlink(fullname) == "/imaginary/dest"
     assert fstat.st_nlink == 1
     assert linkname in os.listdir(mnt_dir)
+
+    # Relative symlink without .. should also work
+    linkname2 = name_generator()
+    fullname2 = mnt_dir + "/" + linkname2
+    os.symlink("subdir/file", fullname2)
+    assert os.readlink(fullname2) == "subdir/file"
 
     os.unlink(fullname)
     assert linkname not in os.listdir(mnt_dir)
@@ -910,3 +920,163 @@ def test_bad_sftp_reply_len(tmpdir):
     )
     assert res.returncode != 0
     assert "bad reply len: 0" in res.stderr
+
+
+@contextmanager
+def _sshfs_mount(src_dir, mnt_dir, extra_opts=None):
+    """Mount src_dir via sshfs, yield, then unmount."""
+    cmdline = base_cmdline + [
+        pjoin(basename, "sshfs"), "-f",
+        f"localhost:{src_dir}", mnt_dir,
+        "-o", "entry_timeout=0", "-o", "attr_timeout=0",
+    ]
+    if extra_opts:
+        for opt in extra_opts:
+            cmdline += ["-o", opt]
+    new_env = dict(os.environ)
+    new_env["G_DEBUG"] = "fatal-warnings"
+    mount_process = subprocess.Popen(cmdline, env=new_env)
+    try:
+        wait_for_mount(mount_process, mnt_dir)
+        yield mnt_dir
+    except Exception:
+        cleanup(mount_process, mnt_dir)
+        raise
+    else:
+        umount(mount_process, mnt_dir)
+
+
+def test_contain_symlinks(tmpdir, capfd) -> None:
+    """Default containment: safe symlinks resolve, dangerous ones get EPERM."""
+
+    capfd.register_output(r"^Warning: Permanently added 'localhost' .+", count=0)
+    _check_ssh_localhost()
+
+    mnt_dir = str(tmpdir.mkdir("mnt"))
+    src_dir = str(tmpdir.mkdir("src"))
+
+    os.makedirs(pjoin(src_dir, "sub"))
+    with open(pjoin(src_dir, "sub", "target"), "w") as f:
+        f.write("hello")
+
+    os.symlink("sub/target", pjoin(src_dir, "safe"))
+    os.symlink("./sub/target", pjoin(src_dir, "safe_dot"))
+    os.symlink("/etc/passwd", pjoin(src_dir, "abs"))
+    os.symlink("../../../etc/passwd", pjoin(src_dir, "dotdot"))
+    os.symlink("sub/../../etc/passwd", pjoin(src_dir, "interleaved"))
+    os.symlink("..", pjoin(src_dir, "bare_dotdot"))
+
+    with _sshfs_mount(src_dir, mnt_dir):
+        # Safe symlinks pass through and resolve
+        assert os.readlink(pjoin(mnt_dir, "safe")) == "sub/target"
+        assert os.readlink(pjoin(mnt_dir, "safe_dot")) == "./sub/target"
+        with open(pjoin(mnt_dir, "safe")) as f:
+            assert f.read() == "hello"
+
+        # Dangerous: readlink returns EPERM
+        for name in ("abs", "dotdot", "interleaved", "bare_dotdot"):
+            with pytest.raises(OSError) as exc_info:
+                os.readlink(pjoin(mnt_dir, name))
+            assert exc_info.value.errno == errno.EPERM
+
+        # Dangerous: traversal (open/stat) also EPERM
+        with pytest.raises(OSError) as exc_info:
+            open(pjoin(mnt_dir, "abs"))
+        assert exc_info.value.errno == errno.EPERM
+
+        with pytest.raises(OSError) as exc_info:
+            os.stat(pjoin(mnt_dir, "dotdot"))
+        assert exc_info.value.errno == errno.EPERM
+
+
+def test_no_contain_symlinks(tmpdir, capfd) -> None:
+    """Opt-out: symlinks pass through and actually resolve."""
+
+    capfd.register_output(r"^Warning: Permanently added 'localhost' .+", count=0)
+    _check_ssh_localhost()
+
+    mnt_dir = str(tmpdir.mkdir("mnt"))
+    src_dir = str(tmpdir.mkdir("src"))
+
+    os.symlink("/etc/passwd", pjoin(src_dir, "abs_link"))
+    os.symlink("../../../etc/passwd", pjoin(src_dir, "rel_escape"))
+
+    with _sshfs_mount(src_dir, mnt_dir, ["no_contain_symlinks"]):
+        assert os.readlink(pjoin(mnt_dir, "abs_link")) == "/etc/passwd"
+        assert os.readlink(pjoin(mnt_dir, "rel_escape")) == "../../../etc/passwd"
+
+        # Absolute symlink actually resolves (reads local /etc/passwd)
+        with open(pjoin(mnt_dir, "abs_link")) as f:
+            assert "root" in f.read()
+
+        # Relative escape: kernel must traverse the link (not EPERM).
+        # Target won't exist on the test host, so we just assert that
+        # sshfs didn't block it - any errno other than EPERM proves
+        # containment is genuinely disabled.
+        with pytest.raises(OSError) as exc_info:
+            os.stat(pjoin(mnt_dir, "rel_escape"))
+        assert exc_info.value.errno != errno.EPERM
+
+
+def test_transform_with_contain(tmpdir, capfd) -> None:
+    """transform_symlinks + default containment: transformed ../x is rejected."""
+
+    capfd.register_output(r"^Warning: Permanently added 'localhost' .+", count=0)
+    capfd.register_output(r"^warning: transform_symlinks.+", count=0)
+    _check_ssh_localhost()
+
+    mnt_dir = str(tmpdir.mkdir("mnt"))
+    src_dir = str(tmpdir.mkdir("src"))
+
+    os.makedirs(pjoin(src_dir, "other"))
+    with open(pjoin(src_dir, "other", "file"), "w") as f:
+        f.write("data")
+    # Absolute in-base: transform rewrites to "other/file" (no ..)
+    os.symlink(pjoin(src_dir, "other", "file"), pjoin(src_dir, "inbase"))
+    # Absolute in-base but sibling: transform rewrites to "../other/file"
+    os.makedirs(pjoin(src_dir, "sub"))
+    os.symlink(pjoin(src_dir, "other", "file"), pjoin(src_dir, "sub", "sibling"))
+
+    with _sshfs_mount(src_dir, mnt_dir, ["transform_symlinks"]):
+        # Direct child: transform produces "other/file" - no .., passes
+        link = os.readlink(pjoin(mnt_dir, "inbase"))
+        assert ".." not in link.split("/")
+        with open(pjoin(mnt_dir, "inbase")) as f:
+            assert f.read() == "data"
+
+        # Sibling: transform produces "../other/file" - has .., EPERM
+        with pytest.raises(OSError) as exc_info:
+            os.readlink(pjoin(mnt_dir, "sub", "sibling"))
+        assert exc_info.value.errno == errno.EPERM
+
+    # Same setup with no_contain_symlinks: sibling works
+    with _sshfs_mount(src_dir, mnt_dir,
+                      ["transform_symlinks", "no_contain_symlinks"]):
+        link = os.readlink(pjoin(mnt_dir, "sub", "sibling"))
+        assert ".." in link
+        with open(pjoin(mnt_dir, "sub", "sibling")) as f:
+            assert f.read() == "data"
+
+
+def test_contain_symlinks_option_precedence(tmpdir, capfd) -> None:
+    """Last option wins when contain_symlinks and no_contain_symlinks both set."""
+
+    capfd.register_output(r"^Warning: Permanently added 'localhost' .+", count=0)
+    _check_ssh_localhost()
+
+    mnt_dir = str(tmpdir.mkdir("mnt"))
+    src_dir = str(tmpdir.mkdir("src"))
+
+    os.symlink("/etc/passwd", pjoin(src_dir, "abs"))
+
+    # no_contain_symlinks last: containment disabled, readlink succeeds
+    with _sshfs_mount(src_dir, mnt_dir,
+                      ["contain_symlinks", "no_contain_symlinks"]):
+        assert os.readlink(pjoin(mnt_dir, "abs")) == "/etc/passwd"
+
+    # contain_symlinks last: containment enabled, EPERM
+    with _sshfs_mount(src_dir, mnt_dir,
+                      ["no_contain_symlinks", "contain_symlinks"]):
+        with pytest.raises(OSError) as exc_info:
+            os.readlink(pjoin(mnt_dir, "abs"))
+        assert exc_info.value.errno == errno.EPERM
