@@ -4019,6 +4019,11 @@ static char *find_base_path(void)
 	*d++ = '\0';
 	s++;
 
+	if (sshfs.host[0] == '-') {
+		fprintf(stderr, "invalid hostname '%s'\n", sshfs.host);
+		exit(1);
+	}
+
 	return s;
 }
 
@@ -4410,7 +4415,6 @@ int main(int argc, char *argv[])
 	tmp = g_strdup_printf("-%i", sshfs.ssh_ver);
 	ssh_add_arg(tmp);
 	g_free(tmp);
-	ssh_add_arg(sshfs.host);
 	if (sshfs.sftp_server)
 		sftp_server = sshfs.sftp_server;
 	else if (sshfs.ssh_ver == 1)
@@ -4421,6 +4425,8 @@ int main(int argc, char *argv[])
 	if (sshfs.ssh_ver != 1 && strchr(sftp_server, '/') == NULL)
 		ssh_add_arg("-s");
 
+	ssh_add_arg("--");
+	ssh_add_arg(sshfs.host);
 	ssh_add_arg(sftp_server);
 	free(sshfs.sftp_server);
 
