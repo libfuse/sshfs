@@ -353,8 +353,10 @@ https://github.com/libfuse/libfuse/issues.
 Authors
 =======
 
-SSHFS is currently maintained by Nikolaus Rath <Nikolaus@rath.org>,
+SSHFS was maintained by Nikolaus Rath <Nikolaus@rath.org>,
 and was created by Miklos Szeredi <miklos@szeredi.hu>.
+
+See https://github.com/libfuse/sshfs for new maintainer information.
 
 This man page was originally written by Bartosz Fenski
 <fenio@debian.org> for the Debian GNU/Linux distribution (but it may
