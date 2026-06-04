@@ -1,6 +1,4 @@
-
 # SSHFS
-
 
 ## About
 
@@ -8,9 +6,7 @@ SSHFS allows you to mount a remote filesystem using SFTP. Most SSH
 servers support and enable this SFTP access by default, so SSHFS is
 very simple to use - there's nothing to do on the server-side.
 
-
 ## Development Status
-
 
 SSHFS is shipped by all major Linux distributions and has been in
 production use across a wide range of systems for many years. However,
@@ -22,14 +18,52 @@ beyond addressing high-impact issues. When reporting bugs, please
 understand that unless you are including a pull request or are
 reporting a critical issue, you will probably not get a response.
 
+## Installation
+
+SSHFS is available from most operating system package managers.
+```sh
+# Debian / Ubuntu
+sudo apt install sshfs
+
+# Arch Linux
+sudo pacman -S sshfs
+
+# macOS with Homebrew
+brew install sshfs
+
+# FreeBSD
+sudo pkg install fusefs-sshfs
+```
+
+### Building from source
+SSHFS requires `libfuse` 3.1.0 or newer, GLib, Meson, Ninja, and a C compiler.
+
+Download and extract the latest release from the https://github.com/libfuse/sshfs/releases page. After extracting the SSHFS tarball, create a temporary build directory and run Meson:
+```sh
+mkdir build; cd build
+meson ..
+ninja
+sudo ninja install
+```
+
+To run the test suite:
+
+```sh
+python3 -m pytest test/
+```
 
 ## How to use
 
-
-Once sshfs is installed (see next section) running it is very simple:
-
+To mount a filesystem:
+```sh
+sshfs [user@]hostname:[/directory] /mountpoint [options]
 ```
-sshfs [user@]hostname:[directory] mountpoint
+If host is a numeric IPv6 address, it needs to be enclosed in square brackets.
+
+To un-mount it:
+```sh
+fusermount3 -u mountpoint   # Linux
+umount mountpoint           # OS X, FreeBSD
 ```
 
 It is recommended to run SSHFS as regular user (not as root).  For
@@ -39,27 +73,27 @@ omitted, SSHFS will mount the (remote) home directory.  If you need to
 enter a password sshfs will ask for it (actually it just runs ssh
 which asks for the password if needed).
 
-Also many ssh options can be specified (see the manual pages for
-*sftp(1)* and *ssh_config(5)*), including the remote port number
-(`-oport=PORT`)
+### Common options
 
-To unmount the filesystem:
+- `-o opt[,opt...]`: mount options. A variety of SSH and FUSE options can be given here as well; see the manual pages for *sftp(1)*, *ssh_config(5)* and *mount.fuse(8)*.
+- `-p PORT`: equivalent to `-o port=PORT`.
+- `-d`, `--debug`: print debugging information.
+- `-h`, `--help`: print help and exit.
+- `-V`, `--version`: print version information and exit.
 
-```
-fusermount -u mountpoint
-```
+## Mounting from /etc/fstab
 
-On BSD and macOS, to unmount the filesystem:
+To mount an SSHFS filesystem from ``/etc/fstab``, simply use ``sshfs``
+as the file system type. (For backwards compatibility, you may also
+use ``fuse.sshfs``).
 
-```
-umount mountpoint
-```
+See also the `mount.fuse(8)` manpage.
 
-### Bypassing SSH
+## Bypassing SSH
 
 #### Using directport
 
-Using direct connections to sftp-server to bypass SSH for performance is also possible. To do this, start a network service using sftp-server (part of OpenSSH) on a server, then connect directly using `-o directport=PORT` option.
+Using direct connections to sftp-server to bypass SSH for performance is also possible. To do this, start a network service using sftp-server (part of OpenSSH) on a server, then connect directly using the `-o directport=PORT` option.
 
 On server (listen on port 1234 using socat):
 
@@ -88,44 +122,7 @@ socat VSOCK-LISTEN:12345 EXEC:"/usr/lib/openssh/sftp-server",nofork
 sshfs -o vsock=2:12345 unused_host: ./tmp
 ```
 
-## Installation
-
-
-First, download the latest SSHFS release from
-https://github.com/libfuse/sshfs/releases. You also need [libfuse](http://github.com/libfuse/libfuse) 3.1.0 or newer (or a
-similar library that provides a libfuse3 compatible interface for your operating
-system). Finally, you need the [Glib](https://developer.gnome.org/glib/stable/) library with development headers (which should be
-available from your operating system's package manager).
-
-To build and install, we recommend to use [Meson](http://mesonbuild.com/) (version 0.38 or
-newer) and [Ninja](https://ninja-build.org/).  After extracting the sshfs tarball, create a
-(temporary) build directory and run Meson:
-
-```
-$ mkdir build; cd build
-$ meson ..
-```
-
-Normally, the default build options will work fine. If you
-nevertheless want to adjust them, you can do so with the *mesonconf*
-command:
-
-```
-$ mesonconf                  # list options
-$ mesonconf -D strip=true    # set an option
-```
-
-To build, test and install SSHFS, you then use Ninja (running the
-tests requires the [py.test](http://www.pytest.org/) Python module):
-
-```
-$ ninja
-$ python3 -m pytest test/    # optional, but recommended
-$ sudo ninja install
-```
-
 ## Getting Help
-
 
 If you need help, please ask on the <fuse-sshfs@lists.sourceforge.net>
 mailing list (subscribe at
@@ -135,7 +132,6 @@ Please report any bugs on the GitHub issue tracker at
 https://github.com/libfuse/sshfs/issues.
 
 ## Packaging Status
-
 
 <a href="https://repology.org/project/fusefs:sshfs/versions">
     <img src="https://repology.org/badge/vertical-allrepos/fusefs:sshfs.svg" alt="Packaging status" >
