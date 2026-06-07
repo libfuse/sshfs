@@ -2239,9 +2239,9 @@ static void transform_symlink(const char *path, char **linkp)
 		strcpy(s, "../");
 
 	if (l[0])
-		strcpy(s, l);
+		memcpy(s, l, strlen(l) + 1);
 	else if (!dotdots)
-		strcpy(s, ".");
+		memcpy(s, ".", 2);
 	else
 		s[0] = '\0';
 
@@ -2619,7 +2619,7 @@ static int sshfs_rename(const char *from, const char *to, unsigned int flags)
 		if (tolen + RENAME_TEMP_CHARS < PATH_MAX) {
 			int tmperr;
 			char totmp[PATH_MAX];
-			strcpy(totmp, to);
+			memcpy(totmp, to, tolen + 1);
 			random_string(totmp + tolen, RENAME_TEMP_CHARS);
 			tmperr = sshfs_do_rename(to, totmp);
 			if (!tmperr) {
