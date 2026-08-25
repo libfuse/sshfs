@@ -113,7 +113,7 @@ Options
    :renamexdev: Make rename fail with EXDEV instead of the default EPERM
         to allow moving files across remote filesystems.
    :truncate: Work around servers that don't support truncate by
-        coping the whole file, truncating it locally, and sending it
+        copying the whole file, truncating it locally, and sending it
         back.
    :fstat: Work around broken servers that don't support *fstat()* by
            using *stat* instead.
