@@ -162,6 +162,7 @@ def test_sshfs(
         # file timestamps.
         tst_utimens(mnt_dir, tol=1)
         tst_utimens_now(mnt_dir)
+        tst_utimens_omit(mnt_dir)
 
         tst_link(mnt_dir, cache_timeout)
         tst_truncate_path(mnt_dir)
@@ -696,6 +697,23 @@ def tst_utimens_now(mnt_dir):
     # We should get now-timestamps
     assert fstat.st_atime != 0
     assert fstat.st_mtime != 0
+
+
+def tst_utimens_omit(mnt_dir):
+    # Updating only the access time (UTIME_OMIT for mtime) must leave the
+    # modification time alone instead of setting it to "now".
+    fullname = pjoin(mnt_dir, name_generator())
+
+    fd = os.open(fullname, os.O_CREAT | os.O_RDWR)
+    os.close(fd)
+    old = int(os.lstat(fullname).st_mtime) - 1000
+    os.utime(fullname, (old, old))
+
+    subprocess.check_call(["touch", "-a", fullname])
+
+    fstat = os.lstat(fullname)
+    assert fstat.st_mtime == old
+    assert fstat.st_atime > old
 
 
 def tst_passthrough(src_dir, mnt_dir, cache_timeout):

@@ -2873,27 +2873,51 @@ static void sshfs_inc_modifver(void)
 	pthread_mutex_unlock(&sshfs.lock);
 }
 
+static int sshfs_getattr(const char *path, struct stat *stbuf,
+			 struct fuse_file_info *fi);
+
+/*
+ * SSH_FILEXFER_ATTR_ACMODTIME always sets both atime and mtime, so a time the
+ * caller wants left alone (UTIME_OMIT) has to be sent as its current value.
+ * Treating it as "now" makes an atime-only update (e.g. Finder recording that
+ * a file was previewed) overwrite the file's modification time.
+ */
+static time_t utimens_resolve(const struct timespec *ts, time_t cur, time_t now)
+{
+	if (ts->tv_nsec == UTIME_OMIT)
+		return cur;
+	if (ts->tv_nsec == UTIME_NOW)
+		return now;
+	return ts->tv_sec;
+}
+
 static int sshfs_utimens(const char *path, const struct timespec tv[2],
 			 struct fuse_file_info *fi)
 {
-	(void) fi;
 	int err;
 	struct buffer buf;
 	struct sshfs_file *sf = NULL;
-	time_t asec = tv[0].tv_sec, msec = tv[1].tv_sec;
+	struct stat cur;
+	time_t now = time(NULL);
+	time_t asec, msec;
 
-	struct timeval now;
-	gettimeofday(&now, NULL);
-	if (asec == 0)
-		asec = now.tv_sec;
-	if (msec == 0)
-		msec = now.tv_sec;
+	if (tv[0].tv_nsec == UTIME_OMIT && tv[1].tv_nsec == UTIME_OMIT)
+		return 0;
 
 	if (fi != NULL) {
 		sf = get_sshfs_file(fi);
 		if (!sshfs_file_is_conn(sf))
 			return -EIO;
 	}
+
+	memset(&cur, 0, sizeof(cur));
+	if (tv[0].tv_nsec == UTIME_OMIT || tv[1].tv_nsec == UTIME_OMIT) {
+		err = sshfs_getattr(path, &cur, fi);
+		if (err)
+			return err;
+	}
+	asec = utimens_resolve(&tv[0], cur.st_atime, now);
+	msec = utimens_resolve(&tv[1], cur.st_mtime, now);
 
 	buf_init(&buf, 0);
 	if (sf == NULL)
