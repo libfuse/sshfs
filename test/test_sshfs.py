@@ -922,6 +922,66 @@ def test_bad_sftp_reply_len(tmpdir):
     assert "bad reply len: 0" in res.stderr
 
 
+@pytest.mark.parametrize("createmode_workaround", [False, True])
+def test_create_preserves_local_umask(tmpdir, createmode_workaround):
+    """The SFTP server's umask must not mask create modes a second time."""
+    candidates = [
+        shutil.which("sftp-server"),
+        "/usr/lib/openssh/sftp-server",
+        "/usr/lib/ssh/sftp-server",
+        "/usr/libexec/openssh/sftp-server",
+        "/usr/libexec/sftp-server",
+    ]
+    sftp_server = next(
+        (path for path in candidates if path and os.access(path, os.X_OK)), None
+    )
+    if sftp_server is None:
+        pytest.skip("OpenSSH sftp-server not found")
+
+    helper = tmpdir.join("strict_umask_sftp.py")
+    helper.write(
+        "#!/usr/bin/env python3\n"
+        "import os\n"
+        f"os.execv({sftp_server!r}, [{sftp_server!r}, '-u', '0077'])\n"
+    )
+    helper.chmod(0o755)
+
+    mnt_dir = str(tmpdir.mkdir("mnt"))
+    src_dir = str(tmpdir.mkdir("src"))
+    cmdline = base_cmdline + [
+        pjoin(basename, "sshfs"),
+        "-f",
+        f"dummy:{src_dir}",
+        mnt_dir,
+        "-o", f"ssh_command={helper}",
+        "-o", "dir_cache=no",
+        "-o", "entry_timeout=0",
+        "-o", "attr_timeout=0",
+    ]
+    if createmode_workaround:
+        cmdline += ["-o", "workaround=createmode"]
+    mount_process = subprocess.Popen(cmdline)
+    try:
+        wait_for_mount(mount_process, mnt_dir)
+        old_umask = os.umask(0o022)
+        try:
+            with open(pjoin(mnt_dir, "file"), "wb") as fh:
+                fh.write(b"data")
+            os.mknod(pjoin(mnt_dir, "node"), stat.S_IFREG | 0o666)
+            os.mkdir(pjoin(mnt_dir, "dir"), 0o777)
+        finally:
+            os.umask(old_umask)
+
+        assert stat.S_IMODE(os.stat(pjoin(src_dir, "file")).st_mode) == 0o644
+        assert stat.S_IMODE(os.stat(pjoin(src_dir, "node")).st_mode) == 0o644
+        assert stat.S_IMODE(os.stat(pjoin(src_dir, "dir")).st_mode) == 0o755
+    except Exception:
+        cleanup(mount_process, mnt_dir)
+        raise
+    else:
+        umount(mount_process, mnt_dir)
+
+
 @contextmanager
 def _sshfs_mount(src_dir, mnt_dir, extra_opts=None):
     """Mount src_dir via sshfs, yield, then unmount."""
