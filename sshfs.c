@@ -2573,17 +2573,48 @@ static int sshfs_releasedir(const char *path, struct fuse_file_info *fi)
 }
 
 
-static int sshfs_mkdir(const char *path, mode_t mode)
+static int sshfs_set_mode(struct conn *conn, const char *path, const struct buffer *handle, mode_t mode)
 {
 	int err;
 	struct buffer buf;
+
+	buf_init(&buf, 0);
+	if (handle == NULL) {
+		buf_add_path(&buf, path);
+	} else {
+		buf_add_buf(&buf, handle);
+	}
+	buf_add_uint32(&buf, SSH_FILEXFER_ATTR_PERMISSIONS);
+	buf_add_uint32(&buf, mode);
+	err = sftp_request(conn, handle == NULL ? SSH_FXP_SETSTAT : SSH_FXP_FSETSTAT, &buf, SSH_FXP_STATUS, NULL);
+	buf_free(&buf);
+	return err;
+}
+
+static int sshfs_unlink(const char *path);
+static int sshfs_rmdir(const char *path);
+
+static int sshfs_mkdir(const char *path, mode_t mode)
+{
+	int err;
+	struct conn *conn;
+	struct buffer buf;
+
+	conn = get_conn(NULL, NULL);
 	buf_init(&buf, 0);
 	buf_add_path(&buf, path);
 	buf_add_uint32(&buf, SSH_FILEXFER_ATTR_PERMISSIONS);
 	buf_add_uint32(&buf, mode);
 	// Commutes with pending write(), so we can use any connection
-	err = sftp_request(get_conn(NULL, NULL), SSH_FXP_MKDIR, &buf, SSH_FXP_STATUS, NULL);
+	err = sftp_request(conn, SSH_FXP_MKDIR, &buf, SSH_FXP_STATUS, NULL);
 	buf_free(&buf);
+	if (!err) {
+		err = sshfs_set_mode(conn, path, NULL, mode);
+		if (err) {
+			sshfs_rmdir(path);
+		}
+		return err;
+	}
 
 	if (err == -EPERM) {
 		if (sshfs.op->access(path, R_OK) == 0) {
@@ -2615,12 +2646,16 @@ static int sshfs_mknod(const char *path, mode_t mode, dev_t rdev)
 	buf_add_uint32(&buf, mode);
 	err = sftp_request(conn, SSH_FXP_OPEN, &buf, SSH_FXP_HANDLE, &handle);
 	if (!err) {
-		int err2;
+		int mode_err;
+		int close_err;
 		buf_finish(&handle);
-		err2 = sftp_request(conn, SSH_FXP_CLOSE, &handle, SSH_FXP_STATUS, NULL);
-		if (!err)
-			err = err2;
+		mode_err = sshfs_set_mode(conn, NULL, &handle, mode);
+		close_err = sftp_request(conn, SSH_FXP_CLOSE, &handle, SSH_FXP_STATUS, NULL);
+		err = mode_err ? mode_err : close_err;
 		buf_free(&handle);
+		if (mode_err) {
+			sshfs_unlink(path);
+		}
 	}
 	buf_free(&buf);
 	return err;
@@ -2789,8 +2824,6 @@ static int sshfs_chmod(const char *path, mode_t mode,
                        struct fuse_file_info *fi)
 {
 	(void) fi;
-	int err;
-	struct buffer buf;
 	struct sshfs_file *sf = NULL;
 
 	if (fi != NULL) {
@@ -2799,23 +2832,10 @@ static int sshfs_chmod(const char *path, mode_t mode,
 			return -EIO;
 	}
 
-	buf_init(&buf, 0);
-	if (sf == NULL)
-		buf_add_path(&buf, path);
-	else
-		buf_add_buf(&buf, &sf->handle);
-
-	buf_add_uint32(&buf, SSH_FILEXFER_ATTR_PERMISSIONS);
-	buf_add_uint32(&buf, mode);
-
 	/* FIXME: really needs LSETSTAT extension (debian Bug#640038) */
 	// Commutes with pending write(), so we can use any connection
 	// if the file is not open.
-	err = sftp_request(get_conn(sf, NULL),
-			   sf == NULL ? SSH_FXP_SETSTAT : SSH_FXP_FSETSTAT,
-			   &buf, SSH_FXP_STATUS, NULL);
-	buf_free(&buf);
-	return err;
+	return sshfs_set_mode(get_conn(sf, NULL), sf == NULL ? path : NULL, sf == NULL ? NULL : &sf->handle, mode);
 }
 
 static int sshfs_chown(const char *path, uid_t uid, gid_t gid,
@@ -2941,11 +2961,11 @@ static gboolean conntab_entry_is(gpointer key, gpointer value, gpointer data)
 	return value == data;
 }
 
-static int sshfs_open_common(const char *path, mode_t mode,
-                             struct fuse_file_info *fi)
+static int sshfs_open_common(const char *path, mode_t mode, struct fuse_file_info *fi, int created)
 {
 	int err;
 	int err2;
+	int opened;
 	struct buffer buf;
 	struct buffer outbuf;
 	struct stat stbuf;
@@ -3015,7 +3035,7 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	buf_add_path(&buf, path);
 	buf_add_uint32(&buf, pflags);
 	buf_add_uint32(&buf, SSH_FILEXFER_ATTR_PERMISSIONS);
-	buf_add_uint32(&buf, mode);
+	buf_add_uint32(&buf, created && sshfs.createmode_workaround ? 0 : mode);
 	buf_to_iov(&buf, &iov);
 	sftp_request_send(sf->conn, SSH_FXP_OPEN, &iov, 1, NULL, NULL, 1, NULL,
 			  &open_req);
@@ -3029,14 +3049,28 @@ static int sshfs_open_common(const char *path, mode_t mode,
 	}
 	err = sftp_request_wait(open_req, SSH_FXP_OPEN, SSH_FXP_HANDLE,
 				&sf->handle);
-	if (!err && err2) {
+	opened = !err;
+	if (opened) {
 		buf_finish(&sf->handle);
+		if (created && !err2 && ((stbuf.st_mode ^ mode) & 07777) != 0) {
+			err = sshfs_set_mode(sf->conn, NULL, &sf->handle, mode);
+		}
+		if (!err && err2) {
+			err = err2;
+		}
+	}
+	if (opened && err) {
 		sftp_request(sf->conn, SSH_FXP_CLOSE, &sf->handle, 0, NULL);
 		buf_free(&sf->handle);
-		err = err2;
+		if (created) {
+			sshfs_unlink(path);
+		}
 	}
 
 	if (!err) {
+		if (created) {
+			stbuf.st_mode = (stbuf.st_mode & S_IFMT) | (mode & ~S_IFMT);
+		}
 		if (sshfs.dir_cache)
 			cache_add_attr(path, &stbuf, wrctr);
 		buf_finish(&sf->handle);
@@ -3064,7 +3098,7 @@ static int sshfs_open_common(const char *path, mode_t mode,
 
 static int sshfs_open(const char *path, struct fuse_file_info *fi)
 {
-	return sshfs_open_common(path, 0, fi);
+	return sshfs_open_common(path, 0, fi, 0);
 }
 
 static int sshfs_flush(const char *path, struct fuse_file_info *fi)
@@ -3578,10 +3612,7 @@ static int sshfs_statfs(const char *path, struct statvfs *buf)
 static int sshfs_create(const char *path, mode_t mode,
                         struct fuse_file_info *fi)
 {
-	if (sshfs.createmode_workaround)
-		mode = 0;
-
-	return sshfs_open_common(path, mode, fi);
+	return sshfs_open_common(path, mode, fi, 1);
 }
 
 static int sshfs_truncate(const char *path, off_t size,
