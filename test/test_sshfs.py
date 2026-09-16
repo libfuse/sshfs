@@ -1098,3 +1098,103 @@ def test_contain_symlinks_option_precedence(tmpdir, capfd) -> None:
         with pytest.raises(OSError) as exc_info:
             os.readlink(pjoin(mnt_dir, "abs"))
         assert exc_info.value.errno == errno.EPERM
+
+
+def test_follow_inside_symlinks(tmpdir, capfd) -> None:
+    """follow_inside_symlinks: allows cross-dir .. links that stay inside the mount."""
+
+    capfd.register_output(r"^Warning: Permanently added 'localhost' .+", count=0)
+    _check_ssh_localhost()
+
+    mnt_dir = str(tmpdir.mkdir("mnt"))
+    src_dir = str(tmpdir.mkdir("src"))
+
+    # The motivating layout: a/foo/yada and a/bar/fizz -> ../foo/yada
+    os.makedirs(pjoin(src_dir, "foo"))
+    os.makedirs(pjoin(src_dir, "bar"))
+    with open(pjoin(src_dir, "foo", "yada"), "w") as f:
+        f.write("content")
+
+    # Cross-directory relative link with "..": the motivating case.
+    os.symlink("../foo/yada", pjoin(src_dir, "bar", "fizz"))
+
+    # Relative link from deep subdirectory that still resolves inside.
+    os.makedirs(pjoin(src_dir, "sub", "deep"))
+    os.symlink("../../foo/yada", pjoin(src_dir, "sub", "deep", "inside"))
+
+    # Relative escape: goes above the mount root.
+    os.symlink("../../etc/passwd", pjoin(src_dir, "escape"))
+
+    # Absolute inside the mount root.
+    os.symlink(pjoin(src_dir, "foo", "yada"), pjoin(src_dir, "abs_in"))
+
+    # Absolute outside the mount root.
+    os.symlink("/etc/passwd", pjoin(src_dir, "abs_out"))
+
+    # Relative escape from deep path: goes too far up.
+    os.symlink("../../../..", pjoin(src_dir, "sub", "deep", "way_out"))
+
+    with _sshfs_mount(src_dir, mnt_dir, ["follow_inside_symlinks"]):
+        # Motivating case: cross-dir relative link is readable and traversable.
+        assert os.readlink(pjoin(mnt_dir, "bar", "fizz")) == "../foo/yada"
+        with open(pjoin(mnt_dir, "bar", "fizz")) as f:
+            assert f.read() == "content"
+
+        # Deep relative link that resolves inside: allowed.
+        assert os.readlink(pjoin(mnt_dir, "sub", "deep", "inside")) == "../../foo/yada"
+        with open(pjoin(mnt_dir, "sub", "deep", "inside")) as f:
+            assert f.read() == "content"
+
+        # Absolute link, even if target begins with src_dir (remote base_path):
+        # still EPERM.  The kernel resolves absolute targets on the *local*
+        # filesystem, not via FUSE, so a server could expose local files.
+        # Use transform_symlinks to convert absolute in-base links to relative.
+        with pytest.raises(OSError) as exc_info:
+            os.readlink(pjoin(mnt_dir, "abs_in"))
+        assert exc_info.value.errno == errno.EPERM
+
+        # Relative escape: EPERM.
+        with pytest.raises(OSError) as exc_info:
+            os.readlink(pjoin(mnt_dir, "escape"))
+        assert exc_info.value.errno == errno.EPERM
+
+        # Absolute outside: EPERM.
+        with pytest.raises(OSError) as exc_info:
+            os.readlink(pjoin(mnt_dir, "abs_out"))
+        assert exc_info.value.errno == errno.EPERM
+
+        # Deep relative escape: EPERM.
+        with pytest.raises(OSError) as exc_info:
+            os.readlink(pjoin(mnt_dir, "sub", "deep", "way_out"))
+        assert exc_info.value.errno == errno.EPERM
+
+
+def test_follow_inside_symlinks_with_transform(tmpdir, capfd) -> None:
+    """follow_inside_symlinks checks the remote target before transform_symlinks rewrites it."""
+
+    capfd.register_output(r"^Warning: Permanently added 'localhost' .+", count=0)
+    _check_ssh_localhost()
+
+    mnt_dir = str(tmpdir.mkdir("mnt"))
+    src_dir = str(tmpdir.mkdir("src"))
+
+    os.makedirs(pjoin(src_dir, "other"))
+    with open(pjoin(src_dir, "other", "file"), "w") as f:
+        f.write("data")
+
+    # Absolute in-base symlink at a sub-directory level.
+    # transform_symlinks would rewrite this to "../other/file" (which has "..").
+    # follow_inside_symlinks must pass because the original absolute target
+    # is inside the mount; the contain_symlinks check on the transformed link
+    # is bypassed.
+    os.makedirs(pjoin(src_dir, "sub"))
+    os.symlink(pjoin(src_dir, "other", "file"), pjoin(src_dir, "sub", "link"))
+
+    with _sshfs_mount(src_dir, mnt_dir,
+                      ["follow_inside_symlinks", "transform_symlinks"]):
+        # Transformed link has ".." but follow_inside_symlinks pre-checked the
+        # remote target, so it is allowed and resolves correctly.
+        link = os.readlink(pjoin(mnt_dir, "sub", "link"))
+        assert ".." in link
+        with open(pjoin(mnt_dir, "sub", "link")) as f:
+            assert f.read() == "data"

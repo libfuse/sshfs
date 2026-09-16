@@ -334,6 +334,7 @@ struct sshfs {
 	int createmode_workaround;
 	int transform_symlinks;
 	int contain_symlinks;
+	int follow_inside_symlinks;
 	int follow_symlinks;
 	int no_check_root;
 	int detect_uid;
@@ -516,6 +517,7 @@ static struct fuse_opt sshfs_opts[] = {
 	SSHFS_OPT("transform_symlinks", transform_symlinks, 1),
 	SSHFS_OPT("contain_symlinks", contain_symlinks, 1),
 	SSHFS_OPT("no_contain_symlinks", contain_symlinks, 0),
+	SSHFS_OPT("follow_inside_symlinks", follow_inside_symlinks, 1),
 	SSHFS_OPT("follow_symlinks",   follow_symlinks, 1),
 	SSHFS_OPT("no_check_root",     no_check_root, 1),
 	SSHFS_OPT("password_stdin",    password_stdin, 1),
@@ -2232,6 +2234,128 @@ static int symlink_target_is_contained(const char *target)
 	return 1;
 }
 
+/*
+ * Check whether symlink target `link` at FUSE path `path` resolves to a
+ * location inside sshfs.base_path using purely lexical path arithmetic.
+ *
+ * Only relative targets are considered: absolute targets are always rejected
+ * because the kernel resolves them on the local filesystem rather than via
+ * FUSE, so even an in-base absolute path could expose a local file.  Callers
+ * that wish to handle absolute in-base remote symlinks should run
+ * transform_symlinks beforehand to convert them to relative form.
+ *
+ * Returns 1 if the target is a relative path that resolves inside the mount,
+ * 0 otherwise.
+ */
+static int symlink_target_is_inside(const char *path, const char *link)
+{
+	char *full;
+
+	/*
+	 * Absolute symlink targets are resolved by the kernel on the *local*
+	 * filesystem, not via FUSE.  A server returning "/home/alice/secret"
+	 * could expose a local file even if that path begins with base_path.
+	 * Callers that want to handle absolute in-base remote symlinks safely
+	 * must run transform_symlinks first so the kernel only ever sees a
+	 * relative target.
+	 */
+	if (link[0] == '/')
+		return 0;
+
+	{
+		/*
+		 * Relative target: anchor it to the remote directory that
+		 * contains the symlink, i.e. base_path + dirname(fuse_path).
+		 */
+		const char *last_slash = strrchr(path, '/');
+		if (last_slash && last_slash != path) {
+			/* path has a non-root directory component, e.g. "/bar/fizz" */
+			full = g_strdup_printf("%s%.*s/%s",
+					       sshfs.base_path,
+					       (int)(last_slash - path), path,
+					       link);
+		} else {
+			/* Symlink lives at the mount root, e.g. path="/link" */
+			full = g_strdup_printf("%s/%s", sshfs.base_path, link);
+		}
+	}
+
+	if (!full)
+		return 0;
+
+	/*
+	 * Lexically normalize: walk the components of `full` and resolve
+	 * "." (skip) and ".." (pop), then reassemble.  We record component
+	 * offsets into `full` so we never touch the string while scanning it,
+	 * then write the result into a fresh buffer of the same size (the
+	 * normalized path is never longer than the input).
+	 */
+	{
+		size_t bufsize = strlen(full) + 2;
+		int maxcomp = (int)(bufsize / 2) + 1;
+		int *starts = g_new(int, maxcomp);
+		int *lens   = g_new(int, maxcomp);
+		int ncomp = 0;
+		const char *p = full;
+		char *normalized;
+		char *out;
+		int i;
+
+		while (*p) {
+			while (*p == '/') p++;
+			if (!*p) break;
+			const char *start = p;
+			while (*p && *p != '/') p++;
+			int len = (int)(p - start);
+
+			if (len == 1 && start[0] == '.') {
+				/* skip */
+			} else if (len == 2 && start[0] == '.' && start[1] == '.') {
+				if (ncomp > 0) ncomp--;
+			} else {
+				starts[ncomp] = (int)(start - full);
+				lens[ncomp]   = len;
+				ncomp++;
+			}
+		}
+
+		normalized = g_malloc(bufsize);
+		out = normalized;
+		*out++ = '/';
+		for (i = 0; i < ncomp; i++) {
+			if (i > 0) *out++ = '/';
+			memcpy(out, full + starts[i], lens[i]);
+			out += lens[i];
+		}
+		*out = '\0';
+
+		g_free(starts);
+		g_free(lens);
+		g_free(full);
+		full = normalized;
+	}
+
+	/* Check that the normalized path is rooted at base_path. */
+	{
+		size_t base_len = strlen(sshfs.base_path);
+		int result;
+
+		/* Strip any trailing slashes from base_path length. */
+		while (base_len > 1 && sshfs.base_path[base_len - 1] == '/')
+			base_len--;
+
+		if (base_len <= 1) {
+			/* Mount at remote root: every absolute path is inside. */
+			result = 1;
+		} else {
+			result = (strncmp(full, sshfs.base_path, base_len) == 0 &&
+				  (full[base_len] == '\0' || full[base_len] == '/'));
+		}
+		g_free(full);
+		return result;
+	}
+}
+
 static void transform_symlink(const char *path, char **linkp)
 {
 	const char *l = *linkp;
@@ -2294,14 +2418,33 @@ static int sshfs_readlink(const char *path, char *linkbuf, size_t size)
 		err = -EIO;
 		if(buf_get_uint32(&name, &count) != -1 && count == 1 &&
 		   buf_get_string(&name, &link) != -1) {
-			if (sshfs.transform_symlinks)
-				transform_symlink(path, &link);
-			if (sshfs.contain_symlinks &&
-			    !symlink_target_is_contained(link)) {
-				free(link);
-				buf_free(&name);
-				buf_free(&buf);
-				return -EPERM;
+			if (sshfs.follow_inside_symlinks) {
+				/*
+				 * Run transform_symlinks first so that absolute
+				 * in-base targets become relative before we check
+				 * them.  Absolute paths returned as-is would be
+				 * resolved on the local filesystem by the kernel,
+				 * not via FUSE, potentially exposing local files
+				 * even when the remote path begins with base_path.
+				 */
+				if (sshfs.transform_symlinks)
+					transform_symlink(path, &link);
+				if (!symlink_target_is_inside(path, link)) {
+					free(link);
+					buf_free(&name);
+					buf_free(&buf);
+					return -EPERM;
+				}
+			} else {
+				if (sshfs.transform_symlinks)
+					transform_symlink(path, &link);
+				if (sshfs.contain_symlinks &&
+				    !symlink_target_is_contained(link)) {
+					free(link);
+					buf_free(&name);
+					buf_free(&buf);
+					return -EPERM;
+				}
 			}
 			strncpy(linkbuf, link, size - 1);
 			linkbuf[size - 1] = '\0';
@@ -3889,6 +4032,10 @@ static void usage(const char *progname)
 "    -o contain_symlinks    reject absolute symlinks and symlinks containing ..\n"
 "                           (enabled by default; disable with no_contain_symlinks)\n"
 "    -o no_contain_symlinks allow all symlink targets including absolute and ..\n"
+"    -o follow_inside_symlinks\n"
+"                           allow symlinks whose target resolves within the mount\n"
+"                           (permits relative .. links that stay inside the share;\n"
+"                            takes precedence over contain_symlinks)\n"
 "    -o follow_symlinks     follow symlinks on the server\n"
 "    -o no_check_root       don't check for existence of 'dir' on server\n"
 "    -o password_stdin      read password from stdin (only for pam_mount!)\n"
@@ -4507,6 +4654,11 @@ int main(int argc, char *argv[])
 			"contain_symlinks may reject transformed links "
 			"containing '..' - consider adding "
 			"-o no_contain_symlinks\n");
+
+	if (sshfs.follow_inside_symlinks && !sshfs.contain_symlinks)
+		fprintf(stderr, "warning: follow_inside_symlinks overrides "
+			"no_contain_symlinks; only symlinks resolving inside "
+			"the mount are allowed\n");
 
 	if (sshfs.idmap == IDMAP_USER)
 		sshfs.detect_uid = 1;

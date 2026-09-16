@@ -190,6 +190,19 @@ Options
    through unchanged, including absolute paths and paths
    containing ``..``.  Only use this with fully trusted servers.
 
+-o follow_inside_symlinks
+   allow symlinks whose target lexically resolves within the
+   sshfs mount (i.e. within ``base_path`` on the remote).  This
+   is a middle ground between ``contain_symlinks`` (default,
+   strict) and ``no_contain_symlinks`` (permissive): relative
+   symlinks that use ``..`` are permitted as long as they stay
+   inside the share, while anything that escapes is rejected with
+   EPERM.  Absolute targets are always rejected because the kernel
+   resolves them on the local filesystem, not via FUSE.  Combine
+   with ``transform_symlinks`` to handle absolute in-base remote
+   symlinks: the transformation runs first, converting them to
+   relative form before the inside check.
+
 -o follow_symlinks
    follow symlinks on the server, i.e. present them as regular
    files on the client. If a symlink is dangling (i.e, the target does
