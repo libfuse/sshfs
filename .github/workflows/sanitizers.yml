@@ -1,0 +1,155 @@
+name: sanitizers
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sanitize:
+    name: ${{ matrix.sanitizer }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sanitizer: asan
+            san_flag: address
+            san_opts: "detect_leaks=0:halt_on_error=1:symbolize=1"
+            extra_cflags: "-fno-omit-frame-pointer -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+          - sanitizer: ubsan
+            san_flag: undefined
+            san_opts: "halt_on_error=1:print_stacktrace=1"
+            extra_cflags: "-fno-omit-frame-pointer"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm ninja-build pkg-config libglib2.0-dev libfuse3-dev fuse3 openssh-client openssh-server
+          pip3 install meson pytest pytest-timeout
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -q -N ""
+          cat ~/.ssh/id_ed25519.pub > ~/.ssh/authorized_keys
+          chmod 600 ~/.ssh/authorized_keys
+          sudo systemctl start ssh || sudo service ssh start
+          ssh -o StrictHostKeyChecking=no -o BatchMode=yes localhost true
+
+      - name: Check FUSE availability
+        run: |
+          test -e /dev/fuse
+          command -v fusermount3
+
+      - name: Build
+        env:
+          CC: clang
+          CFLAGS: ${{ matrix.extra_cflags }}
+        run: |
+          meson setup build -Db_sanitize=${{ matrix.san_flag }} -Db_lundef=false -Dwerror=true
+          ninja -C build
+
+      - name: Create sanitizer log directory
+        run: mkdir -p sanitizer-logs
+
+      - name: Test
+        env:
+          ASAN_OPTIONS: "${{ matrix.sanitizer == 'asan' && format('{0}:log_path={1}/sanitizer-logs/asan', matrix.san_opts, github.workspace) || '' }}"
+          UBSAN_OPTIONS: "${{ matrix.sanitizer == 'ubsan' && format('{0}:log_path={1}/sanitizer-logs/ubsan', matrix.san_opts, github.workspace) || '' }}"
+          ASAN_SYMBOLIZER_PATH: /usr/bin/llvm-symbolizer
+        run: |
+          cd build
+          python3 -m pytest test/ --timeout=180 --maxfail=99 --junitxml=test-results.xml
+        timeout-minutes: 20
+
+      - name: Upload test results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: test-results-${{ matrix.sanitizer }}
+          path: |
+            build/test-results.xml
+            build/meson-logs/
+            sanitizer-logs/
+
+  asan-lsan:
+    name: ASan + LeakSanitizer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm ninja-build pkg-config libglib2.0-dev libfuse3-dev fuse3 openssh-client openssh-server
+          pip3 install meson pytest pytest-timeout
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -q -N ""
+          cat ~/.ssh/id_ed25519.pub > ~/.ssh/authorized_keys
+          chmod 600 ~/.ssh/authorized_keys
+          sudo systemctl start ssh || sudo service ssh start
+          ssh -o StrictHostKeyChecking=no -o BatchMode=yes localhost true
+
+      - name: Check FUSE availability
+        run: |
+          test -e /dev/fuse
+          command -v fusermount3
+
+      - name: Build
+        env:
+          CC: clang
+          CFLAGS: "-fno-omit-frame-pointer -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+        run: |
+          meson setup build -Db_sanitize=address -Db_lundef=false -Dwerror=true
+          ninja -C build
+
+      - name: Create sanitizer log directory
+        run: mkdir -p sanitizer-logs
+
+      - name: Test
+        env:
+          ASAN_OPTIONS: "detect_leaks=1:halt_on_error=1:symbolize=1:log_path=${{ github.workspace }}/sanitizer-logs/asan-lsan"
+          LSAN_OPTIONS: "suppressions=${{ github.workspace }}/test/lsan_suppress.txt"
+          ASAN_SYMBOLIZER_PATH: /usr/bin/llvm-symbolizer
+        run: |
+          cd build
+          python3 -m pytest test/ --timeout=180 --maxfail=99 --junitxml=test-results.xml
+        timeout-minutes: 20
+
+      - name: Upload test results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: test-results-asan-lsan
+          path: |
+            build/test-results.xml
+            build/meson-logs/
+            sanitizer-logs/
