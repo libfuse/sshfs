@@ -1,0 +1,25 @@
+# Valgrind suppression file for sshfs tests.
+#
+# Keep this file minimal. Only suppress stacks that originate entirely in
+# third-party libraries (GLib, libfuse, glibc, pthreads) and have been
+# confirmed as false positives or benign teardown noise.
+#
+# Do NOT suppress any stack frame that includes sshfs.c or cache.c unless
+# there is a documented upstream false positive with a linked note below.
+#
+# To generate candidates locally:
+#   TEST_WITH_VALGRIND=true VALGRIND_OPTIONS="--tool=memcheck --leak-check=full \
+#     --gen-suppressions=all -q --" python3 -m pytest test/test_sshfs.py ...
+
+# libfuse allocates thread-local or worker-thread state inside its shared
+# library during pthread_create. These are not reachable after the threads
+# exit but are never explicitly freed — they are benign teardown leaks in
+# libfuse internals, not sshfs bugs.
+{
+   libfuse-worker-thread-alloc
+   Memcheck:Leak
+   match-leak-kinds: definite,indirect
+   fun:calloc
+   ...
+   obj:*/libfuse3.so*
+}
