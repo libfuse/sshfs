@@ -3408,7 +3408,8 @@ static void sshfs_write_end(struct request *req)
 	else if (req->replied) {
 		if (req->reply_type != SSH_FXP_STATUS) {
 			fprintf(stderr, "protocol error\n");
-		} else if (buf_get_uint32(&req->reply, &serr) != -1 &&
+			sf->write_error = -EIO;
+		} else if (buf_get_uint32(&req->reply, &serr) == -1 ||
 			serr != SSH_FX_OK) {
 			sf->write_error = -EIO;
 		}
@@ -3463,7 +3464,8 @@ static void sshfs_sync_write_end(struct request *req)
 	} else if (req->replied) {
 		if (req->reply_type != SSH_FXP_STATUS) {
 			fprintf(stderr, "protocol error\n");
-		} else if (buf_get_uint32(&req->reply, &serr) != -1 &&
+			sio->error = -EIO;
+		} else if (buf_get_uint32(&req->reply, &serr) == -1 ||
 			serr != SSH_FX_OK) {
 			sio->error = -EIO;
 		}
@@ -4579,6 +4581,16 @@ int main(int argc, char *argv[])
 		}
 	} else if (sshfs.max_conns <= 0) {
 		fprintf(stderr, "value of max_conns option must be at least 1\n");
+		exit(1);
+	}
+
+	if (sshfs.max_read == 0) {
+		fprintf(stderr, "value of max_read option must be at least 1\n");
+		exit(1);
+	}
+
+	if (sshfs.max_write == 0) {
+		fprintf(stderr, "value of max_write option must be at least 1\n");
 		exit(1);
 	}
 
