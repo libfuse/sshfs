@@ -1,0 +1,43 @@
+name: static analysis
+
+on:
+  push:
+    branches: [master]
+
+  pull_request:
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clang-tidy:
+    name: clang-tidy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang clang-tidy ninja-build pkg-config libglib2.0-dev libfuse3-dev
+          pip3 install meson
+
+      - name: Build compile database
+        env:
+          CC: clang
+        run: meson setup build
+
+      - name: Run clang-tidy
+        run: run-clang-tidy -p build -warnings-as-errors='*' sshfs.c cache.c
