@@ -3408,7 +3408,8 @@ static void sshfs_write_end(struct request *req)
 	else if (req->replied) {
 		if (req->reply_type != SSH_FXP_STATUS) {
 			fprintf(stderr, "protocol error\n");
-		} else if (buf_get_uint32(&req->reply, &serr) != -1 &&
+			sf->write_error = -EIO;
+		} else if (buf_get_uint32(&req->reply, &serr) == -1 ||
 			serr != SSH_FX_OK) {
 			sf->write_error = -EIO;
 		}
@@ -3463,7 +3464,8 @@ static void sshfs_sync_write_end(struct request *req)
 	} else if (req->replied) {
 		if (req->reply_type != SSH_FXP_STATUS) {
 			fprintf(stderr, "protocol error\n");
-		} else if (buf_get_uint32(&req->reply, &serr) != -1 &&
+			sio->error = -EIO;
+		} else if (buf_get_uint32(&req->reply, &serr) == -1 ||
 			serr != SSH_FX_OK) {
 			sio->error = -EIO;
 		}
