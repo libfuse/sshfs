@@ -413,9 +413,25 @@ static int cache_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	pthread_mutex_unlock(&cache.lock);
 
 	cfi = (struct file_handle*) fi->fh;
-	if(cfi->is_open)
-		fi->fh = cfi->fs_fh;
-	else {
+	if (cfi->is_open) {
+		/*
+		 * We only reach here when the cached listing was missing or
+		 * had been invalidated (e.g. by a create/delete/rename
+		 * through this mount) - the fast path above already returned
+		 * for a valid cache hit. The remote directory stream behind
+		 * fs_fh is positional: if it was already read to EOF by an
+		 * earlier call, reusing it here just returns EOF again,
+		 * making the directory appear empty even though its contents
+		 * changed. Close it and open a fresh handle so the read
+		 * below actually reflects the current directory.
+		 */
+		if (cache.next_oper->releasedir) {
+			fi->fh = cfi->fs_fh;
+			cache.next_oper->releasedir(path, fi);
+		}
+		cfi->is_open = 0;
+	}
+	if (!cfi->is_open) {
 		if(cache.next_oper->opendir) {
 			err = cache.next_oper->opendir(path, fi);
 			if(err)
