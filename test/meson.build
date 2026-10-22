@@ -1,5 +1,5 @@
 test_scripts = [ 'conftest.py', 'pytest.ini', 'test_sshfs.py',
-                 'test_hostname_validation.py', 'util.py' ]
+                 'test_hostname_validation.py', 'test_startup.py', 'util.py' ]
 if host_machine.system() == 'darwin'
   test_scripts += [ 'test_macos_daemonize.py', 'daemonize_shim.c' ]
 endif
