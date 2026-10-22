@@ -1,3 +1,9 @@
+Unreleased Changes
+------------------
+
+* Preserve the locally requested mode when the remote SFTP server uses a
+  different umask.
+
 Release 3.7.6 (2026-05-30)
 --------------------------
 
