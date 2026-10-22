@@ -74,6 +74,7 @@ static void free_node(gpointer node_)
 	if (node->dir != NULL) {
 		g_ptr_array_free(node->dir, TRUE);
   }
+	g_free(node->link);
 	g_free(node);
 }
 
