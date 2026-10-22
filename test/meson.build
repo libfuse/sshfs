@@ -1,5 +1,8 @@
 test_scripts = [ 'conftest.py', 'pytest.ini', 'test_sshfs.py',
                  'test_hostname_validation.py', 'util.py' ]
+if host_machine.system() == 'darwin'
+  test_scripts += [ 'test_macos_daemonize.py', 'daemonize_shim.c' ]
+endif
 custom_target('test_scripts', input: test_scripts,
               output: test_scripts, build_by_default: true,
               command: ['cp', '-fPp',

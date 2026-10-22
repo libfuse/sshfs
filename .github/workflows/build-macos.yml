@@ -86,12 +86,14 @@ jobs:
 
       - name: Run mount-free tests
         timeout-minutes: 2
+        env:
+          TEST_WITH_MACFUSE: "1"
         run: |
           set -o pipefail
           cd build
-          python3 -m pytest test/test_hostname_validation.py --timeout=30 | tee "$RUNNER_TEMP/pytest.log"
+          python3 -m pytest test/test_hostname_validation.py test/test_macos_daemonize.py --timeout=60 | tee "$RUNNER_TEMP/pytest.log"
           # exactly the expected tests, all passed: no skip, xfail or rename slips by
-          grep -Eq '^=+ 2 passed in ' "$RUNNER_TEMP/pytest.log"
+          grep -Eq '^=+ 4 passed in ' "$RUNNER_TEMP/pytest.log"
 
       - name: Smoke test
         timeout-minutes: 2

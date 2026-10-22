@@ -2,6 +2,7 @@
 import subprocess
 import pytest
 import os
+import signal
 import stat
 import time
 from os.path import join as pjoin
@@ -118,6 +119,73 @@ def fuse_test_marker():
         os.close(fd)
 
     return pytest.mark.uses_fuse()
+
+
+def libfuse3_path():
+    """Path of the libfuse3 dylib the sshfs binary links against (macOS), or None"""
+    linked = subprocess.run(
+        ["otool", "-L", pjoin(basename, "sshfs")],
+        stdout=subprocess.PIPE,
+        universal_newlines=True,
+        check=True,
+    ).stdout
+    for line in linked.splitlines()[1:]:
+        path = line.strip().split(" (compatibility", 1)[0]
+        if "libfuse3" in os.path.basename(path):
+            return path
+    return None
+
+
+def require_macfuse_lazy_mount():
+    """Skip unless TEST_WITH_MACFUSE=1, which only CI sets; then fail unless
+    sshfs links against macFUSE 5.3.3 or later, which delays the mount until
+    the session is first used (it exports fuse_darwin_mount_started). Older
+    macFUSE and FUSE-T mount in fuse_mount(), before sshfs connects."""
+    if os.environ.get("TEST_WITH_MACFUSE") != "1":
+        pytest.skip("set TEST_WITH_MACFUSE=1 to run the macFUSE tests")
+    lib = libfuse3_path()
+    if lib is None:
+        pytest.fail("sshfs is not linked against libfuse3")
+    symbols = subprocess.run(
+        ["nm", "-gjU", lib],
+        stdout=subprocess.PIPE,
+        universal_newlines=True,
+        check=True,
+    ).stdout.split()
+    if "_fuse_darwin_mount_started" not in symbols:
+        pytest.fail("%s has no fuse_darwin_mount_started (macFUSE 5.3.3+ is required)" % lib)
+
+
+def run_isolated(cmdline, out_file, timeout, env=None):
+    """Run cmdline in its own process group with its output in out_file.
+
+    Returns (exit status, output); the status is None on timeout. The output
+    goes to a file, not a pipe, because helper processes left behind by a failed
+    mount start can keep a pipe open after the process itself is gone. The
+    whole group is killed afterwards.
+    """
+    with open(out_file, "w") as out:
+        proc = subprocess.Popen(
+            cmdline,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=out,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        try:
+            rc = proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            rc = None
+        finally:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                # nothing left to kill; macOS reports EPERM if only zombies remain
+                pass
+            proc.wait()
+    with open(out_file) as f:
+        return rc, f.read()
 
 
 # Use valgrind if requested
