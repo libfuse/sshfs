@@ -4582,6 +4582,16 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
+	if (sshfs.max_read == 0) {
+		fprintf(stderr, "value of max_read option must be at least 1\n");
+		exit(1);
+	}
+
+	if (sshfs.max_write == 0) {
+		fprintf(stderr, "value of max_write option must be at least 1\n");
+		exit(1);
+	}
+
 	sshfs.conns = g_new0(struct conn, sshfs.max_conns);
 	for (i = 0; i < sshfs.max_conns; i++) {
 		sshfs.conns[i].rfd = -1;
