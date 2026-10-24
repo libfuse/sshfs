@@ -899,47 +899,6 @@ def test_direct_io(tmpdir, capfd):
         umount(mount_process, mnt_dir)
 
 
-def test_bad_sftp_reply_len(tmpdir):
-    """sshfs must reject a zero-length SFTP reply instead of underflowing."""
-    helper = tmpdir.join("bad_sftp.py")
-    helper.write(
-        '#!/usr/bin/env python3\n'
-        'import os, struct, sys\n'
-        'def read_pkt():\n'
-        '    hdr = os.read(0, 4)\n'
-        '    if len(hdr) < 4: sys.exit(0)\n'
-        '    n = struct.unpack(">I", hdr)[0]\n'
-        '    while n:\n'
-        '        c = os.read(0, n)\n'
-        '        if not c: sys.exit(0)\n'
-        '        n -= len(c)\n'
-        'read_pkt()\n'
-        'os.write(1, struct.pack(">IBI", 5, 2, 3))\n'  # SSH_FXP_VERSION v3
-        'read_pkt()\n'
-        'os.write(1, struct.pack(">IB", 0, 0))\n'  # len=0 reply (5 bytes on wire)
-    )
-    helper.chmod(0o755)
-
-    mnt_dir = str(tmpdir.mkdir("mnt"))
-    cmdline = base_cmdline + [
-        pjoin(basename, "sshfs"),
-        "-f",
-        "dummy:/",
-        mnt_dir,
-        "-o", f"ssh_command={helper}",
-    ]
-    res = subprocess.run(
-        cmdline,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        timeout=10,
-        text=True,
-    )
-    assert res.returncode != 0
-    assert "bad reply len: 0" in res.stderr
-
-
 @contextmanager
 def _sshfs_mount(src_dir, mnt_dir, extra_opts=None):
     """Mount src_dir via sshfs, yield, then unmount."""
@@ -1098,33 +1057,3 @@ def test_contain_symlinks_option_precedence(tmpdir, capfd) -> None:
         with pytest.raises(OSError) as exc_info:
             os.readlink(pjoin(mnt_dir, "abs"))
         assert exc_info.value.errno == errno.EPERM
-
-
-def test_backslash_escape(tmpdir, capfd):
-    """Regression test for parsing backslash escape sequences in options"""
-
-    cases = [
-        (r"one two three", "<one> <two> <three>"),
-        (r"one\\ two three", "<one two> <three>"),
-        # fuse_opt_parse interprets "\ " as " ", so these are still separate
-        (r"one two\ three", "<one> <two> <three>"),
-    ]
-
-    mnt_dir = str(tmpdir.mkdir("mnt"))
-    # we can skip cleanup since the mount always fails
-
-    for line, args in cases:
-        cmdline = base_cmdline + [
-            pjoin(basename, "sshfs"),
-            "-f",
-            "localhost:foo",
-            mnt_dir,
-            "-o",
-            "sshfs_debug",
-            "-o",
-            "ssh_command=/dev/null " + line,
-        ]
-        assert subprocess.run(cmdline).returncode != 0
-
-        captured = capfd.readouterr()
-        assert "executing </dev/null> " + args in captured.err

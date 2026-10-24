@@ -91,9 +91,9 @@ jobs:
         run: |
           set -o pipefail
           cd build
-          python3 -m pytest test/test_hostname_validation.py test/test_macos_daemonize.py --timeout=60 | tee "$RUNNER_TEMP/pytest.log"
+          python3 -m pytest test/test_hostname_validation.py test/test_macos_daemonize.py test/test_startup.py --timeout=60 | tee "$RUNNER_TEMP/pytest.log"
           # exactly the expected tests, all passed: no skip, xfail or rename slips by
-          grep -Eq '^=+ 4 passed in ' "$RUNNER_TEMP/pytest.log"
+          grep -Eq '^=+ 7 passed in ' "$RUNNER_TEMP/pytest.log"
 
       - name: Smoke test
         timeout-minutes: 2
@@ -104,15 +104,6 @@ jobs:
           grep -q '^FUSE library version ' version.txt
           test -s build/sshfs.1
           otool -L build/sshfs
-
-          # no mount is possible on a hosted runner, so check that startup
-          # runs through to a clean ssh failure
-          mkdir "$RUNNER_TEMP/mnt"
-          rc=0
-          perl -e 'alarm 30; exec @ARGV' ./build/sshfs -f -o ssh_command=/dev/null localhost:/ "$RUNNER_TEMP/mnt" 2> err.txt || rc=$?
-          cat err.txt
-          [ "$rc" -eq 1 ] || { echo "expected exit 1, got $rc"; exit 1; }
-          grep -q "failed to execute '/dev/null'" err.txt
 
       - name: Upload build logs
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
