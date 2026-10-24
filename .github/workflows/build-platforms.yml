@@ -60,6 +60,14 @@ jobs:
           meson setup build ${{ matrix.buildtype && format('--buildtype={0}', matrix.buildtype) || '' }}
           ninja -C build
 
+      - name: Run unit tests
+        if: matrix.run_tests
+        run: |
+          set -o pipefail
+          meson test -C build --suite unit --print-errorlogs -v | tee "$RUNNER_TEMP/unit-tests.log"
+          # meson exits 0 when no test matches the suite, so insist on a pass
+          grep -Eiq '^ok: +[1-9]' "$RUNNER_TEMP/unit-tests.log"
+
       - name: Setup SSH
         if: matrix.run_tests
         run: |
