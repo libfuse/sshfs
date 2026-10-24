@@ -7,6 +7,7 @@ if __name__ == "__main__":
     sys.exit(pytest.main([__file__] + sys.argv[1:]))
 
 import subprocess
+import ctypes
 import os
 import sys
 import pytest
@@ -151,6 +152,7 @@ def test_sshfs(
         tst_rmdir(src_dir, mnt_dir, cache_timeout)
         tst_rename(mnt_dir)
         tst_rename_over(mnt_dir)
+        tst_rename_noreplace(mnt_dir)
         tst_chmod(mnt_dir)
         tst_fsync(src_dir, mnt_dir)
         tst_unlink(src_dir, mnt_dir, cache_timeout)
@@ -262,6 +264,22 @@ def tst_rename_over(mnt_dir):
         assert fh.read() == src_data
 
     os.unlink(dst_name)
+
+
+def tst_rename_noreplace(mnt_dir):
+    # macFUSE's FSKit backend sets RENAME_NOREPLACE on every rename to a new
+    # name. The kernel rejects a target it can see, so that is not tested here.
+    libc = ctypes.CDLL(None, use_errno=True)
+    src, dst = pjoin(mnt_dir, name_generator()), pjoin(mnt_dir, name_generator())
+    with open(src, "wb") as fh:
+        fh.write(b"old\n")
+    # AT_FDCWD, RENAME_NOREPLACE
+    if libc.renameat2(-100, os.fsencode(src), -100, os.fsencode(dst), 1):
+        raise OSError(ctypes.get_errno(), "renameat2")
+    assert not os.path.exists(src)
+    with open(dst, "rb") as fh:
+        assert fh.read() == b"old\n"
+    os.unlink(dst)
 
 
 def tst_chmod(mnt_dir):
@@ -865,6 +883,36 @@ def test_follow_symlinks(tmpdir, capfd):
         assert stat.S_ISREG(fstat.st_mode)
         with open(mnt_link, "rb") as fh:
             assert fh.read() == b"symlink target data"
+
+        # A dangling symlink looks absent through follow_symlinks, so the
+        # kernel lets RENAME_NOREPLACE through and sshfs must refuse it.
+        libc = ctypes.CDLL(None, use_errno=True)
+        dangling = name_generator()
+        os.symlink("missing", pjoin(src_dir, dangling))
+        with pytest.raises(FileNotFoundError):
+            os.lstat(pjoin(mnt_dir, dangling))
+        # AT_FDCWD, RENAME_NOREPLACE
+        ret = libc.renameat2(
+            -100, os.fsencode(mnt_link), -100, os.fsencode(pjoin(mnt_dir, dangling)), 1
+        )
+        assert ret == -1 and ctypes.get_errno() == errno.EEXIST
+        assert os.readlink(pjoin(src_dir, dangling)) == "missing"
+        assert os.readlink(link) == target_name
+        os.unlink(pjoin(src_dir, dangling))
+
+        # A genuinely absent target is still renamed
+        fresh, moved = name_generator(), name_generator()
+        os.symlink(target_name, pjoin(src_dir, fresh))
+        ret = libc.renameat2(
+            -100,
+            os.fsencode(pjoin(mnt_dir, fresh)),
+            -100,
+            os.fsencode(pjoin(mnt_dir, moved)),
+            1,
+        )
+        assert ret == 0
+        assert os.readlink(pjoin(src_dir, moved)) == target_name
+        os.unlink(pjoin(src_dir, moved))
 
         os.unlink(link)
         os.unlink(target)
