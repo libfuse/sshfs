@@ -83,6 +83,13 @@ jobs:
           path: build/sshfs
           if-no-files-found: ignore
 
+      - name: Run unit tests
+        run: |
+          set -o pipefail
+          meson test -C build --suite unit --print-errorlogs -v | tee "$RUNNER_TEMP/unit-tests.log"
+          # meson exits 0 when no test matches the suite, so insist on a pass
+          grep -Eiq '^ok: +[1-9]' "$RUNNER_TEMP/unit-tests.log"
+
       - name: Run tests
         timeout-minutes: 20
         run: |
