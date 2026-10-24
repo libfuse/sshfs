@@ -61,6 +61,10 @@
 #  define MAP_ANONYMOUS MAP_ANON
 #endif
 
+#ifndef RENAME_NOREPLACE
+#  define RENAME_NOREPLACE (1 << 0)
+#endif
+
 
 #define SSH_FXP_INIT                1
 #define SSH_FXP_VERSION             2
@@ -2708,15 +2712,35 @@ static int sshfs_rename(const char *from, const char *to, unsigned int flags)
 {
 	int err;
 	struct conntab_entry *ce;
+	int noreplace = flags & RENAME_NOREPLACE;
 
-	if(flags != 0)
+	if (flags & ~RENAME_NOREPLACE)
 		return -EINVAL;
 
-	if (sshfs.ext_posix_rename)
+	if (noreplace && sshfs.follow_symlinks) {
+		struct buffer buf;
+		struct buffer outbuf;
+
+		/* getattr follows symlinks, so the kernel misses a dangling target */
+		buf_init(&buf, 0);
+		buf_add_path(&buf, to);
+		err = sftp_request(get_conn(NULL, NULL), SSH_FXP_LSTAT, &buf,
+				   SSH_FXP_ATTRS, &outbuf);
+		buf_free(&buf);
+		if (!err) {
+			buf_free(&outbuf);
+			return -EEXIST;
+		}
+		if (err != -ENOENT)
+			return err;
+	}
+
+	/* posix-rename and the rename workaround both replace the target */
+	if (sshfs.ext_posix_rename && !noreplace)
 		err = sshfs_ext_posix_rename(from, to);
 	else
 		err = sshfs_do_rename(from, to);
-	if (err == -EPERM && sshfs.rename_workaround) {
+	if (err == -EPERM && sshfs.rename_workaround && !noreplace) {
 		size_t tolen = strlen(to);
 		if (tolen + RENAME_TEMP_CHARS < PATH_MAX) {
 			int tmperr;
@@ -2733,7 +2757,8 @@ static int sshfs_rename(const char *from, const char *to, unsigned int flags)
 			}
 		}
 	}
-	if (err == -EPERM && sshfs.renamexdev_workaround)
+	/* EXDEV would make mv fall back to copying over the target */
+	if (err == -EPERM && sshfs.renamexdev_workaround && !noreplace)
 		err = -EXDEV;
 
 	if (!err && sshfs.max_conns > 1) {
