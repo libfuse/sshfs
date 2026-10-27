@@ -537,6 +537,11 @@ static struct fuse_opt sshfs_opts[] = {
 	FUSE_OPT_KEY("users", FUSE_OPT_KEY_DISCARD),
 	FUSE_OPT_KEY("_netdev", FUSE_OPT_KEY_DISCARD),
 
+#ifdef __APPLE__
+	/* macFUSE does not implement the Linux auto_unmount option. */
+	FUSE_OPT_KEY("auto_unmount", FUSE_OPT_KEY_DISCARD),
+#endif
+
 	FUSE_OPT_END
 };
 
@@ -4422,6 +4427,11 @@ int main(int argc, char *argv[])
 	if (sshfs.debug)
 		sshfs.foreground = 1;
 
+#ifdef __APPLE__
+	/* macFUSE cannot fork after the mount has entered its threaded state. */
+	sshfs.foreground = 1;
+#endif
+
 	if (sshfs.buflimit_workaround)
 		/* Work around buggy sftp-server in OpenSSH.  Without this on
 		   a slow server a 10Mbyte buffer would fill up and the server
@@ -4512,8 +4522,17 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
+	/* Establish SSH/SFTP before macFUSE starts its mounted threaded state. */
+	res = ssh_connect();
+	if (res == -1) {
+		fuse_destroy(fuse);
+		exit(1);
+	}
+
 	res = fuse_mount(fuse, sshfs.mountpoint);
 	if (res != 0) {
+		if (sshfs.conns[0].rfd >= 0)
+			close_conn(&sshfs.conns[0]);
 		fuse_destroy(fuse);
 		exit(1);
 	}
@@ -4523,17 +4542,6 @@ int main(int argc, char *argv[])
 	if (res == -1)
 		perror("WARNING: failed to set FD_CLOEXEC on fuse device");
 #endif
-
-	/*
-	 * FIXME: trim $PATH so it doesn't contain anything inside the
-	 * mountpoint, which would deadlock.
-	 */
-	res = ssh_connect();
-	if (res == -1) {
-		fuse_unmount(fuse);
-		fuse_destroy(fuse);
-		exit(1);
-	}
 
 	res = fuse_daemonize(sshfs.foreground);
 	if (res == -1) {
