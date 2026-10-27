@@ -174,6 +174,7 @@ def test_sshfs(
         tst_readdir_repeated(mnt_dir)
         tst_rename_sibling(mnt_dir)
         tst_rename_open_release(mnt_dir)
+        tst_rewinddir_after_rename(src_dir, mnt_dir)
     except Exception as exc:
         cleanup(mount_process, mnt_dir)
         raise exc
@@ -530,6 +531,35 @@ def tst_rename_open_release(mnt_dir):
     with open(dst, "rb") as fh:
         assert fh.read() == b"data"
     os.unlink(dst)
+
+
+def tst_rewinddir_after_rename(src_dir, mnt_dir):
+    # Open directory streams must follow a rename, not the old path
+    name = name_generator()
+    old, new = pjoin(mnt_dir, name), pjoin(mnt_dir, name_generator())
+    names = {name_generator() for _ in range(5)}
+    os.mkdir(pjoin(src_dir, name))
+    for n in names:
+        open(pjoin(src_dir, name, n), "wb").close()
+
+    rewound = os.open(old, os.O_RDONLY | os.O_DIRECTORY)
+    unread = os.open(old, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        assert set(os.listdir(rewound)) == names
+        os.rename(old, new)
+        os.mkdir(old)
+        open(pjoin(old, "marker"), "wb").close()
+        open(pjoin(new, "fresh"), "wb").close()
+        names.add("fresh")
+        # Rewind before reading unread, which would refill the dir cache
+        os.lseek(rewound, 0, os.SEEK_SET)
+        assert set(os.listdir(rewound)) == names
+        assert set(os.listdir(unread)) == names
+    finally:
+        os.close(rewound)
+        os.close(unread)
+    shutil.rmtree(old)
+    shutil.rmtree(new)
 
 
 def tst_link(mnt_dir, cache_timeout):

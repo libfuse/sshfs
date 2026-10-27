@@ -247,7 +247,7 @@ struct dir_handle {
 	 * https://github.com/libfuse/sshfs/issues/338
 	 */
 	GPtrArray *entries;	/* array of struct dir_entry * */
-	char *path;		/* directory path, for reopening the handle */
+	char *path;		/* path the current SFTP handle was opened with */
 	int read_err;		/* error from the last read, if any */
 	int has_handle;		/* buf holds an open SFTP dir handle to close */
 	int buf_exhausted;	/* the SFTP handle has been read to EOF */
@@ -1989,12 +1989,8 @@ static void *sshfs_init(struct fuse_conn_info *conn,
 	if (conn->capable & FUSE_CAP_ASYNC_READ)
 		sshfs.sync_read = 1;
 
-	// These workarounds require the "path" argument.
-	cfg->nullpath_ok = !(sshfs.truncate_workaround || sshfs.fstat_workaround);
-
-	// When using multiple connections, release() needs to know the path
-	if (sshfs.max_conns > 1)
-		cfg->nullpath_ok = 0;
+	// readdir reopens directories at their current path
+	cfg->nullpath_ok = 0;
 
 	// Lookup of . and .. is supported
 	conn->capable |= FUSE_CAP_EXPORT_SUPPORT;
@@ -2470,7 +2466,7 @@ static void free_dir_entry(gpointer data)
  * directory from the start means closing the exhausted handle and opening a
  * fresh one.
  */
-static int sshfs_reopen_dir(struct dir_handle *handle)
+static int sshfs_reopen_dir(struct dir_handle *handle, const char *path)
 {
 	struct buffer buf;
 	int err;
@@ -2482,7 +2478,7 @@ static int sshfs_reopen_dir(struct dir_handle *handle)
 		handle->has_handle = 0;
 	}
 	buf_init(&buf, 0);
-	buf_add_path(&buf, handle->path);
+	buf_add_path(&buf, path);
 	err = sftp_request(handle->conn, SSH_FXP_OPENDIR, &buf,
 			   SSH_FXP_HANDLE, &handle->buf);
 	buf_free(&buf);
@@ -2490,6 +2486,8 @@ static int sshfs_reopen_dir(struct dir_handle *handle)
 		buf_finish(&handle->buf);
 		handle->has_handle = 1;
 		handle->buf_exhausted = 0;
+		g_free(handle->path);
+		handle->path = g_strdup(path);
 	}
 	return err;
 }
@@ -2498,11 +2496,15 @@ static int sshfs_readdir(const char *path, void *dbuf, fuse_fill_dir_t filler,
 			 off_t offset, struct fuse_file_info *fi,
 			 enum fuse_readdir_flags flags)
 {
-	(void) path; (void) flags;
+	(void) flags;
 	unsigned i;
 	struct dir_handle *handle;
 
 	handle = (struct dir_handle*) fi->fh;
+
+	/* Removed or replaced through this mount, so it had to be empty */
+	if (path == NULL)
+		return 0;
 
 	/*
 	 * offset == 0 starts a fresh enumeration (a new listing or a
@@ -2511,12 +2513,14 @@ static int sshfs_readdir(const char *path, void *dbuf, fuse_fill_dir_t filler,
 	 * once read to EOF, reusing it would read nothing and the directory
 	 * would appear empty, so we reopen a fresh handle first. offset != 0 is
 	 * a continuation of the current enumeration and is served from the
-	 * snapshot taken at offset 0.
+	 * snapshot taken at offset 0. OpenSSH resolves entries against the
+	 * OPENDIR path, so also reopen a handle whose directory was renamed.
 	 * See: https://github.com/libfuse/sshfs/issues/338
 	 */
 	if (offset == 0 || handle->entries == NULL) {
-		if (handle->buf_exhausted)
-			handle->read_err = sshfs_reopen_dir(handle);
+		if (handle->buf_exhausted || !handle->has_handle ||
+		    strcmp(path, handle->path) != 0)
+			handle->read_err = sshfs_reopen_dir(handle, path);
 		if (!handle->read_err) {
 			if (handle->entries)
 				g_ptr_array_free(handle->entries, TRUE);

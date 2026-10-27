@@ -386,6 +386,10 @@ static int cache_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	struct node *node;
 	struct cache_dirent **cdent;
 
+	/* Removed or replaced through this mount, so it had to be empty */
+	if (path == NULL)
+		return 0;
+
 	/*
 	 * sshfs uses mode-1 readdir: the offset parameter is ignored and the
 	 * complete listing is always handed to the filler with offset 0;
