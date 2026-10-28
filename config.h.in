@@ -1,0 +1,3 @@
+// config.h.in
+#define PACKAGE_VERSION "@PACKAGE_VERSION@"
+#define IDMAP_DEFAULT "@IDMAP_DEFAULT@"
