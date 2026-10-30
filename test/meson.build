@@ -19,8 +19,11 @@ test_cache = executable('test_cache', 'test_cache.c',
                         install: false)
 test('cache', test_cache, suite: 'unit')
 
-test_cond_lifetime = executable('test_cond_lifetime',
-                               'test_cond_lifetime.c', '../cache.c',
+cond_lifetime_sources = ['test_cond_lifetime.c', '../cache.c']
+if host_machine.system() == 'darwin'
+  cond_lifetime_sources += ['../compat/darwin_compat.c']
+endif
+test_cond_lifetime = executable('test_cond_lifetime', cond_lifetime_sources,
                                include_directories: include_dirs,
                                dependencies: sshfs_deps,
                                c_args: ['-DFUSE_USE_VERSION=31'],
