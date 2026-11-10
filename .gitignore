@@ -35,3 +35,5 @@ sshfs.1
 /m4
 .deps/
 /build
+config.bat
+node_modules

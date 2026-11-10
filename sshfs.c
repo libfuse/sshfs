@@ -1517,6 +1517,7 @@ static void chunk_free(struct read_chunk *chunk)
 		buf_free(&rreq->data);
 		g_free(rreq);
 	}
+	pthread_cond_destroy(&chunk->sio.finished);
 	g_free(chunk);
 }
 
@@ -3085,6 +3086,7 @@ static int sshfs_open_common(const char *path, mode_t mode,
 			}
 			pthread_mutex_unlock(&sshfs.lock);
 		}
+		pthread_cond_destroy(&sf->write_finished);
 		g_free(sf);
 	}
 	buf_free(&buf);
@@ -3170,6 +3172,7 @@ static int sshfs_release(const char *path, struct fuse_file_info *fi)
 		}
 		pthread_mutex_unlock(&sshfs.lock);
 	}
+	pthread_cond_destroy(&sf->write_finished);
 	g_free(sf);
 	return 0;
 }
@@ -3542,6 +3545,7 @@ static int sshfs_sync_write(struct sshfs_file *sf, const char *wbuf,
 	if (!err)
 		err = sio.error;
 
+	pthread_cond_destroy(&sio.finished);
 	return err;
 }
 
