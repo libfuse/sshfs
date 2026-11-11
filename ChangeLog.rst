@@ -1,3 +1,16 @@
+Release 3.7.7 (2026-11-11)
+--------------------------
+
+* Fixed directory listings and rewinding, including renamed directories and
+  nonzero offsets used by macFUSE FSKit.
+* Fixed background mounting with macFUSE 5.3.3 and later.
+* Corrected handling of UTIME_OMIT and UTIME_NOW in timestamp updates.
+* Fixed backslash escapes in the -o ssh_command option.
+* Added support for the RENAME_NOREPLACE rename flag.
+* Fixed a memory leak in cached symbolic link targets.
+* Expanded tests and CI coverage, including macOS builds, cache unit tests,
+  sanitizers, and static analysis.
+
 Release 3.7.6 (2026-05-30)
 --------------------------
 
