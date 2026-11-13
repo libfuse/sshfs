@@ -2294,19 +2294,22 @@ static int sshfs_readlink(const char *path, char *linkbuf, size_t size)
 		err = -EIO;
 		if(buf_get_uint32(&name, &count) != -1 && count == 1 &&
 		   buf_get_string(&name, &link) != -1) {
+			size_t linklen;
+
 			if (sshfs.transform_symlinks)
 				transform_symlink(path, &link);
+			linklen = strlen(link);
 			if (sshfs.contain_symlinks &&
 			    !symlink_target_is_contained(link)) {
-				free(link);
-				buf_free(&name);
-				buf_free(&buf);
-				return -EPERM;
+				err = -EPERM;
+			/* Truncation can change a component such as "..x" to "..". */
+			} else if (linklen >= size) {
+				err = -ENAMETOOLONG;
+			} else {
+				memcpy(linkbuf, link, linklen + 1);
+				err = 0;
 			}
-			strncpy(linkbuf, link, size - 1);
-			linkbuf[size - 1] = '\0';
 			free(link);
-			err = 0;
 		}
 		buf_free(&name);
 	}
