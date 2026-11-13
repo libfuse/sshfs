@@ -129,8 +129,17 @@
 #define PROTO_VERSION 3
 
 #define MY_EOF 1
+#define MY_READDIR_TOO_LARGE 2
 
 #define MAX_REPLY_LEN (1 << 17)
+
+/*
+ * sshfs uses old-style readdir and keeps a complete directory snapshot so
+ * repeated enumerations can be served after the single-pass SFTP handle is
+ * exhausted.  Bound the persistent allocations in one such snapshot.  SFTP
+ * reply buffers are bounded separately by MAX_REPLY_LEN and READDIR_MAX.
+ */
+#define MAX_READDIR_SNAPSHOT_SIZE (64U * 1024U * 1024U)
 
 #define RENAME_TEMP_CHARS 8
 
@@ -982,7 +991,8 @@ static int buf_get_statvfs(struct buffer *buf, struct statvfs *stbuf)
 	return 0;
 }
 
-static int buf_get_entries(struct buffer *buf, GPtrArray *entries)
+static int buf_get_entries(struct buffer *buf, GPtrArray *entries,
+			   size_t *snapshot_size)
 {
 	uint32_t count;
 	unsigned i;
@@ -992,16 +1002,34 @@ static int buf_get_entries(struct buffer *buf, GPtrArray *entries)
 
 	for (i = 0; i < count; i++) {
 		int err = -1;
+		size_t name_offset = buf->len;
+		size_t name_size;
 		char *name;
 		char *longname;
 		struct stat stbuf;
 		if (buf_get_string(buf, &name) == -1)
 			return -EIO;
+		/* buf_get_string allocated the encoded length plus NUL. */
+		name_size = buf->len - name_offset - sizeof(uint32_t) + 1;
 		if (buf_get_string(buf, &longname) != -1) {
 			free(longname);
 			err = buf_get_attrs(buf, &stbuf, NULL);
 			if (!err) {
+				size_t entry_size;
 				struct dir_entry *entry;
+
+				/*
+				 * Account for every persistent allocation made for an
+				 * entry.  GPtrArray may reserve some additional pointer
+				 * slots, but that is bounded by a constant factor.
+				 */
+				entry_size = sizeof(*entry) + sizeof(gpointer);
+				if (name_size > MAX_READDIR_SNAPSHOT_SIZE - entry_size ||
+				    *snapshot_size > MAX_READDIR_SNAPSHOT_SIZE -
+					entry_size - name_size) {
+					free(name);
+					return MY_READDIR_TOO_LARGE;
+				}
 				if (sshfs.follow_symlinks &&
 				    S_ISLNK(stbuf.st_mode)) {
 					stbuf.st_mode = 0;
@@ -1011,6 +1039,7 @@ static int buf_get_entries(struct buffer *buf, GPtrArray *entries)
 				entry->stbuf = stbuf;
 				g_ptr_array_add(entries, entry);
 				name = NULL; /* ownership passed to entry */
+				*snapshot_size += entry_size + name_size;
 			}
 		}
 		free(name);
@@ -2333,7 +2362,7 @@ static int sshfs_req_pending(struct request *req)
 }
 
 static int sftp_readdir_async(struct conn *conn, struct buffer *handle,
-			      GPtrArray *entries)
+			      GPtrArray *entries, size_t *snapshot_size)
 {
 	int err = 0;
 	int outstanding = 0;
@@ -2384,15 +2413,21 @@ static int sftp_readdir_async(struct conn *conn, struct buffer *handle,
 
 			tmperr = sftp_request_wait(req, SSH_FXP_READDIR,
 						    SSH_FXP_NAME, &name);
+			if (done) {
+				if (!tmperr)
+					buf_free(&name);
+				continue;
+			}
 
-			if (tmperr && !done) {
+			if (tmperr) {
 				err = tmperr;
 				if (err == MY_EOF)
 					err = 0;
 				done = 1;
 			}
 			if (!done) {
-				err = buf_get_entries(&name, entries);
+				err = buf_get_entries(&name, entries,
+						      snapshot_size);
 				buf_free(&name);
 
 				/* increase number of outstanding requests */
@@ -2410,14 +2445,14 @@ static int sftp_readdir_async(struct conn *conn, struct buffer *handle,
 }
 
 static int sftp_readdir_sync(struct conn *conn, struct buffer *handle,
-			     GPtrArray *entries)
+			     GPtrArray *entries, size_t *snapshot_size)
 {
 	int err;
 	do {
 		struct buffer name;
 		err = sftp_request(conn, SSH_FXP_READDIR, handle, SSH_FXP_NAME, &name);
 		if (!err) {
-			err = buf_get_entries(&name, entries);
+			err = buf_get_entries(&name, entries, snapshot_size);
 			buf_free(&name);
 		}
 	} while (!err);
@@ -2509,6 +2544,15 @@ static int sshfs_readdir(const char *path, void *dbuf, fuse_fill_dir_t filler,
 	/* Removed or replaced through this mount, so it had to be empty */
 	if (path == NULL)
 		return 0;
+	/*
+	 * Retrying an over-limit snapshot on the same handle would let a peer
+	 * repeatedly consume the full budget.  Keep the error sticky until
+	 * releasedir.  ENOMEM accurately reports that the snapshot's memory budget
+	 * was exhausted without triggering libc's special EOVERFLOW handling for
+	 * directory entries.
+	 */
+	if (handle->read_err == MY_READDIR_TOO_LARGE)
+		return -ENOMEM;
 
 	/*
 	 * offset == 0 starts a fresh enumeration (a new listing or a
@@ -2522,6 +2566,8 @@ static int sshfs_readdir(const char *path, void *dbuf, fuse_fill_dir_t filler,
 	 * See: https://github.com/libfuse/sshfs/issues/338
 	 */
 	if (offset == 0 || handle->entries == NULL) {
+		size_t snapshot_size = 0;
+
 		if (handle->buf_exhausted || !handle->has_handle ||
 		    strcmp(path, handle->path) != 0)
 			handle->read_err = sshfs_reopen_dir(handle, path);
@@ -2533,17 +2579,20 @@ static int sshfs_readdir(const char *path, void *dbuf, fuse_fill_dir_t filler,
 			if (sshfs.sync_readdir)
 				handle->read_err = sftp_readdir_sync(
 					handle->conn, &handle->buf,
-					handle->entries);
+					handle->entries, &snapshot_size);
 			else
 				handle->read_err = sftp_readdir_async(
 					handle->conn, &handle->buf,
-					handle->entries);
+					handle->entries, &snapshot_size);
 			handle->buf_exhausted = 1;
+			if (handle->read_err)
+				g_ptr_array_set_size(handle->entries, 0);
 		}
 	}
 
 	if (handle->read_err)
-		return handle->read_err;
+		return handle->read_err == MY_READDIR_TOO_LARGE ?
+			-ENOMEM : handle->read_err;
 
 	/*
 	 * Old-style readdir: hand FUSE the complete listing with offset 0 and
