@@ -4218,6 +4218,10 @@ static char *find_base_path(void)
 				}
 				*d++ = *s;
 			}
+			if (s[1] != ':') {
+				fprintf(stderr, "missing ':' after hostname\n");
+				exit(1);
+			}
 		} else {
 			*d++ = *s;
 		}
