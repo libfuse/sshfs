@@ -74,14 +74,25 @@ struct cache_dirent {
 	struct stat stat;
 };
 
+static void free_node_dir(struct node *node)
+{
+	if (node->dir == NULL)
+		return;
+
+	cache.dir_count -= node->dir_count;
+	cache.dir_size -= node->dir_size;
+	g_ptr_array_free(node->dir, TRUE);
+	node->dir = NULL;
+	node->dir_count = 0;
+	node->dir_size = 0;
+	node->dir_valid = 0;
+	node->valid = MAX(node->stat_valid, node->link_valid);
+}
+
 static void free_node(gpointer node_)
 {
 	struct node *node = (struct node *) node_;
-	if (node->dir != NULL) {
-		cache.dir_count -= node->dir_count;
-		cache.dir_size -= node->dir_size;
-		g_ptr_array_free(node->dir, TRUE);
-  }
+	free_node_dir(node);
 	g_free(node->link);
 	g_free(node);
 }
@@ -97,17 +108,20 @@ static void free_cache_dirent(gpointer data) {
 static int cache_clean_entry(void *key_, struct node *node, time_t *now)
 {
 	(void) key_;
+	if (node->dir != NULL && *now > node->dir_valid)
+		free_node_dir(node);
 	if (*now > node->valid)
 		return TRUE;
 	else
 		return FALSE;
 }
 
-static void cache_clean(void)
+static void cache_clean(int for_admission)
 {
 	time_t now = time(NULL);
 	if (now > cache.last_cleaned + cache.min_clean_interval_secs &&
-	    (g_hash_table_size(cache.table) > cache.max_size ||
+	    (for_admission ||
+	     g_hash_table_size(cache.table) > cache.max_size ||
 	     now > cache.last_cleaned + cache.clean_interval_secs)) {
 		g_hash_table_foreach_remove(cache.table,
 					    (GHRFunc) cache_clean_entry, &now);
@@ -201,6 +215,8 @@ static void cache_add_attr_internal(const char *path,
 	struct node *node;
 
 	pthread_mutex_lock(&cache.lock);
+	if (enforce_limit)
+		cache_clean(1);
 	if (wrctr == cache.write_ctr) {
 		node = cache_lookup(path);
 		if (node == NULL) {
@@ -213,7 +229,7 @@ static void cache_add_attr_internal(const char *path,
 		node->stat_valid = time(NULL) + cache.stat_timeout_secs;
 		if (node->stat_valid > node->valid)
 			node->valid = node->stat_valid;
-		cache_clean();
+		cache_clean(0);
 	}
 out:
 	pthread_mutex_unlock(&cache.lock);
@@ -235,6 +251,7 @@ static int cache_add_dir(const char *path, GPtrArray *dir, size_t dir_size)
 	size_t retained_size;
 
 	pthread_mutex_lock(&cache.lock);
+	cache_clean(1);
 	node = cache_lookup(path);
 	old_count = node != NULL ? node->dir_count : 0;
 	old_size = node != NULL ? node->dir_size : 0;
@@ -254,11 +271,7 @@ static int cache_add_dir(const char *path, GPtrArray *dir, size_t dir_size)
 		}
 		node = cache_get(path);
 	}
-	if (node->dir != NULL) {
-		cache.dir_count -= node->dir_count;
-		cache.dir_size -= node->dir_size;
-		g_ptr_array_free(node->dir, TRUE);
-  }
+	free_node_dir(node);
 	node->dir = dir;
 	node->dir_count = dir_count;
 	node->dir_size = dir_size;
@@ -267,7 +280,7 @@ static int cache_add_dir(const char *path, GPtrArray *dir, size_t dir_size)
 	node->dir_valid = time(NULL) + cache.dir_timeout_secs;
 	if (node->dir_valid > node->valid)
 		node->valid = node->dir_valid;
-	cache_clean();
+	cache_clean(0);
 	pthread_mutex_unlock(&cache.lock);
 	return 1;
 }
@@ -290,7 +303,7 @@ static void cache_add_link(const char *path, const char *link, size_t size)
 	node->link_valid = time(NULL) + cache.link_timeout_secs;
 	if (node->link_valid > node->valid)
 		node->valid = node->link_valid;
-	cache_clean();
+	cache_clean(0);
 	pthread_mutex_unlock(&cache.lock);
 }
 
@@ -426,22 +439,22 @@ static int cache_dirfill (void *buf, const char *name,
 			g_ptr_array_free(ch->dir, TRUE);
 			ch->dir = NULL;
 			ch->dir_size = 0;
-			return 0;
+		} else {
+			struct cache_dirent *cdent =
+				g_malloc(sizeof(struct cache_dirent));
+			cdent->name = g_strdup(name);
+			cdent->stat = *stbuf;
+			g_ptr_array_add(ch->dir, cdent);
+			ch->dir_size += entry_size;
 		}
+	}
+	if (!err && (stbuf->st_mode & S_IFMT)) {
+		char *fullpath;
+		const char *basepath = !ch->path[1] ? "" : ch->path;
 
-		struct cache_dirent *cdent = g_malloc(sizeof(struct cache_dirent));
-		cdent->name = g_strdup(name);
-		cdent->stat = *stbuf;
-		g_ptr_array_add(ch->dir, cdent);
-		ch->dir_size += entry_size;
-		if (stbuf->st_mode & S_IFMT) {
-			char *fullpath;
-			const char *basepath = !ch->path[1] ? "" : ch->path;
-
-			fullpath = g_strdup_printf("%s/%s", basepath, name);
-			cache_add_attr_internal(fullpath, stbuf, ch->wrctr, 1);
-			g_free(fullpath);
-		}
+		fullpath = g_strdup_printf("%s/%s", basepath, name);
+		cache_add_attr_internal(fullpath, stbuf, ch->wrctr, 1);
+		g_free(fullpath);
 	}
 	return err;
 }
