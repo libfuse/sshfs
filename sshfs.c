@@ -1322,7 +1322,7 @@ static int connect_to(struct conn *conn, char *host, char *port)
 	return 0;
 }
 
-static int connect_vsock(struct conn *conn, char *vsock)
+static int connect_vsock(struct conn *conn, const char *vsock)
 {
 #ifndef __linux__
 	fprintf(stderr, "vsock is not available\n");
@@ -1333,14 +1333,13 @@ static int connect_vsock(struct conn *conn, char *vsock)
 	struct sockaddr_vm addr;
 	unsigned int cid;
 	unsigned int port;
-	char *delim;
+	const char *delim;
 
 	delim = strchr(vsock, ':');
 	if (delim == NULL) {
 		fprintf(stderr, "invalid vsock, expecting CID:PORT\n");
 		return -1;
 	}
-	*delim = '\0';
 	errno = 0;
 	cid = strtoul(vsock, NULL, 10);
 	if (errno) {

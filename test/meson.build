@@ -19,6 +19,15 @@ test_cache = executable('test_cache', 'test_cache.c',
                         install: false)
 test('cache', test_cache, suite: 'unit')
 
+if host_machine.system() == 'linux'
+  test_vsock = executable('test_vsock', ['test_vsock.c', '../cache.c'],
+                          include_directories: include_dirs,
+                          dependencies: sshfs_deps,
+                          c_args: ['-DFUSE_USE_VERSION=31'],
+                          install: false)
+  test('vsock', test_vsock, suite: 'unit')
+endif
+
 # Provide something helpful when running 'ninja test'
 wrong_cmd = executable('wrong_command', 'wrong_command.c',
                        install: false)
