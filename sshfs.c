@@ -4690,7 +4690,7 @@ int main(int argc, char *argv[])
 	 * On macOS the FD_CLOEXEC fcntl is deferred until after
 	 * fuse_daemonize() below; see the comment there.
 	 */
-#if !defined(__CYGWIN__) && !defined(__APPLE__)
+#if !defined(__CYGWIN__) && !defined(__APPLE__) && !defined(__QNXNTO__)
 	res = fcntl(fuse_session_fd(se), F_SETFD, FD_CLOEXEC);
 	if (res == -1)
 		perror("WARNING: failed to set FD_CLOEXEC on fuse device");
